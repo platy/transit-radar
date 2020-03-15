@@ -2,8 +2,8 @@
 
 ## Backend
 
-[] Include GTFS files
-[] Open and parse some relevant GTFS table
+[x] Include GTFS files
+[x] Open and parse some relevant GTFS table
 [] Write algorithm
 [] Produce output json
 [] Make web service / run fully in wasm?
