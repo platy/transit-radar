@@ -5,11 +5,11 @@ use serde::Deserialize;
 type AgencyId = u16;
 type RouteId = String;
 type RouteType = u16;
-type TripId = u64;
+pub type TripId = u64;
 type StopId = String;
 type ShapeId = u16;
 type BlockId = String;
-type ServiceId = u16;
+pub type ServiceId = u16;
 type ZoneId = String;
 type LocationType = u8;
 
@@ -18,12 +18,26 @@ type BikesAllowed = Option<u8>; // 0, 1, or 2
 type WheelchairAccessible = Option<u8>; // 0, 1, 2
 
 #[derive(Debug, Deserialize)]
+pub struct Calendar { // "service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
+    pub service_id: ServiceId,
+    monday: u8,
+    // tuesday
+    // wednesday
+    // thursday
+    // friday
+    // saturday
+    pub sunday: u8,
+    start_date: String, // date
+    end_date: String, // date
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Route { //"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
-    route_id: RouteId,
+    pub route_id: RouteId,
     agency_id: AgencyId,
-    route_short_name: String,
+    pub route_short_name: String,
     route_long_name: Option<String>,
-    route_type: RouteType,
+    pub route_type: RouteType,
     route_color: Option<String>,
     route_text_color: Option<String>,
     route_desc: Option<String>,
@@ -31,9 +45,9 @@ pub struct Route { //"route_id","agency_id","route_short_name","route_long_name"
 
 #[derive(Debug, Deserialize)]
 pub struct Trip { // "route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
-    route_id: RouteId,
-    service_id: ServiceId,
-    trip_id: TripId,
+    pub route_id: RouteId,
+    pub service_id: ServiceId,
+    pub trip_id: TripId,
     trip_headsign: String,
     trip_short_name: Option<String>,
     direction_id: DirectionId,
@@ -45,11 +59,11 @@ pub struct Trip { // "route_id","service_id","trip_id","trip_headsign","trip_sho
 
 #[derive(Debug, Deserialize)]
 pub struct StopTime { // "trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
-    trip_id: TripId,
-    #[serde(with = "time_deserialize")]
-    arrival_time: Time,
-    #[serde(with = "time_deserialize")]
-    departure_time: Time,
+    pub trip_id: TripId,
+    // #[serde(with = "time_deserialize")]
+    arrival_time: String, // need to handle 24 & 25
+    // #[serde(with = "time_deserialize")]
+    departure_time: String,
     stop_id: StopId,
     stop_sequence: u32,
     pickup_type: u16,
