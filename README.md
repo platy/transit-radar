@@ -4,6 +4,10 @@
 
 [x] Include GTFS files
 [x] Open and parse some relevant GTFS table
+[] Show stops and travel times along the U8
+[] Show stops and travel times on a route from a point in the middle (including different destinations)
+[] Branch travel times from a stop including estimate for transfer times
+[] Find stops within a distance of a point sorted by distance
 [] Write algorithm
 [] Produce output json
 [] Make web service / run fully in wasm?
