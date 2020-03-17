@@ -102,23 +102,24 @@ impl GTFSSource {
         Ok(stops)
     }
 
-    fn merge_trip(combined_trip_ids: &mut LinkedList<StopId>, mut trip_stop_ids: Vec<StopId>) { // change to linked list
+    fn merge_trip(combined_trip_ids: &mut LinkedList<(StopId, u16)>, mut trip_stop_ids: Vec<StopId>) { // change to linked list
         if combined_trip_ids.is_empty() {
-            combined_trip_ids.extend(trip_stop_ids);
-        } else if let Some(offset) = combined_trip_ids.iter().position(|e| Some(e) == trip_stop_ids.iter().next()) {
+            combined_trip_ids.extend(trip_stop_ids.into_iter().map(|stop_id| (stop_id, 1)));
+        } else if let Some(offset) = combined_trip_ids.iter().position(|e| Some(&e.0) == trip_stop_ids.iter().next()) {
             // the new trip starts within the combined trip
             let intersection_length = std::cmp::min(combined_trip_ids.len() - offset, trip_stop_ids.len());
             let (intersection, right_extension) = {
                 let r = trip_stop_ids.split_off(intersection_length);
                 (trip_stop_ids, r)
             };
-            // make sure the intersection matches
-            for (c, n) in combined_trip_ids.iter().skip(offset).zip(intersection.iter()) {
+            // increment count of intersection
+            for ((c, count), n) in combined_trip_ids.iter_mut().skip(offset).zip(intersection.iter()) {
                 assert_eq!(c, n);
+                *count += 1;
             }
             // append the last extension
-            combined_trip_ids.append(&mut right_extension.into_iter().collect());
-        } else if let Some(offset) = trip_stop_ids.iter().position(|e| Some(e) == combined_trip_ids.iter().next()) {
+            combined_trip_ids.append(&mut right_extension.into_iter().map(|stop_id| (stop_id, 1)).collect());
+        } else if let Some(offset) = trip_stop_ids.iter().position(|e| Some(e) == combined_trip_ids.iter().next().map(|(id, _n)| id)) {
             // the combined trip starts within the new trip
             let intersection_length = std::cmp::min(combined_trip_ids.len(), trip_stop_ids.len() - offset);
             let (left_extension, intersection, right_extension) = {
@@ -128,15 +129,16 @@ impl GTFSSource {
             };
             println!("(left_extension, intersection, right_extension) : {:?}", (&left_extension, &intersection, &right_extension));
             // make sure the intersection matches
-            for (c, n) in combined_trip_ids.iter().take(intersection_length).zip(intersection.iter()) {
+            for ((c, count), n) in combined_trip_ids.iter_mut().take(intersection_length).zip(intersection.iter()) {
                 assert_eq!(c, n);
+                *count += 1;
             }
-            // add first extension on new NOTE: can use prepend which is currently experimental
+            // add first extension on new. NOTE: can use prepend which is currently experimental
             for n in left_extension.into_iter().rev() {
-                combined_trip_ids.push_front(n);
+                combined_trip_ids.push_front((n, 1));
             }
             // append the last extension
-            combined_trip_ids.append(&mut right_extension.into_iter().collect());
+            combined_trip_ids.append(&mut right_extension.into_iter().map(|stop_id| (stop_id, 1)).collect());
         } else {
             panic!("trips don't match \n  {:?} \n  {:?}", combined_trip_ids, trip_stop_ids);
         }
@@ -158,7 +160,7 @@ impl GTFSSource {
             origin_stop: StopTime,
             stop_ids: Vec<StopId>
         }
-        let mut combined_stop_ids: LinkedList<StopId> = LinkedList::new();
+        let mut combined_stop_ids: LinkedList<(StopId, u16)> = LinkedList::new();
         let mut current_trip: Option<CurrentTrip> = None;
         for result in rdr.deserialize() {
             let record: gtfs::StopTime = result?;
@@ -186,10 +188,10 @@ impl GTFSSource {
             }
         }
         println!("combined route");
-        for stop_id in combined_stop_ids.iter_mut() {
+        for (stop_id, count) in combined_stop_ids.iter_mut() {
             stop_id.push('1'); // put the platform id back on for the lookup
             let stop_name = &stops.get(stop_id).unwrap().stop_name;
-            println!("{}", stop_name);
+            println!("{:>3} {}", count, stop_name);
         }
         Ok(())
     }
@@ -207,36 +209,43 @@ fn main() {
 #[test]
 fn test_merge() {
     let mut c = LinkedList::new();
-    let abc = vec!["a", "b", "c"];
-    let bc = vec!["b", "c"];
-    let bcd = vec!["b", "c", "d"];
-    let abcd = vec!["a", "b", "c", "d"];
-    let zab = vec!["z", "a", "b"];
-    let zabcd = vec!["z", "a", "b", "c", "d"];
-    let zabcde = vec!["z", "a", "b", "c", "d", "e"];
+    let abc: Vec<_> = vec!["a", "b", "c"].iter().map(|&s| String::from(s)).collect();
+    let bc: Vec<_> = vec!["b", "c"].iter().map(|&s| String::from(s)).collect();
+    let bcd: Vec<_> = vec!["b", "c", "d"].iter().map(|&s| String::from(s)).collect();
+    let abcd: Vec<_> = vec!["a", "b", "c", "d"].iter().map(|&s| String::from(s)).collect();
+    let zab: Vec<_> = vec!["z", "a", "b"].iter().map(|&s| String::from(s)).collect();
+    let zabcde: Vec<_> = vec!["z", "a", "b", "c", "d", "e"].iter().map(|&s| String::from(s)).collect();
 
-    GTFSSource::merge_trip(&mut c, abc.iter().map(|&s| String::from(s)).collect());
-    assert_eq!(c.iter().collect::<Vec<_>>(), abc);
-    GTFSSource::merge_trip(&mut c, abc.iter().map(|&s| String::from(s)).collect());
-    assert_eq!(c.iter().collect::<Vec<_>>(), abc);
-    GTFSSource::merge_trip(&mut c,  bc.iter().map(|&s| String::from(s)).collect());
-    assert_eq!(c.iter().collect::<Vec<_>>(), abc);
-    GTFSSource::merge_trip(&mut c, bcd.iter().map(|&s| String::from(s)).collect());
-    assert_eq!(c.iter().collect::<Vec<_>>(), abcd);
-    GTFSSource::merge_trip(&mut c, zab.iter().map(|&s| String::from(s)).collect());
-    assert_eq!(c.iter().collect::<Vec<_>>(), zabcd);
+    fn str_ref_c(c: &LinkedList<(StopId, u16)>) -> Vec<(&str, u16)> {
+        c.iter().map(|(id, n)| (id.as_ref(), *n)).collect()
+    }
 
-    let mut c = abcd.clone().iter().map(|&s| String::from(s)).collect();
-    GTFSSource::merge_trip(&mut c, bc.iter().map(|&s| String::from(s)).collect());
-    assert_eq!(c.iter().collect::<Vec<_>>(), abcd);
-    GTFSSource::merge_trip(&mut c, zabcde.iter().map(|&s| String::from(s)).collect());
-    assert_eq!(c.iter().collect::<Vec<_>>(), zabcde);
+    GTFSSource::merge_trip(&mut c, abc.clone());
+    assert_eq!(str_ref_c(&c), vec![("a", 1), ("b", 1), ("c", 1)]);
+    GTFSSource::merge_trip(&mut c, abc);
+    assert_eq!(str_ref_c(&c), vec![("a", 2), ("b", 2), ("c", 2)]);
+    GTFSSource::merge_trip(&mut c,  bc);
+    assert_eq!(str_ref_c(&c), vec![("a", 2), ("b", 3), ("c", 3)]);
+    GTFSSource::merge_trip(&mut c, bcd.clone());
+    assert_eq!(str_ref_c(&c), vec![("a", 2), ("b", 4), ("c", 4), ("d", 1)]);
+    GTFSSource::merge_trip(&mut c, zab);
+    assert_eq!(str_ref_c(&c), vec![("z", 1), ("a", 3), ("b", 5), ("c", 4), ("d", 1)]);
+
+    let mut c = LinkedList::new();
+    GTFSSource::merge_trip(&mut c, abcd);
+    assert_eq!(str_ref_c(&c), vec![("a", 1), ("b", 1), ("c", 1), ("d", 1)]);
+    GTFSSource::merge_trip(&mut c, bcd);
+    assert_eq!(str_ref_c(&c), vec![("a", 1), ("b", 2), ("c", 2), ("d", 2)]);
+    GTFSSource::merge_trip(&mut c, zabcde);
+    assert_eq!(str_ref_c(&c), vec![("z", 1), ("a", 2), ("b", 3), ("c", 3), ("d", 3), ("e", 1)]);
 }
 
 #[test]
 #[should_panic]
 fn test_merge_not_match() {
-    let mut abc = vec!["a", "b", "c"].iter().map(|&s| String::from(s)).collect();
-    let def = vec!["d", "e", "f"];
-    GTFSSource::merge_trip(&mut abc, def.iter().map(|&s| String::from(s)).collect());
+    let abc = vec!["a", "b", "c"].iter().map(|&s| String::from(s)).collect();
+    let def = vec!["d", "e", "f"].iter().map(|&s| String::from(s)).collect();
+    let mut c = LinkedList::new();
+    GTFSSource::merge_trip(&mut c, abc);
+    GTFSSource::merge_trip(&mut c, def);
 }
