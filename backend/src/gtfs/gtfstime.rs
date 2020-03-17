@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 use std::error::Error;
 use std::fmt;
-use std::ops::Sub;
+use std::ops::{Sub, AddAssign, Div};
 use serde::Deserialize;
 use serde::Deserializer;
 
@@ -12,7 +12,7 @@ pub struct Duration {
 }
 
 impl Duration {
-  fn seconds(seconds: i32) -> Duration {
+  pub fn seconds(seconds: i32) -> Duration {
     Duration {
       seconds: seconds,
     }
@@ -24,6 +24,24 @@ impl Duration {
 
   pub fn secs(self) -> i32 {
     self.seconds
+  }
+}
+
+impl AddAssign<Duration> for Duration {
+  /// Add two `duration`s
+  #[inline(always)]
+  fn add_assign(&mut self, rhs: Duration) {
+      self.seconds += rhs.seconds;
+  }
+}
+
+impl Div<i32> for Duration {
+  type Output = Duration;
+
+  /// Add two `duration`s
+  #[inline(always)]
+  fn div(self, rhs: i32) -> Self::Output {
+      Duration::seconds(self.seconds / rhs)
   }
 }
 

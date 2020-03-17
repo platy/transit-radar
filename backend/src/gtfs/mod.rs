@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-mod gtfstime;
+pub mod gtfstime;
 use gtfstime::Time;
 
 type AgencyId = u16;
