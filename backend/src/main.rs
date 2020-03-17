@@ -81,18 +81,6 @@ impl GTFSSource {
         Ok(trips)
     }
 
-    fn get_stop_times_on_trips(&self, trip_ids: HashSet<TripId>) -> Result<Vec<StopTime>, Box<dyn Error>> {
-        let mut rdr = self.open_csv("stop_times.txt")?;
-        let mut trips = Vec::new();
-        for result in rdr.deserialize() {
-            let record: gtfs::StopTime = result?;
-            if trip_ids.contains(&record.trip_id) {
-                trips.push(record);
-            }
-        }
-        Ok(trips)
-    }
-
     fn get_stops_map(&self) -> Result<HashMap<StopId, Stop>, Box<dyn Error>> {
         let mut rdr = self.open_csv("stops.txt")?;
         let mut stops = HashMap::new();
@@ -158,16 +146,7 @@ impl GTFSSource {
         }
     }
 
-    fn example(&self) -> Result<(), Box<dyn Error>> {
-        let sunday_services = self.get_sunday_services()?;
-        println!("{} services", sunday_services.len());
-        let route = self.get_ubahn_route("U8")?;
-        let trips = self.get_trips(route, sunday_services, 0)?;
-        println!("{} trips", trips.len());
-        let trip_ids: HashSet<TripId> = HashSet::from_iter(trips.iter().map(|trip| trip.trip_id));
-        let stops = self.get_stops_map()?;
-        println!("{} stops", stops.len());
-
+    fn get_average_stop_times_on_trips(&self, trip_ids: &HashSet<TripId>, stops: &HashMap<StopId, Stop>) -> Result<LinkedList<(StopId, Duration, u16)>, Box<dyn Error>> {
         let mut rdr = self.open_csv("stop_times.txt")?;
         struct CurrentTrip {
             _trip_id: TripId,
@@ -202,6 +181,20 @@ impl GTFSSource {
                 }
             }
         }
+        Ok(combined_stop_ids)
+    }
+
+    fn example(&self) -> Result<(), Box<dyn Error>> {
+        let sunday_services = self.get_sunday_services()?;
+        println!("{} services", sunday_services.len());
+        let route = self.get_ubahn_route("U8")?;
+        let trips = self.get_trips(route, sunday_services, 0)?;
+        println!("{} trips", trips.len());
+        let trip_ids: HashSet<TripId> = HashSet::from_iter(trips.iter().map(|trip| trip.trip_id));
+        let stops = self.get_stops_map()?;
+        println!("{} stops", stops.len());
+
+        let mut combined_stop_ids = self.get_average_stop_times_on_trips(&trip_ids, &stops)?;
         println!("combined route");
         let mut wait_acc = Duration::seconds(0);
         for (stop_id, duration_acc, count) in combined_stop_ids.iter_mut() {
