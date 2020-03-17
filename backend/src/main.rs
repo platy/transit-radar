@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::process;
 use std::fmt;
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashSet, HashMap, LinkedList};
 use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
 
@@ -102,47 +102,41 @@ impl GTFSSource {
         Ok(stops)
     }
 
-    fn merge_trip(combined_trip_ids: &mut Vec<StopId>, trip_stop_ids: Vec<StopId>) { // change to linked list
+    fn merge_trip(combined_trip_ids: &mut LinkedList<StopId>, mut trip_stop_ids: Vec<StopId>) { // change to linked list
         if combined_trip_ids.is_empty() {
             combined_trip_ids.extend(trip_stop_ids);
-        } else if let Some(offset) = combined_trip_ids.iter().position(|e| e == &trip_stop_ids[0]) { // we can iterate on the new vec and make sure it is all there
-            let intersection_length = {
-                // ignore first extension on combined
-                let combined_trip_ids = &combined_trip_ids[offset..];
-                let intersection_length = if combined_trip_ids.len() > trip_stop_ids.len() {
-                    trip_stop_ids.len()
-                } else {
-                    combined_trip_ids.len()
-                };
-                // make sure the intersection matches
-                for (c, n) in combined_trip_ids.iter().take(intersection_length).zip(trip_stop_ids.iter().take(intersection_length)) {
-                    assert_eq!(c, n);
-                }
-                intersection_length
+        } else if let Some(offset) = combined_trip_ids.iter().position(|e| Some(e) == trip_stop_ids.iter().next()) {
+            // the new trip starts within the combined trip
+            let intersection_length = std::cmp::min(combined_trip_ids.len() - offset, trip_stop_ids.len());
+            let (intersection, right_extension) = {
+                let r = trip_stop_ids.split_off(intersection_length);
+                (trip_stop_ids, r)
             };
-            let new_extension = &trip_stop_ids[intersection_length..];
-            combined_trip_ids.extend_from_slice(new_extension);
-        } else if let Some(offset) = trip_stop_ids.iter().position(|e| e == &combined_trip_ids[0]) {
-            let intersection_length = {
-                // ignore first extension on new
-                let trip_stop_ids = &trip_stop_ids[offset..];
-                let intersection_length = if combined_trip_ids.len() > trip_stop_ids.len() {
-                    trip_stop_ids.len()
-                } else {
-                    combined_trip_ids.len()
-                };
-                // make sure the intersection matches
-                for (c, n) in combined_trip_ids.iter().take(intersection_length).zip(trip_stop_ids.iter().take(intersection_length)) {
-                    assert_eq!(c, n);
-                }
-                intersection_length
-            };
-            let new_extension = &trip_stop_ids[offset + intersection_length..];
-            combined_trip_ids.extend_from_slice(new_extension);
-            // add first extension on new
-            for (i, f) in trip_stop_ids.iter().enumerate().take(offset) {
-                combined_trip_ids.insert(i, f.clone()); // todo why does this need a clone?
+            // make sure the intersection matches
+            for (c, n) in combined_trip_ids.iter().skip(offset).zip(intersection.iter()) {
+                assert_eq!(c, n);
             }
+            // append the last extension
+            combined_trip_ids.append(&mut right_extension.into_iter().collect());
+        } else if let Some(offset) = trip_stop_ids.iter().position(|e| Some(e) == combined_trip_ids.iter().next()) {
+            // the combined trip starts within the new trip
+            let intersection_length = std::cmp::min(combined_trip_ids.len(), trip_stop_ids.len() - offset);
+            let (left_extension, intersection, right_extension) = {
+                let mut i = trip_stop_ids.split_off(offset);
+                let r = i.split_off(intersection_length);
+                (trip_stop_ids, i, r)
+            };
+            println!("(left_extension, intersection, right_extension) : {:?}", (&left_extension, &intersection, &right_extension));
+            // make sure the intersection matches
+            for (c, n) in combined_trip_ids.iter().take(intersection_length).zip(intersection.iter()) {
+                assert_eq!(c, n);
+            }
+            // add first extension on new NOTE: can use prepend which is currently experimental
+            for n in left_extension.into_iter().rev() {
+                combined_trip_ids.push_front(n);
+            }
+            // append the last extension
+            combined_trip_ids.append(&mut right_extension.into_iter().collect());
         } else {
             panic!("trips don't match \n  {:?} \n  {:?}", combined_trip_ids, trip_stop_ids);
         }
@@ -160,11 +154,11 @@ impl GTFSSource {
 
         let mut rdr = self.open_csv("stop_times.txt")?;
         struct CurrentTrip {
-            trip_id: TripId,
+            _trip_id: TripId,
             origin_stop: StopTime,
             stop_ids: Vec<StopId>
         }
-        let mut combined_stop_ids: Vec<StopId> = Vec::new();
+        let mut combined_stop_ids: LinkedList<StopId> = LinkedList::new();
         let mut current_trip: Option<CurrentTrip> = None;
         for result in rdr.deserialize() {
             let record: gtfs::StopTime = result?;
@@ -178,7 +172,7 @@ impl GTFSSource {
                     println!("<<< {} >>> lookup more info?", record.trip_id);
                     println!("{:>2}m {}", 0, stop_name);
                     current_trip = Some(CurrentTrip {
-                        trip_id: record.trip_id,
+                        _trip_id: record.trip_id,
                         stop_ids: [stop_id].as_ref().into(),
                         origin_stop: record,
                     });
@@ -212,7 +206,7 @@ fn main() {
 
 #[test]
 fn test_merge() {
-    let mut c = vec![];
+    let mut c = LinkedList::new();
     let abc = vec!["a", "b", "c"];
     let bc = vec!["b", "c"];
     let bcd = vec!["b", "c", "d"];
@@ -222,21 +216,21 @@ fn test_merge() {
     let zabcde = vec!["z", "a", "b", "c", "d", "e"];
 
     GTFSSource::merge_trip(&mut c, abc.iter().map(|&s| String::from(s)).collect());
-    assert_eq!(c, abc);
+    assert_eq!(c.iter().collect::<Vec<_>>(), abc);
     GTFSSource::merge_trip(&mut c, abc.iter().map(|&s| String::from(s)).collect());
-    assert_eq!(c, abc);
+    assert_eq!(c.iter().collect::<Vec<_>>(), abc);
     GTFSSource::merge_trip(&mut c,  bc.iter().map(|&s| String::from(s)).collect());
-    assert_eq!(c, abc);
+    assert_eq!(c.iter().collect::<Vec<_>>(), abc);
     GTFSSource::merge_trip(&mut c, bcd.iter().map(|&s| String::from(s)).collect());
-    assert_eq!(c, abcd);
+    assert_eq!(c.iter().collect::<Vec<_>>(), abcd);
     GTFSSource::merge_trip(&mut c, zab.iter().map(|&s| String::from(s)).collect());
-    assert_eq!(c, zabcd);
+    assert_eq!(c.iter().collect::<Vec<_>>(), zabcd);
 
-    let mut c = abcd.iter().map(|&s| String::from(s)).collect();
+    let mut c = abcd.clone().iter().map(|&s| String::from(s)).collect();
     GTFSSource::merge_trip(&mut c, bc.iter().map(|&s| String::from(s)).collect());
-    assert_eq!(c, abcd);
+    assert_eq!(c.iter().collect::<Vec<_>>(), abcd);
     GTFSSource::merge_trip(&mut c, zabcde.iter().map(|&s| String::from(s)).collect());
-    assert_eq!(c, zabcde);
+    assert_eq!(c.iter().collect::<Vec<_>>(), zabcde);
 }
 
 #[test]
