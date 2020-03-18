@@ -6,12 +6,16 @@
 [x] Open and parse some relevant GTFS table
 [x] Show stops, frequencies and travel times along the U8
 [x] Create station groups
-[] Show stops and travel times on a route from a point in the middle (including different destinations)
+[x] Show stops and travel times on a route from a point in the middle (including different destinations)
+[] Ignore trips to stops which can be reached faster
 [] Branch travel times from a stop including estimate for transfer times
 [] Find stops within a distance of a point sorted by distance
 [] Write algorithm
 [] Produce output json
 [] Make web service / run fully in wasm?
+[] Use averages instead of exact times?
+
+StopId should not be String, maybe &str / str?
 
 ## Frontend
 

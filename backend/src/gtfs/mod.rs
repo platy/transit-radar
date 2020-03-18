@@ -4,7 +4,7 @@ pub mod gtfstime;
 use gtfstime::Time;
 
 type AgencyId = u16;
-type RouteId = String;
+pub type RouteId = String;
 type RouteType = u16;
 pub type TripId = u64;
 pub type StopId = String;

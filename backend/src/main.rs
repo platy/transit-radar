@@ -42,11 +42,19 @@ impl GTFSSource {
         Ok(reader)
     }
 
+    fn routes_by_id(&self) -> Result<HashMap<RouteId, Route>, Box<dyn Error>> {
+        let mut rdr = self.open_csv("routes.txt")?;
+        let mut routes = HashMap::new();
+        for result in rdr.deserialize() {
+            let record: gtfs::Route = result?;
+            routes.insert(record.route_id.clone(), record);
+        }
+        Ok(routes)
+    }
+
     fn get_ubahn_route(&self, short_name: &str) -> Result<gtfs::Route, Box<dyn Error>> {
         let mut rdr = self.open_csv("routes.txt")?;
         for result in rdr.deserialize() {
-            // Notice that we need to provide a type hint for automatic
-            // deserialization.
             let record: gtfs::Route = result?;
             if record.route_short_name == short_name && record.route_type == 400 {
                 return Ok(record)
@@ -59,8 +67,6 @@ impl GTFSSource {
         let mut rdr = self.open_csv("calendar.txt")?;
         let mut services = HashSet::new();
         for result in rdr.deserialize() {
-            // Notice that we need to provide a type hint for automatic
-            // deserialization.
             let record: gtfs::Calendar = result?;
             if record.sunday == 1 { // should also filter the dat range
                 services.insert(record.service_id);
@@ -69,12 +75,14 @@ impl GTFSSource {
         return Ok(services)
     }
 
-    fn get_trips(&self, route: Route, service_ids: HashSet<gtfs::ServiceId>, direction: DirectionId) -> Result<Vec<Trip>, Box<dyn Error>> {
+    fn get_trips(&self, route_id: Option<RouteId>, service_ids: HashSet<gtfs::ServiceId>, direction: Option<DirectionId>) -> Result<Vec<Trip>, Box<dyn Error>> {
         let mut rdr = self.open_csv("trips.txt")?;
         let mut trips = Vec::new();
         for result in rdr.deserialize() {
             let record: gtfs::Trip = result?;
-            if record.route_id == route.route_id && service_ids.contains(&record.service_id) && record.direction_id == direction  {
+            if route_id.as_ref().map(|route_id| route_id == &record.route_id).unwrap_or(true)
+                    && service_ids.contains(&record.service_id) 
+                    && direction.map(|direction| direction == record.direction_id).unwrap_or(true) {
                 trips.push(record);
             }
         }
@@ -89,6 +97,18 @@ impl GTFSSource {
             stops.push(record);
         }
         Ok(stops)
+    }
+
+    fn stops_of_station(&self, station_id: StopId) -> Result<HashSet<StopId>, Box<dyn Error>> {
+        let mut rdr = self.open_csv("stops.txt")?;
+        let mut stops = Vec::new();
+        for result in rdr.deserialize() {
+            let record: gtfs::Stop = result?;
+            if record.parent_station.as_ref() == Some(&station_id) {
+                stops.push(record);
+            }
+        }
+        Ok(stops.into_iter().map(|stop| stop.stop_id).collect())
     }
 
     fn stops_by_id(&self, stops: Vec<Stop>) -> HashMap<StopId, Stop> {
@@ -209,7 +229,7 @@ impl GTFSSource {
         let sunday_services = self.get_sunday_services()?;
         println!("{} services", sunday_services.len());
         let route = self.get_ubahn_route("U8")?;
-        let trips = self.get_trips(route, sunday_services, 0)?;
+        let trips = self.get_trips(Some(route.route_id), sunday_services, Some(0))?;
         println!("{} trips", trips.len());
         let trip_ids: HashSet<TripId> = HashSet::from_iter(trips.iter().map(|trip| trip.trip_id));
         let stops_by_id = self.stops_by_id(self.get_stops()?);
@@ -232,8 +252,7 @@ impl GTFSSource {
         Ok(())
     }
 
-    fn non_branching_travel_times_from(&self, station_id: StopId, available_trips: HashSet<TripId>, time: gtfs::gtfstime::Time) -> Result<Vec<(TripId, LinkedList<(StopId, Duration)>)>, Box<dyn Error>> {
-        // let departure_stops = stops_of_station(station_id);
+    fn non_branching_travel_times_from(&self, departure_stops: &HashSet<StopId>, available_trips: &HashMap<TripId, Trip>, time: gtfs::gtfstime::Time) -> Result<Vec<(TripId, LinkedList<(StopId, Duration)>)>, Box<dyn Error>> {
         let mut rdr = self.open_csv("stop_times.txt")?;
 
         let mut trips = vec![];
@@ -241,7 +260,7 @@ impl GTFSSource {
         for result in rdr.deserialize() {
             let record: gtfs::StopTime = result?;
             if on_trip.iter().any(|(trip_id, _stops)| *trip_id == record.trip_id) {
-                let new_stop = (record.stop_id, Duration::seconds(0));
+                let new_stop = (record.stop_id, record.arrival_time - time);
                 on_trip.as_mut().unwrap().1.push_back(new_stop);
             } else {
                 if let Some(old_trip) = on_trip {
@@ -249,12 +268,12 @@ impl GTFSSource {
                     trips.push(old_trip);
                     on_trip = None;
                 }
-                if record.stop_id == station_id 
+                if departure_stops.contains(&record.stop_id)
                     && record.departure_time.is_after(time) 
                     && record.departure_time.is_before(time + Duration::minutes(30)) // TODO should only include others with different destinations and posibly merge
-                    && available_trips.contains(&record.trip_id) {
+                    && available_trips.contains_key(&record.trip_id) {
                     // start trip
-                    let new_stop = (record.stop_id, Duration::seconds(0));
+                    let new_stop = (record.stop_id, record.arrival_time - time);
                     let new_trip = (record.trip_id, LinkedList::from_iter(vec![new_stop]));
                     on_trip = Some(new_trip);
                 }
@@ -267,13 +286,19 @@ impl GTFSSource {
         // let stops = self.stops_by_id(self.get_stops()?);
         let sunday_services = self.get_sunday_services()?;
         println!("{} services", sunday_services.len());
-        let route = self.get_ubahn_route("U8")?; // TODO probably remove this filter
-        let available_trips = self.get_trips(route, sunday_services, 0)?;
-        let available_trips: HashSet<TripId> = HashSet::from_iter(available_trips.iter().map(|trip| trip.trip_id));
+        let available_trips = self.get_trips(None, sunday_services, None)?;
+        let available_trips: HashMap<TripId, Trip> = available_trips.into_iter().map(|trip| (trip.trip_id.clone(), trip)).collect();
 
-        let trips = self.non_branching_travel_times_from("070201083201".to_string(), available_trips, Time::parse("09:00:00")?)?;
-        for (route_id, stops) in trips.iter() {
-            println!("{} {:?}", route_id, stops);
+        let departure_stops = self.stops_of_station("900000007103".to_string())?;
+        println!("Departure stops : {:?}", departure_stops);
+        let trips = self.non_branching_travel_times_from(&departure_stops, &available_trips, Time::parse("09:00:00")?)?;
+        let stops_by_id = self.stops_by_id(self.get_stops()?);
+        let routes_by_id = self.routes_by_id()?;
+        for (trip_id, stops) in trips.iter() {
+            println!("Route {} Trip {}", routes_by_id[&available_trips[trip_id].route_id].route_short_name, trip_id);
+            for (stop_id, duration) in stops.iter() {
+                println!("  {:>2}m {}", duration.mins(), stops_by_id[stop_id].stop_name);
+            }
         }
         println!("{} trips shown", trips.len());
         Ok(())
