@@ -81,14 +81,35 @@ impl GTFSSource {
         Ok(trips)
     }
 
-    fn get_stops_map(&self) -> Result<HashMap<StopId, Stop>, Box<dyn Error>> {
+    fn get_stops(&self) -> Result<Vec<Stop>, Box<dyn Error>> {
         let mut rdr = self.open_csv("stops.txt")?;
-        let mut stops = HashMap::new();
+        let mut stops = Vec::new();
         for result in rdr.deserialize() {
             let record: gtfs::Stop = result?;
-            stops.insert(record.stop_id.clone(), record);
+            stops.push(record);
         }
         Ok(stops)
+    }
+
+    fn stops_by_id(&self, stops: Vec<Stop>) -> HashMap<StopId, Stop> {
+        let mut stops_by_id = HashMap::new();
+        for stop in stops {
+            stops_by_id.insert(stop.stop_id.clone(), stop);
+        }
+        stops_by_id
+    }
+
+    fn parent_stations_by_id(stops_by_id: &HashMap<StopId, Stop>) -> HashMap<&StopId, &Stop> {
+        let mut stations_by_id = HashMap::new();
+        for stop in stops_by_id.values() {
+            if let Some(parent) = &stop.parent_station {
+                let parent_station = &stops_by_id[parent];
+                stations_by_id.insert(&stop.stop_id, parent_station);
+            } else {
+                stations_by_id.insert(&stop.stop_id, &stop);
+            }
+        }
+        stations_by_id
     }
 
     fn merge_trip(combined_trip_ids: &mut LinkedList<(StopId, Duration, u16)>, mut trip_stop_ids: Vec<(StopId, Option<Duration>)>) { // change to linked list
@@ -146,7 +167,7 @@ impl GTFSSource {
         }
     }
 
-    fn get_average_stop_times_on_trips(&self, trip_ids: &HashSet<TripId>, stops: &HashMap<StopId, Stop>) -> Result<LinkedList<(StopId, Duration, u16)>, Box<dyn Error>> {
+    fn get_average_stop_times_on_trips(&self, trip_ids: &HashSet<TripId>, stations: &HashMap<&StopId, &Stop>) -> Result<LinkedList<(StopId, Duration, u16)>, Box<dyn Error>> {
         let mut rdr = self.open_csv("stop_times.txt")?;
         struct CurrentTrip {
             _trip_id: TripId,
@@ -158,8 +179,8 @@ impl GTFSSource {
         for result in rdr.deserialize() {
             let record: gtfs::StopTime = result?;
             if trip_ids.contains(&record.trip_id) {
-                let stop_id = record.stop_id[..record.stop_id.len() - 1].to_string();
-                let stop_name = &stops.get(&record.stop_id).unwrap().stop_name;
+                let station = stations.get(&record.stop_id).unwrap();
+                let stop_name = &station.stop_name;
                 if record.stop_sequence == 0 {
                     if let Some(current_trip) = current_trip {
                         Self::merge_trip(&mut combined_stop_ids, current_trip.stop_ids);
@@ -168,14 +189,14 @@ impl GTFSSource {
                     println!("{:>2}m {}", 0, stop_name);
                     current_trip = Some(CurrentTrip {
                         _trip_id: record.trip_id,
-                        stop_ids: [(stop_id, None)].as_ref().into(),
+                        stop_ids: [(station.stop_id.clone(), None)].as_ref().into(),
                         previous_stop: record,
                     });
                 } else {
                     let current_trip = current_trip.as_mut().expect("not to be first record");
                     let previous_stop: &StopTime = &current_trip.previous_stop;
                     let wait = record.departure_time - previous_stop.departure_time;
-                    current_trip.stop_ids.push((stop_id, Some(wait))); // for the ubahn stations, there is a stop for each platform, the last digit is the platform so i remove it here to ignore
+                    current_trip.stop_ids.push((station.stop_id.clone(), Some(wait))); // for the ubahn stations, there is a stop for each platform, the last digit is the platform so i remove it here to ignore
                     println!("{:>2}m {}", wait.mins(), stop_name);
                     current_trip.previous_stop = record;
                 }
@@ -191,14 +212,14 @@ impl GTFSSource {
         let trips = self.get_trips(route, sunday_services, 0)?;
         println!("{} trips", trips.len());
         let trip_ids: HashSet<TripId> = HashSet::from_iter(trips.iter().map(|trip| trip.trip_id));
-        let stops = self.get_stops_map()?;
+        let stops_by_id = self.stops_by_id(self.get_stops()?);
+        let stops = Self::parent_stations_by_id(&stops_by_id);
         println!("{} stops", stops.len());
 
-        let mut combined_stop_ids = self.get_average_stop_times_on_trips(&trip_ids, &stops)?;
+        let combined_stop_ids = self.get_average_stop_times_on_trips(&trip_ids, &stops)?;
         println!("combined route");
         let mut wait_acc = Duration::seconds(0);
-        for (stop_id, duration_acc, count) in combined_stop_ids.iter_mut() {
-            stop_id.push('1'); // put the platform id back on for the lookup
+        for (stop_id, duration_acc, count) in combined_stop_ids.iter() {
             let stop_name = &stops.get(stop_id).unwrap().stop_name;
             let wait = if *count > 0 {
                 *duration_acc / (*count).into()
@@ -207,6 +228,14 @@ impl GTFSSource {
             };
             wait_acc += wait;
             println!("{:>3} {:>2}m {}", count, wait_acc.mins(), stop_name);
+        }
+        Ok(())
+    }
+
+    fn example2(&self) -> Result<(), Box<dyn Error>> {
+        let stops = self.stops_by_id(self.get_stops()?);
+        for (id, station) in Self::parent_stations_by_id(&stops) {
+            println!("{} {:?}", id, station);
         }
         Ok(())
     }

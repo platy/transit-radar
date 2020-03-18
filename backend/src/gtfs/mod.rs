@@ -84,7 +84,7 @@ pub struct Stop { // "stop_id","stop_code","stop_name","stop_desc","stop_lat","s
     stop_lat: f64,
     stop_lon: f64,
     location_type: LocationType,
-    parent_station: Option<StopId>,
+    pub parent_station: Option<StopId>,
     wheelchair_boarding: Option<u8>,
     platform_code: Option<String>,
     zone_id: Option<ZoneId>,
