@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 mod gtfs;
 use gtfs::*;
-use gtfs::gtfstime::Duration;
+use gtfs::gtfstime::{Duration, Time};
 
 #[derive(Debug)]
 enum MyError {
@@ -232,17 +232,56 @@ impl GTFSSource {
         Ok(())
     }
 
-    fn example2(&self) -> Result<(), Box<dyn Error>> {
-        let stops = self.stops_by_id(self.get_stops()?);
-        for (id, station) in Self::parent_stations_by_id(&stops) {
-            println!("{} {:?}", id, station);
+    fn non_branching_travel_times_from(&self, station_id: StopId, available_trips: HashSet<TripId>, time: gtfs::gtfstime::Time) -> Result<Vec<(TripId, LinkedList<(StopId, Duration)>)>, Box<dyn Error>> {
+        // let departure_stops = stops_of_station(station_id);
+        let mut rdr = self.open_csv("stop_times.txt")?;
+
+        let mut trips = vec![];
+        let mut on_trip: Option<(TripId, LinkedList<(StopId, Duration)>)> = None;
+        for result in rdr.deserialize() {
+            let record: gtfs::StopTime = result?;
+            if on_trip.iter().any(|(trip_id, _stops)| *trip_id == record.trip_id) {
+                let new_stop = (record.stop_id, Duration::seconds(0));
+                on_trip.as_mut().unwrap().1.push_back(new_stop);
+            } else {
+                if let Some(old_trip) = on_trip {
+                    // end trip
+                    trips.push(old_trip);
+                    on_trip = None;
+                }
+                if record.stop_id == station_id 
+                    && record.departure_time.is_after(time) 
+                    && record.departure_time.is_before(time + Duration::minutes(30)) // TODO should only include others with different destinations and posibly merge
+                    && available_trips.contains(&record.trip_id) {
+                    // start trip
+                    let new_stop = (record.stop_id, Duration::seconds(0));
+                    let new_trip = (record.trip_id, LinkedList::from_iter(vec![new_stop]));
+                    on_trip = Some(new_trip);
+                }
+            }
         }
+        Ok(trips)
+    }
+
+    fn example2(&self) -> Result<(), Box<dyn Error>> {
+        // let stops = self.stops_by_id(self.get_stops()?);
+        let sunday_services = self.get_sunday_services()?;
+        println!("{} services", sunday_services.len());
+        let route = self.get_ubahn_route("U8")?; // TODO probably remove this filter
+        let available_trips = self.get_trips(route, sunday_services, 0)?;
+        let available_trips: HashSet<TripId> = HashSet::from_iter(available_trips.iter().map(|trip| trip.trip_id));
+
+        let trips = self.non_branching_travel_times_from("070201083201".to_string(), available_trips, Time::parse("09:00:00")?)?;
+        for (route_id, stops) in trips.iter() {
+            println!("{} {:?}", route_id, stops);
+        }
+        println!("{} trips shown", trips.len());
         Ok(())
     }
 }
 
 fn main() {
-    if let Err(err) = GTFSSource::new(Path::new("./gtfs/")).example() {
+    if let Err(err) = GTFSSource::new(Path::new("./gtfs/")).example2() {
         println!("error running example: {:?}", err);
         process::exit(1);
     }

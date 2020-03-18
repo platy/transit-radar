@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 use std::error::Error;
 use std::fmt;
-use std::ops::{Sub, AddAssign, Div};
+use std::ops::{Add, Sub, AddAssign, Div};
 use serde::Deserialize;
 use serde::Deserializer;
 
@@ -15,6 +15,12 @@ impl Duration {
   pub fn seconds(seconds: i32) -> Duration {
     Duration {
       seconds: seconds,
+    }
+  }
+
+  pub fn minutes(minutes: i32) -> Duration {
+    Duration {
+      seconds: minutes * 60,
     }
   }
 
@@ -72,6 +78,14 @@ impl Time {
     })
   }
 
+  pub fn is_after(&self, rhs: Time) -> bool {
+    self.seconds_since_midnight > rhs.seconds_since_midnight
+  }
+
+  pub fn is_before(&self, rhs: Time) -> bool {
+    self.seconds_since_midnight < rhs.seconds_since_midnight
+  }
+
   /// get the clock hour, it can be over 23
   fn hour(self) -> u8 {
     (self.seconds_since_midnight / 60 / 60).try_into().unwrap()
@@ -85,6 +99,22 @@ impl Time {
   /// get the seconds within the minute
   fn second(self) -> u8 {
     (self.seconds_since_midnight % 60).try_into().unwrap()
+  }
+}
+
+impl Add<Duration> for Time {
+  type Output = Time;
+
+  /// Add a duration to a time, never rolls over
+  /// # Panics 
+  /// if the duration is negative enough to roll over to yesterday
+  #[inline(always)]
+  fn add(self, rhs: Duration) -> Self::Output {
+    let time: i64 = self.seconds_since_midnight.into();
+    let duration : i64 = rhs.seconds.into();
+    Time {
+      seconds_since_midnight: (time + duration).try_into().unwrap(),
+    }
   }
 }
 
