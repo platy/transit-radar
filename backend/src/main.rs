@@ -289,7 +289,7 @@ impl GTFSSource {
         let available_trips = self.get_trips(None, sunday_services, None)?;
         let available_trips: HashMap<TripId, Trip> = available_trips.into_iter().map(|trip| (trip.trip_id.clone(), trip)).collect();
 
-        let departure_stops = self.stops_of_station("900000007103".to_string())?;
+        let departure_stops = self.stops_of_station(900000007103)?;
         println!("Departure stops : {:?}", departure_stops);
         let trips = self.non_branching_travel_times_from(&departure_stops, &available_trips, Time::parse("09:00:00")?)?;
         let stops_by_id = self.stops_by_id(self.get_stops()?);
@@ -316,38 +316,41 @@ fn main() {
 
 #[test]
 fn test_merge() {
+    fn to_trip(vec: Vec<StopId>) -> Vec<(StopId, Option<Duration>)> {
     let two_secs = Some(Duration::seconds(2));
+        vec.iter().map(|&s| (s, two_secs)).collect()
+    }
 
     let mut c = LinkedList::new();
-    let abc: Vec<_> = vec!["a", "b", "c"].iter().map(|&s| (String::from(s), two_secs)).collect();
-    let bc: Vec<_> = vec!["b", "c"].iter().map(|&s| (String::from(s), two_secs)).collect();
-    let bcd: Vec<_> = vec!["b", "c", "d"].iter().map(|&s| (String::from(s), two_secs)).collect();
-    let abcd: Vec<_> = vec!["a", "b", "c", "d"].iter().map(|&s| (String::from(s), two_secs)).collect();
-    let zab: Vec<_> = vec!["z", "a", "b"].iter().map(|&s| (String::from(s), two_secs)).collect();
-    let zabcde: Vec<_> = vec!["z", "a", "b", "c", "d", "e"].iter().map(|&s| (String::from(s), two_secs)).collect();
+    let abc: Vec<_> = to_trip(vec![1, 2, 3]);
+    let bc: Vec<_> = to_trip(vec![2, 3]);
+    let bcd: Vec<_> = to_trip(vec![2, 3, 4]);
+    let abcd: Vec<_> = to_trip(vec![1, 2, 3, 4]);
+    let zab: Vec<_> = to_trip(vec![99, 1, 2]);
+    let zabcde: Vec<_> = to_trip(vec![99, 1, 2, 3, 4, 5]);
 
-    fn str_ref_c(c: &LinkedList<(StopId, Duration, u16)>) -> Vec<(&str, i32, u16)> {
-        c.iter().map(|(id, dur_acc, n)| (id.as_ref(), dur_acc.secs(), *n)).collect()
+    fn str_ref_c(c: &LinkedList<(StopId, Duration, u16)>) -> Vec<(StopId, i32, u16)> {
+        c.iter().map(|(id, dur_acc, n)| (*id, dur_acc.secs(), *n)).collect()
     }
 
     GTFSSource::merge_trip(&mut c, abc.clone());
-    assert_eq!(str_ref_c(&c), vec![("a", 2, 1), ("b", 2, 1), ("c", 2, 1)]);
+    assert_eq!(str_ref_c(&c), vec![(1, 2, 1), (2, 2, 1), (3, 2, 1)]);
     GTFSSource::merge_trip(&mut c, abc);
-    assert_eq!(str_ref_c(&c), vec![("a", 4, 2), ("b", 4, 2), ("c", 4, 2)]);
+    assert_eq!(str_ref_c(&c), vec![(1, 4, 2), (2, 4, 2), (3, 4, 2)]);
     GTFSSource::merge_trip(&mut c,  bc);
-    assert_eq!(str_ref_c(&c), vec![("a", 4, 2), ("b", 6, 3), ("c", 6, 3)]);
+    assert_eq!(str_ref_c(&c), vec![(1, 4, 2), (2, 6, 3), (3, 6, 3)]);
     GTFSSource::merge_trip(&mut c, bcd.clone());
-    assert_eq!(str_ref_c(&c), vec![("a", 4, 2), ("b", 8, 4), ("c", 8, 4), ("d", 2, 1)]);
+    assert_eq!(str_ref_c(&c), vec![(1, 4, 2), (2, 8, 4), (3, 8, 4), (4, 2, 1)]);
     GTFSSource::merge_trip(&mut c, zab);
-    assert_eq!(str_ref_c(&c), vec![("z", 2, 1), ("a", 6, 3), ("b", 10, 5), ("c", 8, 4), ("d", 2, 1)]);
+    assert_eq!(str_ref_c(&c), vec![(99, 2, 1), (1, 6, 3), (2, 10, 5), (3, 8, 4), (4, 2, 1)]);
 
     let mut c = LinkedList::new();
     GTFSSource::merge_trip(&mut c, abcd);
-    assert_eq!(str_ref_c(&c), vec![("a", 2, 1), ("b", 2, 1), ("c", 2, 1), ("d", 2, 1)]);
+    assert_eq!(str_ref_c(&c), vec![(1, 2, 1), (2, 2, 1), (3, 2, 1), (4, 2, 1)]);
     GTFSSource::merge_trip(&mut c, bcd);
-    assert_eq!(str_ref_c(&c), vec![("a", 2, 1), ("b", 4, 2), ("c", 4, 2), ("d", 4, 2)]);
+    assert_eq!(str_ref_c(&c), vec![(1, 2, 1), (2, 4, 2), (3, 4, 2), (4, 4, 2)]);
     GTFSSource::merge_trip(&mut c, zabcde);
-    assert_eq!(str_ref_c(&c), vec![("z", 2, 1), ("a", 4, 2), ("b", 6, 3), ("c", 6, 3), ("d", 6, 3), ("e", 2, 1)]);
+    assert_eq!(str_ref_c(&c), vec![(99, 2, 1), (1, 4, 2), (2, 6, 3), (3, 6, 3), (4, 6, 3), (5, 2, 1)]);
 }
 
 #[test]
@@ -355,8 +358,8 @@ fn test_merge() {
 fn test_merge_not_match() {
     let two_secs = Some(Duration::seconds(2));
 
-    let abc = vec!["a", "b", "c"].iter().map(|&s| (String::from(s), two_secs)).collect();
-    let def = vec!["d", "e", "f"].iter().map(|&s| (String::from(s), two_secs)).collect();
+    let abc = vec![1, 2, 3].iter().map(|&s| (s, two_secs)).collect();
+    let def = vec![4, 5, 6].iter().map(|&s| (s, two_secs)).collect();
     let mut c = LinkedList::new();
     GTFSSource::merge_trip(&mut c, abc);
     GTFSSource::merge_trip(&mut c, def);

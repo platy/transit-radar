@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde::Deserializer;
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct Duration {
   seconds: i32,
 }
@@ -56,7 +56,7 @@ impl Div<i32> for Duration {
 /// * time can go over 24 hours to enable the continuation of the day's schedule
 /// * operations that are needed for this project
 /// * second precision
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct Time {
   seconds_since_midnight: u32,
 }
@@ -149,9 +149,9 @@ impl fmt::Display for ParseError {
 
 impl Error for ParseError {}
 
-impl ToString for Time {
-  fn to_string(&self) -> String {
-    format!("{:02}:{:02}:{:02}", self.hour(), self.minute(), self.second())
+impl fmt::Display for Time {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+      write!(f, "{:02}:{:02}:{:02}", self.hour(), self.minute(), self.second())
   }
 }
 
