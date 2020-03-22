@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde::Deserializer;
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct Duration {
   seconds: i32,
 }
@@ -48,6 +48,16 @@ impl Div<i32> for Duration {
   #[inline(always)]
   fn div(self, rhs: i32) -> Self::Output {
       Duration::seconds(self.seconds / rhs)
+  }
+}
+
+impl <'de> Deserialize<'de> for Duration {
+  fn deserialize<D>(deserializer: D) -> Result<Duration, D::Error>
+  where
+      D: Deserializer<'de>,
+  {
+      let s = i32::deserialize(deserializer)?;
+      Ok(Duration::seconds(s))
   }
 }
 
@@ -165,6 +175,40 @@ impl <'de> Deserialize<'de> for Time {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Period {
+  start: Time,
+  end: Time,
+}
+
+impl Period {
+  /// Create a new period between these 2 times
+  /// # Panics
+  /// if start > end
+  pub fn between(start: Time, end: Time) -> Period {
+    assert!(start < end);
+    Period {
+      start: start,
+      end: end,
+    }
+  }
+
+  /// returns a new period with the same end and the new start
+  /// # Panics
+  /// if start > end
+  pub fn with_start(&self, start: Time) -> Period {
+    Self::between(start, self.end)
+  }
+
+  /// Containership, inclusive of start, exclusive of end
+  pub fn contains(&self, time: Time) -> bool {
+    self.start <= time && time < self.end
+  }
+
+  pub fn start(&self) -> Time {
+    self.start
+  }
+}
 
 #[cfg(test)]
 mod test {

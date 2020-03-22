@@ -4,10 +4,13 @@ use std::fmt;
 use std::collections::{HashSet, HashMap, LinkedList};
 use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
+use typed_arena::Arena;
 
 mod gtfs;
 use gtfs::*;
-use gtfs::gtfstime::{Duration, Time};
+use gtfs::gtfstime::{Duration, Time, Period};
+
+mod journey_graph;
 
 #[derive(Debug)]
 enum MyError {
@@ -145,6 +148,16 @@ impl GTFSSource {
             stops.push(record);
         }
         Ok(stops)
+    }
+
+    fn get_transfers(&self) -> Result<HashMap<StopId, Vec<Transfer>>, Box<dyn Error>> {
+        let mut rdr = self.open_csv("transfers.txt")?;
+        let mut map: HashMap<StopId, Vec<Transfer>> = HashMap::new();
+        for result in rdr.deserialize() {
+            let transfer: Transfer = result?;
+            map.entry(transfer.from_stop_id).or_default().push(transfer);
+        }
+        Ok(map)
     }
 
     fn stops_of_station(&self, station_id: StopId) -> Result<HashSet<StopId>, Box<dyn Error>> {
@@ -326,7 +339,7 @@ impl GTFSSource {
         let sunday_services = self.get_sunday_services()?;
         println!("{} services", sunday_services.len());
         let available_trips = self.get_trips(None, sunday_services, None)?;
-        let available_trips: HashMap<TripId, Trip> = available_trips.into_iter().map(|trip| (trip.trip_id.clone(), trip)).collect();
+        let available_trips: HashMap<TripId, Trip> = available_trips.into_iter().map(|trip| (trip.trip_id, trip)).collect();
 
         let departure_stops = self.stops_of_station(900000007103)?;
         println!("Departure stops : {:?}", departure_stops);
@@ -342,10 +355,58 @@ impl GTFSSource {
         println!("{} trips shown", trips.len());
         Ok(())
     }
+
+    fn departure_lookup<'r>(&self, period: Period, stop_times_arena: &'r Arena<StopTime>, stop_departures: &mut HashMap<StopId, Vec<&'r[gtfs::StopTime]>>,) -> Result<(), Box<dyn Error>> {
+        let sunday_services = self.get_sunday_services()?;
+        println!("{} services", sunday_services.len());
+        let available_trips = self.get_trips(None, sunday_services, None)?;
+        let available_trips: HashMap<TripId, Trip> = available_trips.into_iter().map(|trip| (trip.trip_id, trip)).collect();
+
+        let mut rdr = self.open_csv("stop_times.txt")?;
+        let mut iter = SuperIter {
+            records: rdr.deserialize().peekable(),
+            trip_id: None,
+        };
+        let mut count = 0;
+        while let Some(result) = iter.next() {
+            let (trip_id, stops) = result?;
+            if available_trips.contains_key(&trip_id) {
+                let stops = stops.skip_while(|result| result.iter().any(|stop| !period.contains(stop.departure_time)));
+                let stops: &'r[StopTime] = stop_times_arena.alloc_extend(stops.flatten());
+                if stops.len() > 0 {
+                    count += 1;
+                }
+                for start_index in 0..stops.len() {
+                    let departures_from_stop = stop_departures.entry(stops[start_index].stop_id).or_default();
+                    departures_from_stop.push(&stops[start_index..]);
+                }
+            }
+        }
+        println!("{} trips", count);
+
+        Ok(())
+    }
+
+    fn example3(&self) -> Result<(), Box<dyn Error>> {
+        let period = Period::between(Time::parse("19:00:00")?, Time::parse("19:30:00")?);
+
+        let transfers = self.get_transfers()?;
+        let stop_times_arena = Arena::new();
+        let mut stop_departures = HashMap::new();
+
+        self.departure_lookup(period, &stop_times_arena, &mut stop_departures)?;
+
+        println!("{} departures allocated, leaving from {} stops", stop_times_arena.len(), stop_departures.len());
+
+        let mut plotter = journey_graph::JourneyGraphPlotter::new(period, stop_departures, transfers);
+        plotter.run(070201083201);
+        
+        Ok(())
+    }
 }
 
 fn main() {
-    if let Err(err) = GTFSSource::new(Path::new("./gtfs/")).example2() {
+    if let Err(err) = GTFSSource::new(Path::new("./gtfs/")).example3() {
         println!("error running example: {:?}", err);
         process::exit(1);
     }

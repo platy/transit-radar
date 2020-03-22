@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 pub mod gtfstime;
-use gtfstime::Time;
+use gtfstime::{Time, Duration};
 
 type AgencyId = u16;
 pub type RouteId = u32;
@@ -17,6 +17,7 @@ type LocationType = u8;
 pub type DirectionId = u8; // 0 or 1
 type BikesAllowed = Option<u8>; // 0, 1, or 2
 type WheelchairAccessible = Option<u8>; // 0, 1, 2
+type TransferType = u8;
 
 #[derive(Debug, Deserialize)]
 pub struct WithTripId {
@@ -92,6 +93,20 @@ pub struct Stop { // "stop_id","stop_code","stop_name","stop_desc","stop_lat","s
     // zone_id: Option<ZoneId>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct Transfer { // "from_stop_id","to_stop_id","transfer_type","min_transfer_time","from_route_id","to_route_id","from_trip_id","to_trip_id"
+    pub from_stop_id: StopId,
+    pub to_stop_id: StopId,
+    transfer_type: TransferType,
+    pub min_transfer_time: Option<Duration>,
+    #[serde(with = "route_id_option_format")]
+    from_route_id: Option<RouteId>,
+    #[serde(with = "route_id_option_format")]
+    to_route_id: Option<RouteId>,
+    from_trip_id: Option<TripId>,
+    to_trip_id: Option<TripId>,
+}
+
 /// The VBB route id format is eg. `19105_700`, the first part seems to be unique on its own and the second part just seems to duplicate the route type, so we discard it
 mod route_id_format {
     use serde::{self, Deserialize, Serializer, Deserializer};
@@ -105,5 +120,24 @@ mod route_id_format {
     {
         let s = <&str>::deserialize(deserializer)?;
         s.split("_").next().unwrap().parse().map_err(serde::de::Error::custom)
+    }
+}
+
+mod route_id_option_format {
+    use serde::{self, Deserialize, Serializer, Deserializer};
+    use super::RouteId;
+
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<Option<RouteId>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = Option::<&str>::deserialize(deserializer)?;
+        match s.map(|string| string.split("_").next().unwrap().parse()) {
+            Some(Ok(id)) => Ok(Some(id)),
+            Some(Err(error)) => Err(serde::de::Error::custom(error)),
+            None => Ok(None),
+        }
     }
 }
