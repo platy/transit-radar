@@ -24,6 +24,54 @@ impl fmt::Display for MyError {
 
 impl Error for MyError {}
 
+
+
+struct SuperIter<'r, R: 'r + std::io::Read> {
+    records: std::iter::Peekable<csv::DeserializeRecordsIter<'r, R, StopTime>>,
+    trip_id: Option<TripId>,
+}
+impl <'r, R: 'r + std::io::Read> SuperIter<'r, R> {
+    fn next<'s>(&'s mut self) -> Option<csv::Result<(TripId, Iter<'s, 'r, R>)>> {
+        // skip any reecords with the existing trip id
+        let mut next;
+        loop {
+            next = self.records.peek();
+            if self.trip_id == next.and_then(|result| result.as_ref().ok()).map(|stop_time| stop_time.trip_id) {
+                self.records.next(); // skip as its the old trip
+            } else {
+                break;
+            }
+        }
+        // next is now either a new trip, an error or none
+        if let Some(Ok(stop_time)) = next {
+            let trip_id = stop_time.trip_id;
+            self.trip_id = Some(trip_id);
+            Some(Ok((stop_time.trip_id, Iter{records: &mut self.records, trip_id: trip_id})))
+        } else if let Some(Err(_error)) = next {
+            // if next is an error, consume it
+            Some(Err(self.records.next().unwrap().unwrap_err()))
+        } else {
+            None
+        }
+    }
+}
+struct Iter<'s, 'r, R: 'r + std::io::Read> {
+    records: &'s mut std::iter::Peekable<csv::DeserializeRecordsIter<'r, R, StopTime>>,
+    trip_id: TripId,
+}
+impl <'s, 'r, R: 'r + std::io::Read> Iterator for Iter<'s, 'r, R> {
+    type Item = csv::Result<StopTime>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(Ok(stop_time)) = self.records.peek() {
+            if stop_time.trip_id != self.trip_id {
+                return None
+            }
+        }
+        self.records.next()
+    }
+}
+
 struct GTFSSource {
     dir_path: PathBuf,
 }
@@ -35,7 +83,7 @@ impl GTFSSource {
         }
     }
 
-    fn open_csv(&self, filename: &str) -> Result<csv::Reader<std::fs::File>, Box<dyn Error>> {
+    fn open_csv(&self, filename: &str) -> Result<csv::Reader<std::fs::File>, csv::Error> {
         let path = self.dir_path.join(filename);
         println!("Opening {}", path.to_str().expect("path invalid"));
         let reader = csv::Reader::from_path(path)?;
@@ -188,38 +236,27 @@ impl GTFSSource {
     }
 
     fn get_average_stop_times_on_trips(&self, trip_ids: &HashSet<TripId>, stations: &HashMap<&StopId, &Stop>) -> Result<LinkedList<(StopId, Duration, u16)>, Box<dyn Error>> {
-        let mut rdr = self.open_csv("stop_times.txt")?;
-        struct CurrentTrip {
-            _trip_id: TripId,
-            previous_stop: StopTime,
-            stop_ids: Vec<(StopId, Option<Duration>)>
-        }
         let mut combined_stop_ids: LinkedList<(StopId, Duration, u16)> = LinkedList::new();
-        let mut current_trip: Option<CurrentTrip> = None;
-        for result in rdr.deserialize() {
-            let record: gtfs::StopTime = result?;
-            if trip_ids.contains(&record.trip_id) {
-                let station = stations.get(&record.stop_id).unwrap();
-                let stop_name = &station.stop_name;
-                if record.stop_sequence == 0 {
-                    if let Some(current_trip) = current_trip {
-                        Self::merge_trip(&mut combined_stop_ids, current_trip.stop_ids);
-                    }
-                    println!("<<< {} >>> lookup more info?", record.trip_id);
-                    println!("{:>2}m {}", 0, stop_name);
-                    current_trip = Some(CurrentTrip {
-                        _trip_id: record.trip_id,
-                        stop_ids: [(station.stop_id.clone(), None)].as_ref().into(),
-                        previous_stop: record,
-                    });
-                } else {
-                    let current_trip = current_trip.as_mut().expect("not to be first record");
-                    let previous_stop: &StopTime = &current_trip.previous_stop;
-                    let wait = record.departure_time - previous_stop.departure_time;
-                    current_trip.stop_ids.push((station.stop_id.clone(), Some(wait))); // for the ubahn stations, there is a stop for each platform, the last digit is the platform so i remove it here to ignore
+        let mut rdr = self.open_csv("stop_times.txt")?;
+        let mut iter = SuperIter {
+            records: rdr.deserialize().peekable(),
+            trip_id: None,
+        };
+        while let Some(Ok((trip_id, stop_times))) = iter.next() {
+            if trip_ids.contains(&trip_id) {
+                println!("<<< {} >>> lookup more info?", trip_id);
+                let mut stop_ids = vec![];
+                let mut previous_stop: Option<StopTime> = None;
+                for record in stop_times {
+                    let stop_time = record?;
+                    let station = stations.get(&stop_time.stop_id).unwrap();
+                    let stop_name = &station.stop_name;
+                    let wait: Duration = previous_stop.map(|previous_stop| stop_time.departure_time - previous_stop.departure_time).unwrap_or_default();
+                    stop_ids.push((station.stop_id.clone(), Some(wait))); // for the ubahn stations, there is a stop for each platform, the last digit is the platform so i remove it here to ignore
                     println!("{:>2}m {}", wait.mins(), stop_name);
-                    current_trip.previous_stop = record;
+                    previous_stop = Some(stop_time);
                 }
+                Self::merge_trip(&mut combined_stop_ids, stop_ids);
             }
         }
         Ok(combined_stop_ids)
@@ -253,29 +290,31 @@ impl GTFSSource {
     }
 
     fn non_branching_travel_times_from(&self, departure_stops: &HashSet<StopId>, available_trips: &HashMap<TripId, Trip>, time: gtfs::gtfstime::Time) -> Result<Vec<(TripId, LinkedList<(StopId, Duration)>)>, Box<dyn Error>> {
-        let mut rdr = self.open_csv("stop_times.txt")?;
-
         let mut trips = vec![];
-        let mut on_trip: Option<(TripId, LinkedList<(StopId, Duration)>)> = None;
-        for result in rdr.deserialize() {
-            let record: gtfs::StopTime = result?;
-            if on_trip.iter().any(|(trip_id, _stops)| *trip_id == record.trip_id) {
-                let new_stop = (record.stop_id, record.arrival_time - time);
-                on_trip.as_mut().unwrap().1.push_back(new_stop);
-            } else {
-                if let Some(old_trip) = on_trip {
-                    // end trip
-                    trips.push(old_trip);
-                    on_trip = None;
+
+        let mut rdr = self.open_csv("stop_times.txt")?;
+        let mut iter = SuperIter {
+            records: rdr.deserialize().peekable(),
+            trip_id: None,
+        };
+        while let Some(Ok((trip_id, stop_times))) = iter.next() {
+            if available_trips.contains_key(&trip_id) {
+                let mut on_trip: Option<LinkedList<(StopId, Duration)>> = None;
+                for result in stop_times {
+                    let stop_time = result?;
+                    if let Some(on_trip) = on_trip.as_mut() {
+                        let new_stop = (stop_time.stop_id, stop_time.arrival_time - time);
+                        on_trip.push_back(new_stop);
+                    } else if departure_stops.contains(&stop_time.stop_id)
+                        && stop_time.departure_time.is_after(time) 
+                        && stop_time.departure_time.is_before(time + Duration::minutes(30)) { // TODO should only include others with different destinations and possibly merge
+                        // start trip
+                        let new_stop = (stop_time.stop_id, stop_time.arrival_time - time);
+                        on_trip = Some(LinkedList::from_iter(vec![new_stop]));
+                    }
                 }
-                if departure_stops.contains(&record.stop_id)
-                    && record.departure_time.is_after(time) 
-                    && record.departure_time.is_before(time + Duration::minutes(30)) // TODO should only include others with different destinations and posibly merge
-                    && available_trips.contains_key(&record.trip_id) {
-                    // start trip
-                    let new_stop = (record.stop_id, record.arrival_time - time);
-                    let new_trip = (record.trip_id, LinkedList::from_iter(vec![new_stop]));
-                    on_trip = Some(new_trip);
+                if let Some(on_trip) = on_trip {
+                    trips.push((trip_id, on_trip));
                 }
             }
         }
@@ -313,11 +352,10 @@ fn main() {
 }
 
 
-
 #[test]
 fn test_merge() {
     fn to_trip(vec: Vec<StopId>) -> Vec<(StopId, Option<Duration>)> {
-    let two_secs = Some(Duration::seconds(2));
+        let two_secs = Some(Duration::seconds(2));
         vec.iter().map(|&s| (s, two_secs)).collect()
     }
 
