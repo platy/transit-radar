@@ -4,6 +4,7 @@ use std::fmt;
 use std::collections::{HashSet, HashMap, LinkedList};
 use std::iter::FromIterator;
 use std::path::{Path, PathBuf};
+use std::cell::RefCell;
 use typed_arena::Arena;
 
 mod gtfs;
@@ -148,16 +149,6 @@ impl GTFSSource {
             stops.push(record);
         }
         Ok(stops)
-    }
-
-    fn get_transfers(&self) -> Result<HashMap<StopId, Vec<Transfer>>, Box<dyn Error>> {
-        let mut rdr = self.open_csv("transfers.txt")?;
-        let mut map: HashMap<StopId, Vec<Transfer>> = HashMap::new();
-        for result in rdr.deserialize() {
-            let transfer: Transfer = result?;
-            map.entry(transfer.from_stop_id).or_default().push(transfer);
-        }
-        Ok(map)
     }
 
     fn stops_of_station(&self, station_id: StopId) -> Result<HashSet<StopId>, Box<dyn Error>> {
@@ -356,23 +347,81 @@ impl GTFSSource {
         Ok(())
     }
 
-    fn departure_lookup<'r>(&self, period: Period, stop_times_arena: &'r Arena<StopTime>, stop_departures: &mut HashMap<StopId, Vec<&'r[gtfs::StopTime]>>,) -> Result<(), Box<dyn Error>> {
-        let sunday_services = self.get_sunday_services()?;
+    fn example3(&self) -> Result<(), Box<dyn Error>> {
+        let period = Period::between(Time::parse("19:00:00")?, Time::parse("19:30:00")?);
+
+        let mut data = GTFSData::new();
+
+        data.load_transfers_of_stop(self)?;
+        data.load_stops_by_id(self)?;
+        data.departure_lookup(period, &self)?;
+
+        println!("{} departures allocated, leaving from {} stops", data.stop_times_arena.len(), data.stop_departures.try_borrow()?.len());
+
+        let mut plotter = journey_graph::JourneyGraphPlotter::new(period, &data)?;
+        plotter.run(data.get_stop(&070201083201).unwrap());
+        
+        Ok(())
+    }
+}
+
+pub struct GTFSData<'r> {
+    stop_times_arena: Arena<StopTime>,
+    stop_departures: RefCell<HashMap<StopId, Vec<&'r[gtfs::StopTime]>>>,
+    transfers: HashMap<StopId, Vec<Transfer>>,
+    stops_by_id: HashMap<StopId, Stop>,
+}
+
+impl <'r> GTFSData<'r> {
+    fn new() -> GTFSData<'r> {
+        GTFSData {
+            stop_times_arena: Arena::new(),
+            stop_departures: RefCell::new(HashMap::new()),
+            transfers: HashMap::new(),
+            stops_by_id: HashMap::new(),
+        }
+    }
+
+    fn load_stops_by_id(&mut self, source: &GTFSSource) -> Result<(), Box<dyn Error>> {
+        let mut rdr = source.open_csv("stops.txt")?;
+        for result in rdr.deserialize() {
+            let stop: gtfs::Stop = result?;
+            self.stops_by_id.insert(stop.stop_id.clone(), stop);
+        }
+        Ok(())
+    }
+
+    fn get_stop(&self, id: &StopId) -> Option<&Stop> {
+        self.stops_by_id.get(id)
+    }
+
+    fn load_transfers_of_stop(&mut self, source: &GTFSSource) -> Result<(), Box<dyn Error>> {
+        for result in source.open_csv("transfers.txt")?.deserialize() {
+            let transfer: Transfer = result?;
+            self.transfers.entry(transfer.from_stop_id).or_default().push(transfer);
+        }
+        Ok(())
+    }
+
+    fn departure_lookup(&'r self, period: Period, source: &GTFSSource,) -> Result<(), Box<dyn Error>> {
+        // let stop_times_arena = Arena::new();
+        let sunday_services = source.get_sunday_services()?;
         println!("{} services", sunday_services.len());
-        let available_trips = self.get_trips(None, sunday_services, None)?;
+        let available_trips = source.get_trips(None, sunday_services, None)?;
         let available_trips: HashMap<TripId, Trip> = available_trips.into_iter().map(|trip| (trip.trip_id, trip)).collect();
 
-        let mut rdr = self.open_csv("stop_times.txt")?;
+        let mut rdr = source.open_csv("stop_times.txt")?;
         let mut iter = SuperIter {
             records: rdr.deserialize().peekable(),
             trip_id: None,
         };
+        let mut stop_departures = self.stop_departures.try_borrow_mut()?;
         let mut count = 0;
         while let Some(result) = iter.next() {
             let (trip_id, stops) = result?;
             if available_trips.contains_key(&trip_id) {
                 let stops = stops.skip_while(|result| result.iter().any(|stop| !period.contains(stop.departure_time)));
-                let stops: &'r[StopTime] = stop_times_arena.alloc_extend(stops.flatten());
+                let stops: &'r[StopTime] = self.stop_times_arena.alloc_extend(stops.flatten());
                 if stops.len() > 0 {
                     count += 1;
                 }
@@ -384,23 +433,6 @@ impl GTFSSource {
         }
         println!("{} trips", count);
 
-        Ok(())
-    }
-
-    fn example3(&self) -> Result<(), Box<dyn Error>> {
-        let period = Period::between(Time::parse("19:00:00")?, Time::parse("19:30:00")?);
-
-        let transfers = self.get_transfers()?;
-        let stop_times_arena = Arena::new();
-        let mut stop_departures = HashMap::new();
-
-        self.departure_lookup(period, &stop_times_arena, &mut stop_departures)?;
-
-        println!("{} departures allocated, leaving from {} stops", stop_times_arena.len(), stop_departures.len());
-
-        let mut plotter = journey_graph::JourneyGraphPlotter::new(period, stop_departures, transfers);
-        plotter.run(070201083201);
-        
         Ok(())
     }
 }

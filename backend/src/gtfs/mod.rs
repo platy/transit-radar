@@ -109,7 +109,7 @@ pub struct Transfer { // "from_stop_id","to_stop_id","transfer_type","min_transf
 
 /// The VBB route id format is eg. `19105_700`, the first part seems to be unique on its own and the second part just seems to duplicate the route type, so we discard it
 mod route_id_format {
-    use serde::{self, Deserialize, Serializer, Deserializer};
+    use serde::{self, Deserialize, Deserializer};
     use super::RouteId;
 
     pub fn deserialize<'de, D>(
@@ -124,7 +124,7 @@ mod route_id_format {
 }
 
 mod route_id_option_format {
-    use serde::{self, Deserialize, Serializer, Deserializer};
+    use serde::{self, Deserialize, Deserializer};
     use super::RouteId;
 
     pub fn deserialize<'de, D>(
