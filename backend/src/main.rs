@@ -57,20 +57,43 @@ fn example3(source: &GTFSSource) -> Result<(), Box<dyn Error>> {
         let stop = data.get_stop(stop_id).unwrap();
         plotter.add_origin(&fake_stop, stop);
     }
-    for item in plotter.filter_map(|(item, fastest)| if fastest { Some(item) } else { None }) {
-        match item.variant {
-            QueueItemVariant::StopOnTrip { trip } => {
-            println!("{} Arrived at {:4.0} {} with {}", item.arrival_time, origin.position().bearing(item.to_stop.position()), &item.to_stop.stop_name, trip);
-            },
-            QueueItemVariant::Connection => {
-                if item.to_stop.parent_station != item.from_stop.parent_station {
-                    println!("{} Transferred to {}", item.arrival_time, &item.to_stop.stop_name);
-                }
-            }
-        }
-    }
+    // for item in plotter.filter_map(|(item, fastest)| if fastest { Some(item) } else { None }) {
+    //     match item.variant {
+    //         QueueItemVariant::StopOnTrip { trip } => {
+    //         println!("{} Arrived at {:4.0} {} with {}", item.arrival_time, origin.position().bearing(item.to_stop.position()), &item.to_stop.stop_name, trip);
+    //         },
+    //         QueueItemVariant::Connection => {
+    //             if item.to_stop.parent_station != item.from_stop.parent_station {
+    //                 println!("{} Transferred to {}", item.arrival_time, &item.to_stop.stop_name);
+    //             }
+    //         }
+    //     }
+    // }
+
+    let fe_arrivals: Vec<FEStop> = plotter.filter_map(
+        |(item, fastest)| 
+            if fastest { 
+                Some(FEStop {
+                    bearing: origin.position().bearing(item.to_stop.position()),
+                    name: &item.to_stop.stop_name,
+                    seconds: item.arrival_time - period.start(),
+                }) 
+            } else { 
+                None 
+            }).collect();
+    serde_json::to_writer_pretty(std::io::stdout(), &fe_arrivals)?;
+    println!();
     
     Ok(())
+}
+
+use serde::Serialize;
+
+#[derive(Serialize)]
+struct FEStop<'s> {
+    bearing: f64,
+    name: &'s str,
+    seconds: gtfstime::Duration,
 }
 
 fn main() {
