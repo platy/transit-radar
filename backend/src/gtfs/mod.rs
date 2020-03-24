@@ -67,7 +67,7 @@ pub struct Trip { // "route_id","service_id","trip_id","trip_headsign","trip_sho
     bikes_allowed: BikesAllowed,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct StopTime { // "trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
     pub trip_id: TripId,
     pub arrival_time: Time,
@@ -106,6 +106,24 @@ pub struct Transfer { // "from_stop_id","to_stop_id","transfer_type","min_transf
     to_route_id: Option<RouteId>,
     from_trip_id: Option<TripId>,
     to_trip_id: Option<TripId>,
+}
+
+impl Stop {
+    pub fn fake() -> Stop {
+        Stop {
+            stop_id: 0,
+            location_type: 0,
+            parent_station: None,
+            stop_lat: 0.0,
+            stop_lon: 0.0,
+            stop_name: "Fake stop".into(),
+            wheelchair_boarding: None,
+        }
+    }
+
+    pub fn position(&self) -> geo::Point<f64> {
+        geo::Point::new(self.stop_lat, self.stop_lon)
+    }
 }
 
 /// The VBB route id format is eg. `19105_700`, the first part seems to be unique on its own and the second part just seems to duplicate the route type, so we discard it

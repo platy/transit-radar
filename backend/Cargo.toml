@@ -9,3 +9,4 @@ csv = "1.1"
 serde = { version = "1", features = ["derive"] }
 typed-arena = { path = "../../rust-typed-arena" }
 rmp-serde = "0.14.3"
+geo = "0.13.0"

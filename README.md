@@ -9,8 +9,13 @@
 [x] Show stops and travel times on a route from a point in the middle (including different destinations)
 [x] Ignore trips to stops which can be reached faster
 [x] Branch travel times from a stop including estimate for transfer times
+[] Start from a parent station
+-
+[] Search a station by name
 [] Load routes etc to show better info when plotting the journeys
 [] Find stops within a distance of a point sorted by distance
+[] Calculate bearings for stops
+[] try different days / times
 [] Write algorithm
 [] Produce output json
 [] Make web service / run fully in wasm?
@@ -20,21 +25,24 @@
 [x]StopId should not be String, maybe &str / str?
 [x] Modularise the stoptime reader into a struct by understanding the lifetimes (had to use RefCell)
 [x] serialise the data so that i can have faster iteration
+[] Switch to id_arena - it will serialise easier and I won't need all these borrows comlicating things
 [] Macro for compile time Time literals
 [] Organise all the parsing and data lookups
 [] use debugging
 [] improve the error reporting in the parser
+[] remove the Strings
 
 
 ## Frontend
 
-[] Use json
+[] Use json?
 [] Draw stop points
 [] Connect with lines
 [] Connect with curves
 [] Add station names
 [] Add transfers
 [] Show / hide station names / show on hover?
+[] get geo position for search
 
 ## Stretch
 

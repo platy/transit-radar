@@ -219,21 +219,20 @@ impl GTFSSource {
       }
       Ok(trips)
   }
-
-  pub fn parent_stations_by_id(stops_by_id: &HashMap<StopId, Stop>) -> HashMap<&StopId, &Stop> {
-      let mut stations_by_id = HashMap::new();
-      for stop in stops_by_id.values() {
-          if let Some(parent) = &stop.parent_station {
-              let parent_station = &stops_by_id[parent];
-              stations_by_id.insert(&stop.stop_id, parent_station);
-          } else {
-              stations_by_id.insert(&stop.stop_id, &stop);
-          }
-      }
-      stations_by_id
-  }
 }
 
+pub fn parent_stations_by_child_id(stops_by_id: &HashMap<StopId, Stop>) -> HashMap<&StopId, &Stop> {
+    let mut stations_by_id = HashMap::new();
+    for stop in stops_by_id.values() {
+        if let Some(parent) = &stop.parent_station {
+            let parent_station = &stops_by_id[parent];
+            stations_by_id.insert(&stop.stop_id, parent_station);
+        } else {
+            stations_by_id.insert(&stop.stop_id, &stop);
+        }
+    }
+    stations_by_id
+}
 
 pub struct GTFSData<'r> {
     stop_times_arena: Arena<StopTime>,
@@ -403,5 +402,16 @@ impl <'r> GTFSData<'r> {
         println!("{} departures allocated, leaving from {} stops", self.stop_times_arena.len(), stop_departures.len());
 
         Ok(())
+    }
+
+    pub fn stops_by_parent_id(&self) -> HashMap<StopId, Vec<StopId>> {
+        let mut stops_by_parent_id = HashMap::new();
+        for stop in self.stops_by_id.values() {
+            if let Some(parent) = &stop.parent_station {
+                let siblings: &mut Vec<StopId> = stops_by_parent_id.entry(*parent).or_default();
+                siblings.push(stop.stop_id);
+            }
+        }
+        stops_by_parent_id
     }
 }

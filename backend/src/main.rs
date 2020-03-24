@@ -32,6 +32,9 @@ fn example2(source: &GTFSSource) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+use journey_graph::{QueueItemVariant};
+use geo::algorithm::bearing::Bearing;
+
 fn example3(source: &GTFSSource) -> Result<(), Box<dyn Error>> {
     let period = Period::between(Time::parse("19:00:00")?, Time::parse("19:30:00")?);
 
@@ -46,8 +49,26 @@ fn example3(source: &GTFSSource) -> Result<(), Box<dyn Error>> {
         source.write_cache(period, &data)?;
     };
 
+    let fake_stop: Stop = Stop::fake();
+
     let mut plotter = journey_graph::JourneyGraphPlotter::new(period, &data)?;
-    plotter.run(data.get_stop(&070201083201).unwrap());
+    let origin = data.get_stop(&900000007103).unwrap();
+    for stop_id in data.stops_by_parent_id().get(&origin.stop_id).unwrap() {
+        let stop = data.get_stop(stop_id).unwrap();
+        plotter.add_origin(&fake_stop, stop);
+    }
+    for item in plotter.filter_map(|(item, fastest)| if fastest { Some(item) } else { None }) {
+        match item.variant {
+            QueueItemVariant::StopOnTrip { trip } => {
+            println!("{} Arrived at {:4.0} {} with {}", item.arrival_time, origin.position().bearing(item.to_stop.position()), &item.to_stop.stop_name, trip);
+            },
+            QueueItemVariant::Connection => {
+                if item.to_stop.parent_station != item.from_stop.parent_station {
+                    println!("{} Transferred to {}", item.arrival_time, &item.to_stop.stop_name);
+                }
+            }
+        }
+    }
     
     Ok(())
 }
