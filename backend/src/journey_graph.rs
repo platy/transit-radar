@@ -1,6 +1,7 @@
 use std::collections::{BinaryHeap, HashMap, BTreeSet, HashSet};
 use crate::gtfstime::{Time, Period};
 use crate::gtfs::{Stop, StopId, TripId, StopTime, Transfer};
+use crate::gtfs::db::GTFSData;
 // use typed_arena::Arena;
 use std::cmp::Ordering;
 
@@ -14,17 +15,17 @@ pub struct JourneyGraphPlotter<'r: 's, 's> {
   // nodes: Arena<Node>,
   trips_from_stops: std::cell::Ref<'s, HashMap<StopId, Vec<&'r[StopTime]>>>,
   // transfers: &'r HashMap<StopId, Vec<Transfer>>,
-  data: &'r super::GTFSData<'r>,
+  data: &'r GTFSData<'r>,
 }
 
 impl <'r: 's, 's> JourneyGraphPlotter<'r, 's> {
-  pub fn new(period: Period, data: &'r super::GTFSData<'r>) -> Result<JourneyGraphPlotter<'r, 's>, std::cell::BorrowError> {
+  pub fn new(period: Period, data: &'r GTFSData<'r>) -> Result<JourneyGraphPlotter<'r, 's>, std::cell::BorrowError> {
     Ok(JourneyGraphPlotter {
       period: period,
       queue: std::collections::BinaryHeap::new(),
       enqueued_trips: HashSet::new(),
       stops: HashMap::new(),
-      trips_from_stops: data.stop_departures.try_borrow()?,
+      trips_from_stops: data.borrow_stop_departures()?,
       // transfers: &data.transfers,
       data: data,
     })
@@ -152,6 +153,6 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
 
   /// finds all connections from a stop
   fn transfers_from(&self, stop: StopId) -> impl Iterator<Item = &Transfer> {
-    self.data.transfers.get(&stop).expect("should have transfers for stop").iter()
+    self.data.get_transfers(&stop).expect("should have transfers for stop").iter()
   }
 }

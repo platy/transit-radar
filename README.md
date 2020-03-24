@@ -18,10 +18,13 @@
 
 ## Code 
 [x]StopId should not be String, maybe &str / str?
-[] Modularise the stoptime reader into a struct by understanding the lifetimes
-[] serialise the data so that i can have faster iteration
+[x] Modularise the stoptime reader into a struct by understanding the lifetimes (had to use RefCell)
+[x] serialise the data so that i can have faster iteration
 [] Macro for compile time Time literals
 [] Organise all the parsing and data lookups
+[] use debugging
+[] improve the error reporting in the parser
+
 
 ## Frontend
 

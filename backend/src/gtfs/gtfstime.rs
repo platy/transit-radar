@@ -2,8 +2,7 @@ use std::convert::TryInto;
 use std::error::Error;
 use std::fmt;
 use std::ops::{Add, Sub, AddAssign, Div};
-use serde::Deserialize;
-use serde::Deserializer;
+use serde::{Deserialize, Serialize, Serializer, Deserializer};
 
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
@@ -48,6 +47,15 @@ impl Div<i32> for Duration {
   #[inline(always)]
   fn div(self, rhs: i32) -> Self::Output {
       Duration::seconds(self.seconds / rhs)
+  }
+}
+
+impl Serialize for Duration {
+  fn serialize<S>(&self, serializer: S,) -> Result<S::Ok, S::Error>
+  where
+      S: Serializer,
+  {
+      serializer.serialize_i32(self.seconds)
   }
 }
 
@@ -141,6 +149,32 @@ impl Sub<Time> for Time {
   }
 }
 
+impl fmt::Display for Time {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+      write!(f, "{:02}:{:02}:{:02}", self.hour(), self.minute(), self.second())
+  }
+}
+
+impl <'de> Deserialize<'de> for Time {
+  fn deserialize<D>(deserializer: D) -> Result<Time, D::Error>
+  where
+      D: Deserializer<'de>,
+  {
+      let s = String::deserialize(deserializer)?;
+      Time::parse(&s).map_err(serde::de::Error::custom)
+  }
+}
+
+impl Serialize for Time {
+  fn serialize<S>(&self, serializer: S,) -> Result<S::Ok, S::Error>
+  where
+      S: Serializer,
+  {
+      let s = format!("{}", self);
+      serializer.serialize_str(&s)
+  }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum ParseError {
   InvalidFormat,
@@ -158,22 +192,6 @@ impl fmt::Display for ParseError {
 }
 
 impl Error for ParseError {}
-
-impl fmt::Display for Time {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-      write!(f, "{:02}:{:02}:{:02}", self.hour(), self.minute(), self.second())
-  }
-}
-
-impl <'de> Deserialize<'de> for Time {
-  fn deserialize<D>(deserializer: D) -> Result<Time, D::Error>
-  where
-      D: Deserializer<'de>,
-  {
-      let s = String::deserialize(deserializer)?;
-      Time::parse(&s).map_err(serde::de::Error::custom)
-  }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Period {
@@ -207,6 +225,12 @@ impl Period {
 
   pub fn start(&self) -> Time {
     self.start
+  }
+}
+
+impl fmt::Display for Period {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+      write!(f, "{}-{}", self.start, self.end)
   }
 }
 

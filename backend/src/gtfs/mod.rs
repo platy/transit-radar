@@ -1,6 +1,7 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 pub mod gtfstime;
+pub mod db;
 use gtfstime::{Time, Duration};
 
 type AgencyId = u16;
@@ -66,7 +67,7 @@ pub struct Trip { // "route_id","service_id","trip_id","trip_headsign","trip_sho
     bikes_allowed: BikesAllowed,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct StopTime { // "trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
     pub trip_id: TripId,
     pub arrival_time: Time,
@@ -78,7 +79,7 @@ pub struct StopTime { // "trip_id","arrival_time","departure_time","stop_id","st
     // stop_headsign: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Stop { // "stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","zone_id"
     pub stop_id: StopId,
     // stop_code: Option<String>,
@@ -93,7 +94,7 @@ pub struct Stop { // "stop_id","stop_code","stop_name","stop_desc","stop_lat","s
     // zone_id: Option<ZoneId>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Transfer { // "from_stop_id","to_stop_id","transfer_type","min_transfer_time","from_route_id","to_route_id","from_trip_id","to_trip_id"
     pub from_stop_id: StopId,
     pub to_stop_id: StopId,
@@ -124,8 +125,23 @@ mod route_id_format {
 }
 
 mod route_id_option_format {
-    use serde::{self, Deserialize, Deserializer};
+    use std::convert::TryInto;
+    use serde::{self, Deserializer, Serializer};
     use super::RouteId;
+
+    pub fn serialize<S>(
+        route_id: &Option<RouteId>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if let Some(route_id) = route_id {
+            serializer.serialize_some(&route_id)
+        } else {
+            serializer.serialize_none()
+        }
+    }
 
     pub fn deserialize<'de, D>(
         deserializer: D,
@@ -133,11 +149,60 @@ mod route_id_option_format {
     where
         D: Deserializer<'de>,
     {
-        let s = Option::<&str>::deserialize(deserializer)?;
-        match s.map(|string| string.split("_").next().unwrap().parse()) {
-            Some(Ok(id)) => Ok(Some(id)),
-            Some(Err(error)) => Err(serde::de::Error::custom(error)),
-            None => Ok(None),
+        struct StringOrInt;
+                    
+        impl<'de> serde::de::Visitor<'de> for StringOrInt
+        {
+            type Value = Option<u32>;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("string or int")
+            }
+
+            fn visit_str<E>(self, string: &str) -> Result<Option<u32>, E>
+            where
+                E: serde::de::Error,
+            {
+                string.split("_").next().unwrap().parse().map(|v| Some(v)).map_err(|e| serde::de::Error::custom(e))
+            }
+
+            fn visit_u32<E>(self, num: u32) -> Result<Option<u32>, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Some(num))
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Some(v.try_into().map_err(|e| serde::de::Error::custom(e))?))
+            }
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Some(v.try_into().map_err(|e| serde::de::Error::custom(e))?))
+            }
+
+            fn visit_none<E>(self) -> Result<Self::Value, E>
+            where
+            E: serde::de::Error,
+            {
+                Ok(None)
+            }
+        
+            fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                deserializer.deserialize_any(self)
+            }
         }
+
+        deserializer.deserialize_option(StringOrInt)   
     }
+
+
 }
