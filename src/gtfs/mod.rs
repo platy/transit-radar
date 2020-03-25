@@ -1,3 +1,4 @@
+use std::cmp::Ord;
 use serde::{Deserialize, Serialize};
 
 pub mod gtfstime;
@@ -6,7 +7,7 @@ use gtfstime::{Time, Duration};
 
 type AgencyId = u16;
 pub type RouteId = u32;
-type RouteType = u16;
+pub type RouteType = u16;
 pub type TripId = u64;
 pub type StopId = u64;
 type ShapeId = u16;
@@ -39,7 +40,7 @@ pub struct Calendar { // "service_id","monday","tuesday","wednesday","thursday",
     // end_date: String, // date
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Route { //"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
     #[serde(with = "route_id_format")]
     pub route_id: RouteId,
@@ -52,7 +53,7 @@ pub struct Route { //"route_id","agency_id","route_short_name","route_long_name"
     // route_desc: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Trip { // "route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
     #[serde(with = "route_id_format")]
     pub route_id: RouteId,
@@ -127,18 +128,67 @@ impl Stop {
 }
 
 /// The VBB route id format is eg. `19105_700`, the first part seems to be unique on its own and the second part just seems to duplicate the route type, so we discard it
+/// Maybe I can remove both of these if i use a newtype?
 mod route_id_format {
-    use serde::{self, Deserialize, Deserializer};
+    use std::convert::TryInto;
+    use serde::{self, Deserializer, Serializer};
     use super::RouteId;
 
+    pub fn serialize<S>(
+        route_id: &RouteId,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u32(*route_id)
+    }
+    
     pub fn deserialize<'de, D>(
         deserializer: D,
     ) -> Result<RouteId, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let s = <&str>::deserialize(deserializer)?;
-        s.split("_").next().unwrap().parse().map_err(serde::de::Error::custom)
+        struct StringOrInt;
+                    
+        impl<'de> serde::de::Visitor<'de> for StringOrInt
+        {
+            type Value = RouteId;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("string or int")
+            }
+
+            fn visit_str<E>(self, string: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                string.split("_").next().unwrap().parse().map(|v| v).map_err(|e| serde::de::Error::custom(e))
+            }
+
+            fn visit_u32<E>(self, num: u32) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(num)
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(v.try_into().map_err(|e| serde::de::Error::custom(e))?)
+            }
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(v.try_into().map_err(|e| serde::de::Error::custom(e))?)
+            }
+        }
+
+        deserializer.deserialize_any(StringOrInt)   
     }
 }
 

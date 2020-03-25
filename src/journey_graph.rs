@@ -1,6 +1,6 @@
 use std::collections::{BinaryHeap, HashMap, BTreeSet, HashSet};
 use crate::gtfstime::{Time, Period};
-use crate::gtfs::{Stop, StopId, TripId, StopTime, Transfer};
+use crate::gtfs::*;
 use crate::gtfs::db::GTFSData;
 // use typed_arena::Arena;
 use std::cmp::Ordering;
@@ -42,7 +42,27 @@ pub struct QueueItem<'r> {
   pub arrival_time: Time,
   pub from_stop: &'r Stop,
   pub to_stop: &'r Stop,
-  pub variant: QueueItemVariant,
+  pub variant: QueueItemVariant<'r>,
+}
+
+impl<'r> QueueItem<'r> {
+  pub fn get_route_name(&self) -> Option<&'r str> {
+    match self.variant {
+      QueueItemVariant::Connection => None,
+      QueueItemVariant::StopOnTrip{route} => {
+        Some(&route.route_short_name)
+      },
+    }
+  }
+
+  pub fn get_route_type(&self) -> Option<RouteType> {
+    match self.variant {
+      QueueItemVariant::Connection => None,
+      QueueItemVariant::StopOnTrip{route} => {
+        Some(route.route_type)
+      },
+    }
+  }
 }
 
 /// The ordering on the queue items puts those with the earliest arrival times as the greatest,
@@ -73,8 +93,8 @@ impl <'node, 'r> PartialEq for QueueItem<'r> {
 impl <'node, 'r> Eq for QueueItem<'r> {}
 
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq)]
-pub enum QueueItemVariant {
-  StopOnTrip { trip: TripId },
+pub enum QueueItemVariant<'r> {
+  StopOnTrip { route: &'r Route },
   Connection,
 }
 
@@ -114,7 +134,7 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
     nodes.insert(item.arrival_time);
     if new_earliest_arrival { // if this changes the earliest arrival time for this stop, we possibly have new connections / trips
       match item.variant {
-        QueueItemVariant::StopOnTrip { trip } => {
+        QueueItemVariant::StopOnTrip { route } => {
           let mut to_add = vec![];
           for transfer in self.transfers_from(item.to_stop.stop_id) {
             to_add.push(QueueItem {
@@ -130,6 +150,7 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
           let mut to_add = vec![];
           for stops in self.trips_from(item.to_stop.stop_id, self.period.with_start(item.arrival_time)) {
             let trip_id = stops[0].trip_id;
+            let route = self.data.get_route_for_trip(&trip_id).expect(&format!("to have found a route for trip {}", trip_id));
             if !self.enqueued_trips.contains(&trip_id) { // make sure we only add each trip once
               for window in stops.windows(2) {
                 if let [from_stop, to_stop] = window {
@@ -137,7 +158,7 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
                     from_stop: self.data.get_stop(&from_stop.stop_id).unwrap(),
                     to_stop: self.data.get_stop(&to_stop.stop_id).unwrap(),
                     arrival_time: to_stop.arrival_time,
-                    variant: QueueItemVariant::StopOnTrip{ trip: trip_id },
+                    variant: QueueItemVariant::StopOnTrip{ route },
                   });
                 } else {
                   panic!("Bad window");

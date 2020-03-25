@@ -45,6 +45,8 @@ fn example3(source: &GTFSSource) -> Result<(), Box<dyn Error>> {
         data = gtfs::db::GTFSData::new();
         data.load_transfers_of_stop(source)?;
         data.load_stops_by_id(source)?;
+        data.load_trips_by_id(source)?;
+        data.load_routes_by_id(source)?;
         data.departure_lookup(period, &source)?;
         source.write_cache(period, &data)?;
     };
@@ -88,6 +90,8 @@ fn example3(source: &GTFSSource) -> Result<(), Box<dyn Error>> {
             fe_conns.push(FEConnection {
                 from: from_id,
                 to: *stop_id_to_idx.get(&to_id).unwrap(),
+                route_name: item.get_route_name(),
+                kind: FEConnectionType::from(item.get_route_type()),
             })
         }
     }
@@ -105,7 +109,7 @@ use serde::Serialize;
 #[derive(Serialize)]
 struct FEData<'s> {
     stops: Vec<FEStop<'s>>,
-    connections: Vec<FEConnection>,
+    connections: Vec<FEConnection<'s>>,
 }
 
 #[derive(Serialize)]
@@ -116,14 +120,49 @@ struct FEStop<'s> {
 }
 
 #[derive(Serialize)]
-struct FEConnection {
+struct FEConnection<'s> {
     from: usize,
     to: usize,
+    route_name: Option<&'s str>,
+    kind: FEConnectionType,
+}
+
+#[derive(Serialize)]
+enum FEConnectionType {
+    Transfer, // walking, waiting
+    Rail,//long distance 2
+    Bus, //3
+    RailwayService,//100 RE/RB
+    SuburbanRailway, //SBahn 109
+    UrbanRailwayService,//400
+    BusService, //700
+    TramService, //900
+    Other(RouteType),
+}
+
+impl FEConnectionType {
+    fn from(route_type: Option<RouteType>) -> FEConnectionType {
+        use FEConnectionType::*;
+        if let Some(route_type) = route_type {
+            match route_type {
+                2 => Rail,
+                3 => Bus,
+                100 => RailwayService,
+                109 => SuburbanRailway,
+                400 => UrbanRailwayService,
+                700 => BusService,
+                900 => TramService,
+                other => Other(other),
+            }
+        } else {
+            Transfer
+        }
+    }
 }
 
 fn main() {
     if let Err(err) = example3(&GTFSSource::new(Path::new("./gtfs/"))) {
-        println!("error running example: {:?}", err);
+        eprintln!("error running example: {:?}", err);
         process::exit(1);
     }
 }

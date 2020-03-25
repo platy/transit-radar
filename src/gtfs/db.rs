@@ -239,6 +239,8 @@ pub struct GTFSData<'r> {
     stop_departures: RefCell<HashMap<StopId, Vec<&'r[StopTime]>>>,
     transfers: HashMap<StopId, Vec<Transfer>>,
     stops_by_id: HashMap<StopId, Stop>,
+    trips_by_id: HashMap<TripId, Trip>,
+    routes_by_id: HashMap<RouteId, Route>,
 }
 
 /// only supports the struct being serialised as a sequence
@@ -285,11 +287,17 @@ impl<'de, 'r> Deserialize<'de> for GTFSData<'r> {
                 eprintln!("read {} of transfers", transfers.len());
                 let stops_by_id: HashMap<_,_> = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
                 eprintln!("read {} of stops_by_id", stops_by_id.len());
+                let trips_by_id: HashMap<_,_> = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                eprintln!("read {} of trips_by_id", trips_by_id.len());
+                let routes_by_id: HashMap<_,_> = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                eprintln!("read {} of routes_by_id", routes_by_id.len());
                 Ok(GTFSData {
-                    stop_times_arena: stop_times_arena,
+                    stop_times_arena,
                     stop_departures: RefCell::new(stop_departures),
-                    transfers: transfers,
-                    stops_by_id: stops_by_id,
+                    transfers,
+                    stops_by_id,
+                    trips_by_id,
+                    routes_by_id,
                 })
             }
         }
@@ -313,7 +321,7 @@ impl <'r> Serialize for GTFSData<'r> {
         S: Serializer,
     {
         let stop_departures = self.stop_departures.borrow();
-        let mut seq = serializer.serialize_seq(Some(stop_departures.len() + 4))?; // this is stupid
+        let mut seq = serializer.serialize_seq(Some(stop_departures.len() + 6))?; // this is stupid
         seq.serialize_element(&self.stop_times_arena)?;
         eprintln!("written {} of arena", self.stop_times_arena.len());
         seq.serialize_element(&stop_departures.len())?;
@@ -326,6 +334,8 @@ impl <'r> Serialize for GTFSData<'r> {
 
         seq.serialize_element(&self.transfers)?;
         seq.serialize_element(&self.stops_by_id)?;
+        seq.serialize_element(&self.trips_by_id)?;
+        seq.serialize_element(&self.routes_by_id)?;
 
         seq.end()
     }
@@ -338,7 +348,13 @@ impl <'r> GTFSData<'r> {
             stop_departures: RefCell::new(HashMap::new()),
             transfers: HashMap::new(),
             stops_by_id: HashMap::new(),
+            trips_by_id: HashMap::new(),
+            routes_by_id: HashMap::new(),
         }
+    }
+
+    pub fn get_route_for_trip(&self, trip_id: &TripId) -> Option<&Route> {
+        self.trips_by_id.get(trip_id).and_then(|trip| self.routes_by_id.get(&trip.route_id))
     }
 
     pub fn borrow_stop_departures(&self) -> Result<Ref<HashMap<StopId, Vec<&'r[StopTime]>>>, BorrowError> {
@@ -350,6 +366,24 @@ impl <'r> GTFSData<'r> {
         for result in rdr.deserialize() {
             let stop: Stop = result?;
             self.stops_by_id.insert(stop.stop_id.clone(), stop);
+        }
+        Ok(())
+    }
+
+    pub fn load_trips_by_id(&mut self, source: &GTFSSource) -> Result<(), Box<dyn Error>> {
+        let mut rdr = source.open_csv("trips.txt")?;
+        for result in rdr.deserialize() {
+            let trip: Trip = result?;
+            self.trips_by_id.insert(trip.trip_id.clone(), trip);
+        }
+        Ok(())
+    }
+
+    pub fn load_routes_by_id(&mut self, source: &GTFSSource) -> Result<(), Box<dyn Error>> {
+        let mut rdr = source.open_csv("routes.txt")?;
+        for result in rdr.deserialize() {
+            let route: Route = result?;
+            self.routes_by_id.insert(route.route_id.clone(), route);
         }
         Ok(())
     }

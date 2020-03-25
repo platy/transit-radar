@@ -26,10 +26,12 @@ function stopCoords({
 function drawConnection({
   from,
   to,
+  route_name,
+  kind,
 }, stops) {
   let [x1, y1] = stopCoords(stops[from])
   let [x2, y2] = stopCoords(stops[to])
-  draw.line(x1, y1, x2, y2).stroke({ width: 1 }).stroke('black')
+  draw.line(x1, y1, x2, y2).stroke({ width: 1 }).stroke('black').attr({ class: route_name + ' ' + kind })
 }
 
 async function drawStops() {
