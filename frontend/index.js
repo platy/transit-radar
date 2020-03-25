@@ -1,16 +1,19 @@
 import { SVG } from './node_modules/@svgdotjs/svg.js/dist/svg.esm.js'
 var draw = SVG().addTo('body').size(1100, 1400)
 const xmax = 1000, ymax = 1000
-const maxSeconds = 1800
+const maxSeconds = 30 * 60
+draw.circle((10 * 60 / maxSeconds) * xmax).attr({ cx: xmax / 2, cy: ymax / 2, class: 'grid'})
+draw.circle((20 * 60 / maxSeconds) * xmax).attr({ cx: xmax / 2, cy: ymax / 2, class: 'grid'})
+draw.circle((30 * 60 / maxSeconds) * xmax).attr({ cx: xmax / 2, cy: ymax / 2, class: 'grid'})
 
 function drawStop(stop) {
   let {
     name,
   } = stop
-  let [xd, yd] = stopCoords(stop)
+  let [cx, cy] = stopCoords(stop)
   const stopDia = 6
-  draw.circle(stopDia).move(xd - stopDia/2, yd - stopDia/2).fill('#0')
-  draw.text(name).move(xd + stopDia + 2, yd - 6)
+  draw.circle(stopDia).attr({ cx, cy })
+  draw.text(name).move(cx + stopDia + 2, cy - 6)
   draw.text
 }
 
@@ -39,10 +42,8 @@ function drawConnection({
 async function drawStops() {
   let response = await fetch("./example.json")
   let data = await response.json();
-  // console.log(dagta.stops)
 
   for (let st of data.stops) {
-    // console.log(stop)
     drawStop(st)
   }
 

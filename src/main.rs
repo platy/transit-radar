@@ -10,6 +10,8 @@ use gtfs::gtfstime::{Time, Period};
 
 mod journey_graph;
 
+use geo::algorithm::bearing::Bearing;
+
 fn example3(source: &GTFSSource) -> Result<(), Box<dyn Error>> {
     let period = Period::between(Time::parse("19:00:00")?, Time::parse("19:30:00")?);
 
