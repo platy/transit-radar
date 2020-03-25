@@ -11,22 +11,6 @@ use std::marker::PhantomData;
 use crate::gtfs::*;
 use crate::gtfs::gtfstime::{Period};
 
-#[derive(Debug)]
-enum MyError {
-    NotFound,
-}
-
-impl fmt::Display for MyError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            MyError::NotFound => write!(f, "Something was not found")
-        }
-    }
-}
-
-impl Error for MyError {}
-
-
 
 struct SuperIter<'r, R: 'r + std::io::Read> {
     records: std::iter::Peekable<csv::DeserializeRecordsIter<'r, R, StopTime>>,
@@ -108,27 +92,6 @@ impl GTFSSource {
     let mut file = std::fs::File::create(path)?;
     rmp_serde::encode::write(&mut file, data)?;
     Ok(())
-  }
-
-  pub fn routes_by_id(&self) -> Result<HashMap<RouteId, Route>, Box<dyn Error>> {
-      let mut rdr = self.open_csv("routes.txt")?;
-      let mut routes = HashMap::new();
-      for result in rdr.deserialize() {
-          let record: Route = result?;
-          routes.insert(record.route_id.clone(), record);
-      }
-      Ok(routes)
-  }
-
-  pub fn get_ubahn_route(&self, short_name: &str) -> Result<Route, Box<dyn Error>> {
-      let mut rdr = self.open_csv("routes.txt")?;
-      for result in rdr.deserialize() {
-          let record: Route = result?;
-          if record.route_short_name == short_name && record.route_type == 400 {
-              return Ok(record)
-          }
-      }
-      Err(Box::new(MyError::NotFound))
   }
 
   pub fn get_sunday_services(&self) -> Result<HashSet<ServiceId>, Box<dyn Error>> {

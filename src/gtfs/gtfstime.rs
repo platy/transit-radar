@@ -16,20 +16,6 @@ impl Duration {
       seconds: seconds,
     }
   }
-
-  pub fn minutes(minutes: i32) -> Duration {
-    Duration {
-      seconds: minutes * 60,
-    }
-  }
-
-  pub fn mins(self) -> i32 {
-    self.seconds / 60
-  }
-
-  pub fn secs(self) -> i32 {
-    self.seconds
-  }
 }
 
 impl AddAssign<Duration> for Duration {
@@ -94,14 +80,6 @@ impl Time {
     Ok(Time {
       seconds_since_midnight: hours * 60 * 60 + minutes * 60 + seconds,
     })
-  }
-
-  pub fn is_after(&self, rhs: Time) -> bool {
-    self.seconds_since_midnight > rhs.seconds_since_midnight
-  }
-
-  pub fn is_before(&self, rhs: Time) -> bool {
-    self.seconds_since_midnight < rhs.seconds_since_midnight
   }
 
   /// get the clock hour, it can be over 23

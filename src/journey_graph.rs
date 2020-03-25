@@ -54,7 +54,10 @@ pub struct QueueItem<'r> {
 impl<'r> QueueItem<'r> {
   pub fn get_route_name(&self) -> Option<&'r str> {
     match self.variant {
-      QueueItemVariant::Connection => None,
+      QueueItemVariant::Transfer => None,
+      QueueItemVariant::Connection{trip_id: _, route} => {
+        Some(&route.route_short_name)
+      },
       QueueItemVariant::StopOnTrip{trip_id: _, route} => {
         Some(&route.route_short_name)
       },
@@ -63,10 +66,9 @@ impl<'r> QueueItem<'r> {
 
   pub fn get_route_type(&self) -> Option<RouteType> {
     match self.variant {
-      QueueItemVariant::Connection => None,
-      QueueItemVariant::StopOnTrip{trip_id: _, route} => {
-        Some(route.route_type)
-      },
+      QueueItemVariant::Transfer => None,
+      QueueItemVariant::Connection{trip_id: _, route: _} => None,
+      QueueItemVariant::StopOnTrip{trip_id: _, route} => Some(route.route_type),
     }
   }
 }
@@ -104,7 +106,11 @@ pub enum QueueItemVariant<'r> {
     trip_id: TripId, 
     route: &'r Route 
   },
-  Connection,
+  Connection { 
+    trip_id: TripId, 
+    route: &'r Route 
+  },
+  Transfer,
 }
 
 impl<'r, 's> Iterator for JourneyGraphPlotter<'r, 's> {
@@ -134,7 +140,7 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
       arrival_time: self.period.start(),
       from_stop: &fake_stop,
       to_stop: origin,
-      variant: QueueItemVariant::Connection,
+      variant: QueueItemVariant::Transfer,
     });
   }
 
@@ -158,7 +164,7 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
               to_stop: self.data.get_stop(&transfer.to_stop_id).unwrap(),
               departure_time: item.arrival_time,
               arrival_time: item.arrival_time + transfer.min_transfer_time.unwrap_or_default(),
-              variant: QueueItemVariant::Connection,
+              variant: QueueItemVariant::Transfer,
             });
           }
           self.queue.extend(to_add);
@@ -172,41 +178,65 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
             Some(item)
           }
         },
-        QueueItemVariant::Connection => {
+        QueueItemVariant::Connection { trip_id: _, route: _ } => {
+          panic!("Unexpected");
+        },
+        QueueItemVariant::Transfer => {
           let mut to_add = vec![];
           for stops in self.trips_from(item.to_stop.stop_id, self.period.with_start(item.arrival_time)) {
             let trip_id = stops[0].trip_id;
+            // check that route type is allowed
             if self.data.get_route_for_trip(&trip_id).iter().any(|route| self.route_types.contains(&route.route_type)) {
-              let route = self.data.get_route_for_trip(&trip_id).expect(&format!("to have found a route for trip {}", trip_id));
-              if !self.enqueued_trips.contains(&trip_id) { // make sure we only add each trip once
+              // make sure we only add each trip once
+              if !self.enqueued_trips.contains(&trip_id) { 
+                let route = self.data.get_route_for_trip(&trip_id).expect(&format!("to have found a route for trip {}", trip_id));
+                // enqueue connection (transfer + wait)
+                to_add.push(QueueItem{
+                  from_stop: item.from_stop,
+                  to_stop: item.to_stop,
+                  departure_time: item.departure_time,
+                  arrival_time: stops[0].departure_time,
+                  variant: QueueItemVariant::Connection{ trip_id, route },
+                });
+                let mut is_first = true;
                 for window in stops.windows(2) {
                   if let [from_stop, to_stop] = window {
                     to_add.push(QueueItem {
                       from_stop: self.data.get_stop(&from_stop.stop_id).unwrap(),
                       to_stop: self.data.get_stop(&to_stop.stop_id).unwrap(),
-                      departure_time: from_stop.arrival_time,
+                      departure_time: if is_first { from_stop.departure_time } else { from_stop.arrival_time },
                       arrival_time: to_stop.arrival_time,
                       variant: QueueItemVariant::StopOnTrip{ trip_id, route },
                     });
                   } else {
                     panic!("Bad window");
                   }
+                  is_first = false;
                 }
               }
             }
           }
           self.queue.extend(to_add);
-          Some(item)
+          // we don't emit transfers unless they are to a new station
+          if item.from_stop.parent_station == item.to_stop.parent_station {
+            None
+          } else {
+            Some(item)
+          }
         },
       }
     } else {
       match item.variant {
         // late arrival by trip, we want it if this trip will take us somewhere new eventually, so save it for later
-        QueueItemVariant::StopOnTrip { trip_id, route: _route } => {
+        QueueItemVariant::StopOnTrip { trip_id, route: _ } => {
           let slow_trip = self.slow_trips.entry(trip_id).or_default();
           slow_trip.push(item);
         },
-        _ => () // late arrival by connection - drop it
+        QueueItemVariant::Connection { trip_id, route: _ } => {
+          let slow_trip = self.slow_trips.entry(trip_id).or_default();
+          slow_trip.push(item);
+        },
+        _ => () // late arrival by transfer - drop it
       }
       None // the item will not be emitted
     }

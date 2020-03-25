@@ -113,7 +113,7 @@ struct FEConnection<'s> {
 
 #[derive(Serialize, Eq, PartialEq, Hash, Copy, Clone)]
 enum FEConnectionType {
-    Transfer, // walking, waiting
+    Connection, // walking, waiting
     Rail,//long distance 2
     Bus, //3
     RailwayService,//100 RE/RB
@@ -139,7 +139,7 @@ impl FEConnectionType {
                 other => Other(other),
             }
         } else {
-            Transfer
+            Connection
         }
     }
 }
