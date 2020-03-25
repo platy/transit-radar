@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::process;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use db::GTFSSource;
 
@@ -75,6 +75,7 @@ fn example3(source: &GTFSSource) -> Result<(), Box<dyn Error>> {
     let mut fe_stops: Vec<FEStop> = vec![];
     let mut fe_conns: Vec<FEConnection> = vec![];
     let mut stop_id_to_idx = HashMap::new();
+    let mut connections_check = HashSet::new();
 
     for (item, _fastest) in plotter {
         let to_id = item.to_stop.parent_station.unwrap_or(item.to_stop.stop_id);
@@ -86,13 +87,20 @@ fn example3(source: &GTFSSource) -> Result<(), Box<dyn Error>> {
                 seconds: item.arrival_time - period.start(),
             });
         }
-        if let Some(&from_id) = stop_id_to_idx.get(&item.from_stop.parent_station.unwrap_or(item.from_stop.stop_id)) {
-            fe_conns.push(FEConnection {
-                from: from_id,
-                to: *stop_id_to_idx.get(&to_id).unwrap(),
-                route_name: item.get_route_name(),
-                kind: FEConnectionType::from(item.get_route_type()),
-            })
+        if let Some(&from) = stop_id_to_idx.get(&item.from_stop.parent_station.unwrap_or(item.from_stop.stop_id)) {
+            let to = *stop_id_to_idx.get(&to_id).unwrap();
+            let route_name = item.get_route_name();
+            let kind = FEConnectionType::from(item.get_route_type());
+            if connections_check.insert((from, to, route_name, kind)) {
+                fe_conns.push(FEConnection {
+                    from,
+                    to,
+                    route_name,
+                    kind,
+                    from_seconds: item.departure_time - period.start(),
+                    to_seconds: item.arrival_time - period.start(),
+                })
+            }
         }
     }
     serde_json::to_writer_pretty(std::io::stdout(), &FEData {
@@ -121,13 +129,15 @@ struct FEStop<'s> {
 
 #[derive(Serialize)]
 struct FEConnection<'s> {
+    from_seconds: gtfstime::Duration,
+    to_seconds: gtfstime::Duration,
     from: usize,
     to: usize,
     route_name: Option<&'s str>,
     kind: FEConnectionType,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Eq, PartialEq, Hash, Copy, Clone)]
 enum FEConnectionType {
     Transfer, // walking, waiting
     Rail,//long distance 2

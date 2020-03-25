@@ -39,6 +39,7 @@ impl <'r: 's, 's> JourneyGraphPlotter<'r, 's> {
 
 #[derive(Debug)]
 pub struct QueueItem<'r> {
+  pub departure_time: Time,
   pub arrival_time: Time,
   pub from_stop: &'r Stop,
   pub to_stop: &'r Stop,
@@ -115,6 +116,7 @@ impl<'r, 's> Iterator for JourneyGraphPlotter<'r, 's> {
 impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
   pub fn add_origin(&mut self, fake_stop: &'r Stop, origin: &'r Stop) {
     self.queue.push(QueueItem {
+      departure_time: self.period.start(),
       arrival_time: self.period.start(),
       from_stop: &fake_stop,
       to_stop: origin,
@@ -134,12 +136,13 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
     nodes.insert(item.arrival_time);
     if new_earliest_arrival { // if this changes the earliest arrival time for this stop, we possibly have new connections / trips
       match item.variant {
-        QueueItemVariant::StopOnTrip { route } => {
+        QueueItemVariant::StopOnTrip { route: _route } => {
           let mut to_add = vec![];
           for transfer in self.transfers_from(item.to_stop.stop_id) {
             to_add.push(QueueItem {
               from_stop: self.data.get_stop(&transfer.from_stop_id).unwrap(),
               to_stop: self.data.get_stop(&transfer.to_stop_id).unwrap(),
+              departure_time: item.arrival_time,
               arrival_time: item.arrival_time + transfer.min_transfer_time.unwrap_or_default(),
               variant: QueueItemVariant::Connection,
             });
@@ -157,6 +160,7 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
                   to_add.push(QueueItem {
                     from_stop: self.data.get_stop(&from_stop.stop_id).unwrap(),
                     to_stop: self.data.get_stop(&to_stop.stop_id).unwrap(),
+                    departure_time: from_stop.arrival_time,
                     arrival_time: to_stop.arrival_time,
                     variant: QueueItemVariant::StopOnTrip{ route },
                   });
