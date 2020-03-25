@@ -70,18 +70,31 @@ fn example3(source: &GTFSSource) -> Result<(), Box<dyn Error>> {
     //     }
     // }
 
-    let fe_arrivals: Vec<FEStop> = plotter.filter_map(
-        |(item, fastest)| 
-            if fastest { 
-                Some(FEStop {
-                    bearing: origin.position().bearing(item.to_stop.position()),
-                    name: &item.to_stop.stop_name,
-                    seconds: item.arrival_time - period.start(),
-                }) 
-            } else { 
-                None 
-            }).collect();
-    serde_json::to_writer_pretty(std::io::stdout(), &fe_arrivals)?;
+    let mut fe_stops: Vec<FEStop> = vec![];
+    let mut fe_conns: Vec<FEConnection> = vec![];
+    let mut stop_id_to_idx = HashMap::new();
+
+    for (item, _fastest) in plotter {
+        let to_id = item.to_stop.parent_station.unwrap_or(item.to_stop.stop_id);
+        if !stop_id_to_idx.contains_key(&to_id) {
+            stop_id_to_idx.insert(to_id, fe_stops.len());
+            fe_stops.push(FEStop {
+                bearing: origin.position().bearing(item.to_stop.position()),
+                name: &item.to_stop.stop_name,
+                seconds: item.arrival_time - period.start(),
+            });
+        }
+        if let Some(&from_id) = stop_id_to_idx.get(&item.from_stop.parent_station.unwrap_or(item.from_stop.stop_id)) {
+            fe_conns.push(FEConnection {
+                from: from_id,
+                to: *stop_id_to_idx.get(&to_id).unwrap(),
+            })
+        }
+    }
+    serde_json::to_writer_pretty(std::io::stdout(), &FEData {
+        stops: fe_stops,
+        connections: fe_conns,
+    })?;
     println!();
     
     Ok(())
@@ -90,10 +103,22 @@ fn example3(source: &GTFSSource) -> Result<(), Box<dyn Error>> {
 use serde::Serialize;
 
 #[derive(Serialize)]
+struct FEData<'s> {
+    stops: Vec<FEStop<'s>>,
+    connections: Vec<FEConnection>,
+}
+
+#[derive(Serialize)]
 struct FEStop<'s> {
     bearing: f64,
     name: &'s str,
     seconds: gtfstime::Duration,
+}
+
+#[derive(Serialize)]
+struct FEConnection {
+    from: usize,
+    to: usize,
 }
 
 fn main() {

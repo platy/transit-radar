@@ -88,7 +88,7 @@ impl GTFSSource {
 
   fn open_csv(&self, filename: &str) -> Result<csv::Reader<std::fs::File>, csv::Error> {
       let path = self.dir_path.join(filename);
-      println!("Opening {}", path.to_str().expect("path invalid"));
+      eprintln!("Opening {}", path.to_str().expect("path invalid"));
       let reader = csv::Reader::from_path(path)?;
       Ok(reader)
   }
@@ -269,22 +269,22 @@ impl<'de, 'r> Deserialize<'de> for GTFSData<'r> {
                 V: SeqAccess<'de>,
             {
                 let stop_times_arena: Arena<StopTime> = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                println!("read {} of arena", stop_times_arena.len());
+                eprintln!("read {} of arena", stop_times_arena.len());
                 // i should be able to make some Visitor for this and perhaps extract a trait
                 let stop_departures_count: usize = seq.next_element::<u32>()?.ok_or_else(|| de::Error::invalid_length(0, &self))? as usize;
-                println!("reading {} of departures", stop_departures_count);
+                eprintln!("reading {} of departures", stop_departures_count);
                 let mut stop_departures: HashMap<StopId, Vec<&'r[StopTime]>> = HashMap::with_capacity(stop_departures_count);
                 for _i in 0..stop_departures_count {
                     let (stop_id, trips): (StopId, Vec<Range<u32>>) = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
                     let trips: Vec<Range<usize>> = trips.iter().map(|range| range.start as usize..range.end as usize).collect();
                     stop_departures.insert(stop_id, trips.iter().map(|range| stop_times_arena.id_to_slice(range.clone())).collect());
                 }
-                println!("read {} of departures", stop_departures_count);
+                eprintln!("read {} of departures", stop_departures_count);
 
                 let transfers: HashMap<_,_> = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                println!("read {} of transfers", transfers.len());
+                eprintln!("read {} of transfers", transfers.len());
                 let stops_by_id: HashMap<_,_> = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                println!("read {} of stops_by_id", stops_by_id.len());
+                eprintln!("read {} of stops_by_id", stops_by_id.len());
                 Ok(GTFSData {
                     stop_times_arena: stop_times_arena,
                     stop_departures: RefCell::new(stop_departures),
@@ -315,14 +315,14 @@ impl <'r> Serialize for GTFSData<'r> {
         let stop_departures = self.stop_departures.borrow();
         let mut seq = serializer.serialize_seq(Some(stop_departures.len() + 4))?; // this is stupid
         seq.serialize_element(&self.stop_times_arena)?;
-        println!("written {} of arena", self.stop_times_arena.len());
+        eprintln!("written {} of arena", self.stop_times_arena.len());
         seq.serialize_element(&stop_departures.len())?;
-        println!("writing {} of departures", stop_departures.len());
+        eprintln!("writing {} of departures", stop_departures.len());
         for (stop_id, trips) in stop_departures.iter() {
             let trips: Vec<Range<u32>> = trips.iter().map(|slice| self.stop_times_arena.slice_to_id(slice)).map(|slice| (slice.start as u32)..(slice.end as u32)).collect();
             seq.serialize_element(&(stop_id, trips))?;
         }
-        println!("written {} of departures", stop_departures.len());
+        eprintln!("written {} of departures", stop_departures.len());
 
         seq.serialize_element(&self.transfers)?;
         seq.serialize_element(&self.stops_by_id)?;
@@ -373,7 +373,7 @@ impl <'r> GTFSData<'r> {
     pub fn departure_lookup(&'r self, period: Period, source: &GTFSSource,) -> Result<(), Box<dyn Error>> {
         // let stop_times_arena = Arena::new();
         let sunday_services = source.get_sunday_services()?;
-        println!("{} services", sunday_services.len());
+        eprintln!("{} services", sunday_services.len());
         let available_trips = source.get_trips(None, sunday_services, None)?;
         let available_trips: HashMap<TripId, Trip> = available_trips.into_iter().map(|trip| (trip.trip_id, trip)).collect();
 
@@ -398,8 +398,8 @@ impl <'r> GTFSData<'r> {
                 }
             }
         }
-        println!("{} trips", count);
-        println!("{} departures allocated, leaving from {} stops", self.stop_times_arena.len(), stop_departures.len());
+        eprintln!("{} trips", count);
+        eprintln!("{} departures allocated, leaving from {} stops", self.stop_times_arena.len(), stop_departures.len());
 
         Ok(())
     }
