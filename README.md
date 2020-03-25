@@ -19,7 +19,7 @@
 [] Write algorithm
 [] Produce output json
 [] Make web service / run fully in wasm?
-[] Use averages instead of exact times?
+[] Build a graph of average times
 
 ## Code 
 [x]StopId should not be String, maybe &str / str?
@@ -31,16 +31,19 @@
 [] use debugging
 [] improve the error reporting in the parser
 [] remove the Strings
+[] save images and start writing blog post about the developlment
 
 
 ## Frontend
 
-[] Use json?
-[] Draw stop points
-[] Connect with lines
+[x] Use json?
+[x] Draw stop points
+[x] Connect with lines
+[x] Add station names
+[] Use route colours
+[] Add some filtering / highlighting
 [] Connect with curves
-[] Add station names
-[] Add transfers
+[] show wait times / transfers together and distinct from travel
 [] Show / hide station names / show on hover?
 [] get geo position for search
 
