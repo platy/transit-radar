@@ -9,7 +9,9 @@
 [x] Show stops and travel times on a route from a point in the middle (including different destinations)
 [x] Ignore trips to stops which can be reached faster
 [x] Branch travel times from a stop including estimate for transfer times
-[] Start from a parent station
+[x] Start from a parent station
+[x] Exclude any stops on trips which wont get somewhere faster in the future
+[] Start from spot between stations
 -
 [] Search a station by name
 [] Load routes etc to show better info when plotting the journeys
@@ -25,13 +27,13 @@
 [x]StopId should not be String, maybe &str / str?
 [x] Modularise the stoptime reader into a struct by understanding the lifetimes (had to use RefCell)
 [x] serialise the data so that i can have faster iteration
-[] Switch to id_arena - it will serialise easier and I won't need all these borrows comlicating things
+[] Switch to id_arena - it will serialise easier and I won't need all these borrows complicating things
 [] Macro for compile time Time literals
 [] Organise all the parsing and data lookups
 [] use debugging
 [] improve the error reporting in the parser
 [] remove the Strings
-[] save images and start writing blog post about the developlment
+[] save images and start writing blog post about the development
 
 
 ## Frontend

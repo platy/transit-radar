@@ -10,7 +10,7 @@ function drawStop(stop) {
   let [xd, yd] = stopCoords(stop)
   const stopDia = 6
   draw.circle(stopDia).move(xd - stopDia/2, yd - stopDia/2).fill('#0')
-  draw.text(name).font({ size: 12 }).move(xd + stopDia + 5, yd - 5)
+  draw.text(name).move(xd + stopDia + 2, yd - 6)
   draw.text
 }
 
@@ -33,7 +33,7 @@ function drawConnection({
 }, stops) {
   let [x1, y1] = stopCoords(stops[from], from_seconds)
   let [x2, y2] = stopCoords(stops[to], to_seconds)
-  draw.line(x1, y1, x2, y2).stroke({ width: 1 }).stroke('black').attr({ class: route_name + ' ' + kind })
+  draw.line(x1, y1, x2, y2).attr({ class: route_name + ' ' + kind })
 }
 
 async function drawStops() {

@@ -1,7 +1,6 @@
 use std::error::Error;
 use std::fmt;
-use std::collections::{HashSet, HashMap, LinkedList};
-use std::iter::FromIterator;
+use std::collections::{HashSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::cell::{RefCell, BorrowError, Ref};
 use typed_arena::Arena;
@@ -10,7 +9,7 @@ use std::ops::Range;
 use std::marker::PhantomData;
 
 use crate::gtfs::*;
-use crate::gtfs::gtfstime::{Duration, Time, Period};
+use crate::gtfs::gtfstime::{Period};
 
 #[derive(Debug)]
 enum MyError {
@@ -157,81 +156,6 @@ impl GTFSSource {
       }
       Ok(trips)
   }
-
-  pub fn get_stops(&self) -> Result<Vec<Stop>, Box<dyn Error>> {
-      let mut rdr = self.open_csv("stops.txt")?;
-      let mut stops = Vec::new();
-      for result in rdr.deserialize() {
-          let record: Stop = result?;
-          stops.push(record);
-      }
-      Ok(stops)
-  }
-
-  pub fn stops_of_station(&self, station_id: StopId) -> Result<HashSet<StopId>, Box<dyn Error>> {
-      let mut rdr = self.open_csv("stops.txt")?;
-      let mut stops = Vec::new();
-      for result in rdr.deserialize() {
-          let record: Stop = result?;
-          if record.parent_station.as_ref() == Some(&station_id) {
-              stops.push(record);
-          }
-      }
-      Ok(stops.into_iter().map(|stop| stop.stop_id).collect())
-  }
-
-  pub fn stops_by_id(&self, stops: Vec<Stop>) -> HashMap<StopId, Stop> {
-      let mut stops_by_id = HashMap::new();
-      for stop in stops {
-          stops_by_id.insert(stop.stop_id.clone(), stop);
-      }
-      stops_by_id
-  }
-
-  pub fn non_branching_travel_times_from(&self, departure_stops: &HashSet<StopId>, available_trips: &HashMap<TripId, Trip>, time: Time) -> Result<Vec<(TripId, LinkedList<(StopId, Duration)>)>, Box<dyn Error>> {
-      let mut trips = vec![];
-  
-      let mut rdr = self.open_csv("stop_times.txt")?;
-      let mut iter = SuperIter {
-          records: rdr.deserialize().peekable(),
-          trip_id: None,
-      };
-      while let Some(Ok((trip_id, stop_times))) = iter.next() {
-          if available_trips.contains_key(&trip_id) {
-              let mut on_trip: Option<LinkedList<(StopId, Duration)>> = None;
-              for result in stop_times {
-                  let stop_time = result?;
-                  if let Some(on_trip) = on_trip.as_mut() {
-                      let new_stop = (stop_time.stop_id, stop_time.arrival_time - time);
-                      on_trip.push_back(new_stop);
-                  } else if departure_stops.contains(&stop_time.stop_id)
-                      && stop_time.departure_time.is_after(time) 
-                      && stop_time.departure_time.is_before(time + Duration::minutes(30)) { // TODO should only include others with different destinations and possibly merge
-                      // start trip
-                      let new_stop = (stop_time.stop_id, stop_time.arrival_time - time);
-                      on_trip = Some(LinkedList::from_iter(vec![new_stop]));
-                  }
-              }
-              if let Some(on_trip) = on_trip {
-                  trips.push((trip_id, on_trip));
-              }
-          }
-      }
-      Ok(trips)
-  }
-}
-
-pub fn parent_stations_by_child_id(stops_by_id: &HashMap<StopId, Stop>) -> HashMap<&StopId, &Stop> {
-    let mut stations_by_id = HashMap::new();
-    for stop in stops_by_id.values() {
-        if let Some(parent) = &stop.parent_station {
-            let parent_station = &stops_by_id[parent];
-            stations_by_id.insert(&stop.stop_id, parent_station);
-        } else {
-            stations_by_id.insert(&stop.stop_id, &stop);
-        }
-    }
-    stations_by_id
 }
 
 pub struct GTFSData<'r> {
