@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use db::GTFSSource;
 
+mod arena;
 mod gtfs;
 use gtfs::*;
 use gtfs::gtfstime::{Time, Period};
@@ -14,10 +15,11 @@ use geo::algorithm::bearing::Bearing;
 
 fn do_stuff() -> Result<(), Box<dyn Error>> {
     let source = &GTFSSource::new(Path::new("./gtfs/"));
-    let period = Period::between(Time::parse("19:00:00")?, Time::parse("19:30:00")?);
+    let period = Period::between(Time::parse("9:00:00")?, Time::parse("9:30:00")?);
+    let search_period = None;
 
     let mut data;
-    if let Some(data2) = source.load_cache(period)? {
+    if let Some(data2) = source.load_cache(search_period)? {
         data = data2
     } else {
         data = gtfs::db::GTFSData::new();
@@ -25,16 +27,16 @@ fn do_stuff() -> Result<(), Box<dyn Error>> {
         data.load_stops_by_id(source)?;
         data.load_trips_by_id(source)?;
         data.load_routes_by_id(source)?;
-        data.departure_lookup(period, &source)?;
-        source.write_cache(period, &data)?;
+        data.departure_lookup(search_period, &source)?;
+        source.write_cache(search_period, &data)?;
     };
 
     let fake_stop: Stop = Stop::fake();
-    let station = data.get_station_by_name(&"U Gneisenaustr. (Berlin)")?;
+    let station = data.get_station_by_name(&"U Voltastr. (Berlin)")?;
     produce_tree_json(&data, &fake_stop, station.stop_id, period)
 }
 
-fn produce_tree_json<'r>(data: &'r db::GTFSData<'r>, fake_stop: &'r Stop, station: StopId, period: Period) -> Result<(), Box<dyn Error>> {
+fn produce_tree_json<'r>(data: &'r db::GTFSData, fake_stop: &'r Stop, station: StopId, period: Period) -> Result<(), Box<dyn Error>> {
     let mut plotter = journey_graph::JourneyGraphPlotter::new(period, data)?;
     let origin = data.get_stop(&station).unwrap();
     plotter.add_origin_station(fake_stop, origin);
@@ -63,7 +65,7 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData<'r>, fake_stop: &'r Stop, statio
                 seconds: item.arrival_time - period.start(),
             });
         }
-        
+
         let to = *stop_id_to_idx.get(&to_id).unwrap();
         let from_stop_or_station_id = item.from_stop.parent_station.unwrap_or(item.from_stop.stop_id);
         let from = *stop_id_to_idx.get(&from_stop_or_station_id).unwrap_or(&to);

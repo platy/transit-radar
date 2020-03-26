@@ -15,10 +15,10 @@
 [x] Calculate bearings for stops
 [x] Write algorithm
 [x] Produce output json
-[] Search a station by name
-[] Try different start stations
-[] try different days / times
-[] Test loading a larger cache time period
+[x] Search a station by name
+[x] Try different start stations
+[x] Test loading a larger cache time period
+[] Try different days / times
 [] Make web service
 [] Build svg in backend
 [] CLI tool to lookup departures for debugging eg. below
