@@ -20,6 +20,9 @@
 [] try different days / times
 [] Test loading a larger cache time period
 [] Make web service
+[] Build svg in backend
+[] CLI tool to lookup departures for debugging eg. below
+[] Error: to go northbound on S2 it's currently suggesting going south to Humbolthain and then changing to north - i guess its not any slower than waiting for that train at humbolthain, need to optimize for less changes
 -
 [] Find stops within a distance of a point sorted by distance
 [] Start from spot between stations
@@ -47,7 +50,7 @@
 [x] Add some filtering / highlighting
 [x] show wait times / transfers together and distinct from travel
 [x] Have the initial wait go to the left to not run over the station name
-[] Draw connections in reverse order to have the first / shorter ones on top
+[x] Draw connections in reverse order to have the first / shorter ones on top
 -
 [] Add key with emphasis highlighting
 [] Connect with curves

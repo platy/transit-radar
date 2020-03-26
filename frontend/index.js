@@ -53,7 +53,7 @@ async function drawStops() {
     drawStop(st)
   }
 
-  for (let connection of data.connections) {
+  for (let connection of data.connections.reverse()) {
     drawConnection(connection, data.stops)
   }
 }
