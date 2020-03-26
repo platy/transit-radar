@@ -32,10 +32,7 @@ fn example3(source: &GTFSSource) -> Result<(), Box<dyn Error>> {
 
     let mut plotter = journey_graph::JourneyGraphPlotter::new(period, &data)?;
     let origin = data.get_stop(&900000007103).unwrap();
-    for stop_id in data.stops_by_parent_id().get(&origin.stop_id).unwrap() {
-        let stop = data.get_stop(stop_id).unwrap();
-        plotter.add_origin(&fake_stop, stop);
-    }
+    plotter.add_origin_station(&fake_stop, origin);
     plotter.add_route_types(vec![
         // 2 // long distance rail
         3, // some kind of bus
@@ -61,20 +58,22 @@ fn example3(source: &GTFSSource) -> Result<(), Box<dyn Error>> {
                 seconds: item.arrival_time - period.start(),
             });
         }
-        if let Some(&from) = stop_id_to_idx.get(&item.from_stop.parent_station.unwrap_or(item.from_stop.stop_id)) {
-            let to = *stop_id_to_idx.get(&to_id).unwrap();
-            let route_name = item.get_route_name();
-            let kind = FEConnectionType::from(item.get_route_type());
-            if connections_check.insert((from, to, route_name, kind)) {
-                fe_conns.push(FEConnection {
-                    from,
-                    to,
-                    route_name,
-                    kind,
-                    from_seconds: item.departure_time - period.start(),
-                    to_seconds: item.arrival_time - period.start(),
-                })
-            }
+        
+        let to = *stop_id_to_idx.get(&to_id).unwrap();
+        let from_stop_or_station_id = item.from_stop.parent_station.unwrap_or(item.from_stop.stop_id);
+        let from = *stop_id_to_idx.get(&from_stop_or_station_id).unwrap_or(&to);
+        let route_name = item.get_route_name();
+        let kind = FEConnectionType::from(item.get_route_type());
+        // only emit each connection once
+        if connections_check.insert((from, to, route_name, kind)) {
+            fe_conns.push(FEConnection {
+                from,
+                to,
+                route_name,
+                kind,
+                from_seconds: item.departure_time - period.start(),
+                to_seconds: item.arrival_time - period.start(),
+            })
         }
     }
     serde_json::to_writer_pretty(std::io::stdout(), &FEData {

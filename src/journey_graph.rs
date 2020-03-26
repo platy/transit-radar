@@ -54,6 +54,7 @@ pub struct QueueItem<'r> {
 impl<'r> QueueItem<'r> {
   pub fn get_route_name(&self) -> Option<&'r str> {
     match self.variant {
+      QueueItemVariant::OriginStation => None,
       QueueItemVariant::Transfer => None,
       QueueItemVariant::Connection{trip_id: _, route} => {
         Some(&route.route_short_name)
@@ -66,6 +67,7 @@ impl<'r> QueueItem<'r> {
 
   pub fn get_route_type(&self) -> Option<RouteType> {
     match self.variant {
+      QueueItemVariant::OriginStation => None,
       QueueItemVariant::Transfer => None,
       QueueItemVariant::Connection{trip_id: _, route: _} => None,
       QueueItemVariant::StopOnTrip{trip_id: _, route} => Some(route.route_type),
@@ -111,6 +113,7 @@ pub enum QueueItemVariant<'r> {
     route: &'r Route 
   },
   Transfer,
+  OriginStation,
 }
 
 impl<'r, 's> Iterator for JourneyGraphPlotter<'r, 's> {
@@ -134,13 +137,13 @@ impl<'r, 's> Iterator for JourneyGraphPlotter<'r, 's> {
 }
 
 impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
-  pub fn add_origin(&mut self, fake_stop: &'r Stop, origin: &'r Stop) {
+  pub fn add_origin_station(&mut self, fake_stop: &'r Stop, origin: &'r Stop) {
     self.queue.push(QueueItem {
       departure_time: self.period.start(),
       arrival_time: self.period.start(),
       from_stop: &fake_stop,
       to_stop: origin,
-      variant: QueueItemVariant::Transfer,
+      variant: QueueItemVariant::OriginStation,
     });
   }
 
@@ -224,6 +227,22 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
             Some(item)
           }
         },
+        QueueItemVariant::OriginStation => {
+          let origin_stops = self.data.stops_by_parent_id(&item.to_stop.stop_id);
+          let to_add: Vec<QueueItem> = origin_stops.into_iter().map(|stop_id| {
+            let stop = self.data.get_stop(&stop_id).unwrap();
+            // immediately transfer to all the stops of this origin station
+            QueueItem {
+              from_stop: item.from_stop,
+              to_stop: stop,
+              departure_time: item.departure_time,
+              arrival_time: item.arrival_time,
+              variant: QueueItemVariant::Transfer,
+            }
+          }).collect();
+          self.queue.extend(to_add);
+          Some(item)
+        }
       }
     } else {
       match item.variant {

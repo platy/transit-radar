@@ -325,14 +325,13 @@ impl <'r> GTFSData<'r> {
         Ok(())
     }
 
-    pub fn stops_by_parent_id(&self) -> HashMap<StopId, Vec<StopId>> {
-        let mut stops_by_parent_id = HashMap::new();
+    pub fn stops_by_parent_id(&self, parent: &StopId) -> Vec<StopId> {
+        let mut stops = vec![];
         for stop in self.stops_by_id.values() {
-            if let Some(parent) = &stop.parent_station {
-                let siblings: &mut Vec<StopId> = stops_by_parent_id.entry(*parent).or_default();
-                siblings.push(stop.stop_id);
+            if Some(*parent) == stop.parent_station {
+                stops.push(stop.stop_id);
             }
         }
-        stops_by_parent_id
+        stops
     }
 }
