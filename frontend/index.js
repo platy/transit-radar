@@ -20,8 +20,8 @@ function drawStop(stop) {
 function stopCoords({
   bearing,
   seconds,
-}, secondsOverride) {
-  let h = (secondsOverride || seconds) / maxSeconds
+}) {
+  let h = seconds / maxSeconds
   let [x, y] = [h * Math.cos(bearing * Math.PI / 180), h * Math.sin(bearing * Math.PI / 180)]
   return [(x+1)*xmax/2, (-y+1)*ymax/2]
 }
@@ -34,14 +34,20 @@ function drawConnection({
   route_name,
   kind,
 }, stops) {
-  let [x1, y1] = stopCoords(stops[from], from_seconds)
-  let [x2, y2] = stopCoords(stops[to], to_seconds)
+  let [x1, y1] = stopCoords({ bearing: stops[from].bearing, seconds: from_seconds })
+  let [x2, y2] = stopCoords({ bearing: stops[to].bearing, seconds: to_seconds })
   draw.line(x1, y1, x2, y2).attr({ class: route_name + ' ' + kind })
 }
 
 async function drawStops() {
   let response = await fetch("./example.json")
-  let data = await response.json();
+  let data = await response.json()
+
+  // direct the origin stop to the left instead of the right to avoid running over its label
+  let origin = data.stops[0]
+  if (origin.bearing === 0 && origin.seconds === 0) {
+    origin.bearing = 180
+  }
 
   for (let st of data.stops) {
     drawStop(st)

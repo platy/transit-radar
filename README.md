@@ -11,16 +11,18 @@
 [x] Branch travel times from a stop including estimate for transfer times
 [x] Start from a parent station
 [x] Exclude any stops on trips which wont get somewhere faster in the future
-[] Start from spot between stations
--
+[x] Load routes etc to show better info when plotting the journeys
+[x] Calculate bearings for stops
+[x] Write algorithm
+[x] Produce output json
 [] Search a station by name
-[] Load routes etc to show better info when plotting the journeys
-[] Find stops within a distance of a point sorted by distance
-[] Calculate bearings for stops
+[] Try different start stations
 [] try different days / times
-[] Write algorithm
-[] Produce output json
-[] Make web service / run fully in wasm?
+[] Test loading a larger cache time period
+[] Make web service
+-
+[] Find stops within a distance of a point sorted by distance
+[] Start from spot between stations
 [] Build a graph of average times
 
 ## Code 
@@ -35,17 +37,21 @@
 [] remove the Strings
 [] save images and start writing blog post about the development
 
-
 ## Frontend
 
 [x] Use json?
 [x] Draw stop points
 [x] Connect with lines
 [x] Add station names
-[] Use route colours
-[] Add some filtering / highlighting
+[x] Use route colours
+[x] Add some filtering / highlighting
+[x] show wait times / transfers together and distinct from travel
+[x] Have the initial wait go to the left to not run over the station name
+[] Draw connections in reverse order to have the first / shorter ones on top
+-
+[] Add key with emphasis highlighting
 [] Connect with curves
-[] show wait times / transfers together and distinct from travel
+[] Heuristic choice of start bearing to reduce curve into the origin
 [] Show / hide station names / show on hover?
 [] get geo position for search
 
