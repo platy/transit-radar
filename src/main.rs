@@ -12,7 +12,8 @@ mod journey_graph;
 
 use geo::algorithm::bearing::Bearing;
 
-fn example3(source: &GTFSSource) -> Result<(), Box<dyn Error>> {
+fn do_stuff() -> Result<(), Box<dyn Error>> {
+    let source = &GTFSSource::new(Path::new("./gtfs/"));
     let period = Period::between(Time::parse("19:00:00")?, Time::parse("19:30:00")?);
 
     let mut data;
@@ -29,10 +30,14 @@ fn example3(source: &GTFSSource) -> Result<(), Box<dyn Error>> {
     };
 
     let fake_stop: Stop = Stop::fake();
+    let station = data.get_station_by_name(&"U Gneisenaustr. (Berlin)")?;
+    produce_tree_json(&data, &fake_stop, station.stop_id, period)
+}
 
-    let mut plotter = journey_graph::JourneyGraphPlotter::new(period, &data)?;
-    let origin = data.get_stop(&900000007103).unwrap();
-    plotter.add_origin_station(&fake_stop, origin);
+fn produce_tree_json<'r>(data: &'r db::GTFSData<'r>, fake_stop: &'r Stop, station: StopId, period: Period) -> Result<(), Box<dyn Error>> {
+    let mut plotter = journey_graph::JourneyGraphPlotter::new(period, data)?;
+    let origin = data.get_stop(&station).unwrap();
+    plotter.add_origin_station(fake_stop, origin);
     plotter.add_route_types(vec![
         // 2 // long distance rail
         3, // some kind of bus
@@ -144,8 +149,8 @@ impl FEConnectionType {
 }
 
 fn main() {
-    if let Err(err) = example3(&GTFSSource::new(Path::new("./gtfs/"))) {
-        eprintln!("error running example: {:?}", err);
+    if let Err(err) = do_stuff() {
+        eprintln!("error running example: {}", err);
         process::exit(1);
     }
 }

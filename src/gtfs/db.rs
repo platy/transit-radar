@@ -6,11 +6,31 @@ use std::cell::{RefCell, BorrowError, Ref};
 use typed_arena::Arena;
 use serde::{Serialize, Serializer, Deserialize, Deserializer, de::{Visitor, SeqAccess}, de};
 use std::ops::Range;
+use std::ops::Deref;
 use std::marker::PhantomData;
 
 use crate::gtfs::*;
 use crate::gtfs::gtfstime::{Period};
 
+#[derive(Debug)]
+pub enum SearchError {
+    NotFound,
+    Ambiguous(Vec<Stop>)
+}
+
+impl Error for SearchError {}
+
+impl fmt::Display for SearchError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SearchError::NotFound =>
+                write!(f, "Couldn't find stations for search term"),
+            SearchError::Ambiguous(stops) =>
+                write!(f, "Found several stations or search term ({})", stops.iter().map(|stop| stop.stop_name.clone()).collect::<Vec<_>>().deref().join(", ")),
+        }
+        
+    }
+}
 
 struct SuperIter<'r, R: 'r + std::io::Read> {
     records: std::iter::Peekable<csv::DeserializeRecordsIter<'r, R, StopTime>>,
@@ -214,7 +234,11 @@ impl <'r> Serialize for GTFSData<'r> {
         seq.serialize_element(&stop_departures.len())?;
         eprintln!("writing {} of departures", stop_departures.len());
         for (stop_id, trips) in stop_departures.iter() {
-            let trips: Vec<Range<u32>> = trips.iter().map(|slice| self.stop_times_arena.slice_to_id(slice)).map(|slice| (slice.start as u32)..(slice.end as u32)).collect();
+            let trips: Vec<Range<u32>> = trips.iter().map(|slice| 
+                self.stop_times_arena.slice_to_id(slice)
+            ).map(|slice| 
+                (slice.start as u32)..(slice.end as u32)
+            ).collect();
             seq.serialize_element(&(stop_id, trips))?;
         }
         eprintln!("written {} of departures", stop_departures.len());
@@ -291,6 +315,23 @@ impl <'r> GTFSData<'r> {
         Ok(())
     }
 
+    pub fn get_station_by_name(&'r self, exact_name: &str) -> Result<&'r Stop, SearchError> {
+        let mut candidates = vec![];
+        for stop in self.stops_by_id.values() {
+            if stop.parent_station.is_none() {
+                if stop.stop_name == exact_name {
+                    candidates.push(stop);
+                }
+            }
+        }
+        if candidates.len() == 0 {
+            Err(SearchError::NotFound)
+        } else if candidates.len() > 1 {
+            Err(SearchError::Ambiguous(candidates.into_iter().cloned().collect()))
+        } else {
+            Ok(candidates[0])
+        }
+    }
     pub fn departure_lookup(&'r self, period: Period, source: &GTFSSource,) -> Result<(), Box<dyn Error>> {
         // let stop_times_arena = Arena::new();
         let sunday_services = source.get_sunday_services()?;

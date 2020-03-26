@@ -80,7 +80,7 @@ pub struct StopTime { // "trip_id","arrival_time","departure_time","stop_id","st
     // stop_headsign: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Stop { // "stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","zone_id"
     pub stop_id: StopId,
     // stop_code: Option<String>,
