@@ -1,10 +1,7 @@
 import { SVG } from './node_modules/@svgdotjs/svg.js/dist/svg.esm.js'
-var draw = SVG().addTo('body').size(1100, 1400)
 const xmax = 1000, ymax = 1000
 const maxSeconds = 30 * 60
-draw.circle((10 * 60 / maxSeconds) * xmax).attr({ cx: xmax / 2, cy: ymax / 2, class: 'grid'})
-draw.circle((20 * 60 / maxSeconds) * xmax).attr({ cx: xmax / 2, cy: ymax / 2, class: 'grid'})
-draw.circle((30 * 60 / maxSeconds) * xmax).attr({ cx: xmax / 2, cy: ymax / 2, class: 'grid'})
+var draw
 
 function drawStop(stop) {
   let {
@@ -40,7 +37,17 @@ function drawConnection({
 }
 
 async function drawStops() {
-  let response = await fetch("./example.json")
+  if (document.querySelector('svg'))
+    document.querySelector('svg').remove()
+  let stationName = location.hash.substr(1)
+  let futResponse = fetch(`/from/${stationName}`)
+
+  draw = SVG().addTo('body').size(1100, 1400)
+  draw.circle((10 * 60 / maxSeconds) * xmax).attr({ cx: xmax / 2, cy: ymax / 2, class: 'grid'})
+  draw.circle((20 * 60 / maxSeconds) * xmax).attr({ cx: xmax / 2, cy: ymax / 2, class: 'grid'})
+  draw.circle((30 * 60 / maxSeconds) * xmax).attr({ cx: xmax / 2, cy: ymax / 2, class: 'grid'})
+
+  let response = await futResponse
   let data = await response.json()
 
   // direct the origin stop to the left instead of the right to avoid running over its label
@@ -59,3 +66,5 @@ async function drawStops() {
 }
 
 drawStops()
+
+window.onhashchange = drawStops

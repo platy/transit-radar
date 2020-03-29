@@ -29,12 +29,12 @@ pub struct WithTripId {
 #[derive(Debug, Deserialize)]
 pub struct Calendar { // "service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
     pub service_id: ServiceId,
-    monday: u8,
-    // tuesday
-    // wednesday
-    // thursday
-    // friday
-    // saturday
+    pub monday: u8,
+    pub tuesday: u8,
+    pub wednesday: u8,
+    pub thursday: u8,
+    pub friday: u8,
+    pub saturday: u8,
     pub sunday: u8,
     // start_date: String, // date
     // end_date: String, // date

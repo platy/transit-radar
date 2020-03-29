@@ -22,8 +22,8 @@ pub struct JourneyGraphPlotter<'r: 's, 's> {
 }
 
 impl <'r: 's, 's> JourneyGraphPlotter<'r, 's> {
-  pub fn new(period: Period, data: &'r GTFSData) -> Result<JourneyGraphPlotter<'r, 's>, std::cell::BorrowError> {
-    Ok(JourneyGraphPlotter {
+  pub fn new(period: Period, data: &'r GTFSData) -> JourneyGraphPlotter<'r, 's> {
+    JourneyGraphPlotter {
       period: period,
       queue: BinaryHeap::new(),
       catch_up: BinaryHeap::new(),
@@ -34,7 +34,7 @@ impl <'r: 's, 's> JourneyGraphPlotter<'r, 's> {
       // transfers: &data.transfers,
       data: data,
       route_types: HashSet::new(),
-    })
+    }
   }
 }
 
@@ -138,11 +138,11 @@ impl<'r, 's> Iterator for JourneyGraphPlotter<'r, 's> {
 }
 
 impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
-  pub fn add_origin_station(&mut self, fake_stop: &'r Stop, origin: &'r Stop) {
+  pub fn add_origin_station(&mut self, origin: &'r Stop) {
     self.queue.push(QueueItem {
       departure_time: self.period.start(),
       arrival_time: self.period.start(),
-      from_stop: &fake_stop,
+      from_stop: self.data.fake_stop(),
       to_stop: origin,
       variant: QueueItemVariant::OriginStation,
     });

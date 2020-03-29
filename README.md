@@ -18,9 +18,17 @@
 [x] Search a station by name
 [x] Try different start stations
 [x] Test loading a larger cache time period
-[] Try different days / times
-[] Make web service
+[x] Make a day filter option in the data load
+[x] Make web service using old Sunday 7pm data
+[x] Build new multi day cache
+[] Station search & selection
+[] Time selection
+[] Day/time filter in search to enable use of multi day cache
+[] Day selection
 [] Build svg in backend
+[] Handle the D_ stopids in the gtfs data
+[] Reload GTFS data each day
+[] Add text description to svg
 [] CLI tool to lookup departures for debugging eg. below
 [] Error: to go northbound on S2 it's currently suggesting going south to Humbolthain and then changing to north - i guess its not any slower than waiting for that train at humbolthain, need to optimize for less changes
 -
@@ -32,7 +40,7 @@
 [x]StopId should not be String, maybe &str / str?
 [x] Modularise the stoptime reader into a struct by understanding the lifetimes (had to use RefCell)
 [x] serialise the data so that i can have faster iteration
-[] Switch to id_arena - it will serialise easier and I won't need all these borrows complicating things
+[x] Switch to id_arena - it will serialise easier and I won't need all these borrows complicating things
 [] Macro for compile time Time literals
 [] Organise all the parsing and data lookups
 [] use debugging
