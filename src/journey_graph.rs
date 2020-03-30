@@ -1,10 +1,9 @@
 use std::collections::{BinaryHeap, HashMap, BTreeSet, HashSet};
+use std::cmp::Ordering;
 use crate::gtfstime::{Time, Period};
 use crate::gtfs::*;
 use crate::gtfs::db::GTFSData;
-// use typed_arena::Arena;
-use std::cmp::Ordering;
-use std::ops::Range;
+use crate::arena::ArenaSliceIndex;
 
 
 pub struct JourneyGraphPlotter<'r: 's, 's> {
@@ -16,7 +15,7 @@ pub struct JourneyGraphPlotter<'r: 's, 's> {
   /// trips which so far have only gotten us late to stops, but they may end up leading to useful stops - will need to clean this up when the last stop in a trip is reached as it will probably grow badly
   slow_trips: HashMap<TripId, Vec<QueueItem<'r>>>,
   stops: HashMap<StopId, BTreeSet<Time>>, 
-  trips_from_stops: &'s HashMap<StopId, Vec<Range<usize>>>,
+  trips_from_stops: &'s HashMap<StopId, Vec<ArenaSliceIndex<StopTime>>>,
   data: &'r GTFSData,
   route_types: HashSet<RouteType>,
 }
@@ -31,7 +30,6 @@ impl <'r: 's, 's> JourneyGraphPlotter<'r, 's> {
       slow_trips: HashMap::new(),
       stops: HashMap::new(),
       trips_from_stops: data.borrow_stop_departures(),
-      // transfers: &data.transfers,
       data: data,
       route_types: HashSet::new(),
     }
@@ -264,9 +262,9 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
   }
 
   /// finds all trips leaving a stop within a time period, includes the stop time for that stop and all following stops
-  fn trips_from(&self, stop: StopId, period: Period) -> impl Iterator<Item = &Range<usize>> {
-    let departures: Option<&Vec<Range<usize>>> = self.trips_from_stops.get(&stop);
-    departures.map(|vec| vec.iter()).unwrap_or([].iter()).filter(move |stop_range: &&Range<usize>| period.contains(self.data.stop(stop_range.start).departure_time))
+  fn trips_from(&self, stop: StopId, period: Period) -> impl Iterator<Item = &ArenaSliceIndex<StopTime>> {
+    let departures: Option<&Vec<ArenaSliceIndex<StopTime>>> = self.trips_from_stops.get(&stop);
+    departures.map(|vec| vec.iter()).unwrap_or([].iter()).filter(move |stop_range: &&ArenaSliceIndex<StopTime>| period.contains(self.data.stop(stop_range.iter().next().unwrap()).departure_time))
   }
 
   /// finds all connections from a stop

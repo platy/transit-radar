@@ -2,9 +2,8 @@ use std::error::Error;
 use std::fmt;
 use std::collections::{HashSet, HashMap};
 use std::path::{Path, PathBuf};
-use crate::arena::Arena;
+use crate::arena::{Arena, ArenaIndex, ArenaSliceIndex};
 use serde::{Serialize, Serializer, Deserialize, Deserializer, de::{Visitor, SeqAccess}, de};
-use std::ops::Range;
 use std::ops::Deref;
 use std::marker::PhantomData;
 
@@ -164,7 +163,7 @@ impl GTFSSource {
 
 pub struct GTFSData {
     stop_times_arena: Arena<StopTime>,
-    stop_departures: HashMap<StopId, Vec<Range<usize>>>,
+    stop_departures: HashMap<StopId, Vec<ArenaSliceIndex<StopTime>>>,
     transfers: HashMap<StopId, Vec<Transfer>>,
     stops_by_id: HashMap<StopId, Stop>,
     trips_by_id: HashMap<TripId, Trip>,
@@ -204,9 +203,9 @@ impl<'de> Deserialize<'de> for GTFSData {
                 // i should be able to make some Visitor for this and perhaps extract a trait
                 let stop_departures_count: usize = seq.next_element::<u32>()?.ok_or_else(|| de::Error::invalid_length(0, &self))? as usize;
                 eprintln!("reading {} of departures", stop_departures_count);
-                let mut stop_departures: HashMap<StopId, Vec<Range<usize>>> = HashMap::with_capacity(stop_departures_count);
+                let mut stop_departures: HashMap<StopId, Vec<ArenaSliceIndex<StopTime>>> = HashMap::with_capacity(stop_departures_count);
                 for _i in 0..stop_departures_count {
-                    let (stop_id, trips): (StopId, Vec<Range<usize>>) = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                    let (stop_id, trips): (StopId, Vec<ArenaSliceIndex<StopTime>>) = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
                     stop_departures.insert(stop_id, trips);
                 }
                 eprintln!("read {} of departures", stop_departures_count);
@@ -237,6 +236,7 @@ impl<'de> Deserialize<'de> for GTFSData {
 
 
 #[derive(Copy, Clone)]
+#[allow(dead_code)]
 pub enum DayFilter {
     All,
     Monday,
@@ -318,7 +318,7 @@ impl <'r> GTFSData {
         self.trips_by_id.get(trip_id).and_then(|trip| self.routes_by_id.get(&trip.route_id))
     }
 
-    pub fn borrow_stop_departures(&self) -> &HashMap<StopId, Vec<Range<usize>>> {
+    pub fn borrow_stop_departures(&self) -> &HashMap<StopId, Vec<ArenaSliceIndex<StopTime>>> {
       &self.stop_departures
     }
 
@@ -404,14 +404,13 @@ impl <'r> GTFSData {
                         false
                     }
                 );
-                let stops: Range<usize> = self.stop_times_arena.alloc_extend(stops.flatten());
+                let stops = self.stop_times_arena.alloc_extend(stops.flatten());
                 if stops.len() > 0 {
                     count += 1;
                 }
-                let end_idx = stops.end;
-                for start_idx in stops {
+                for (i, start_idx) in stops.iter().enumerate() {
                     let departures_from_stop = self.stop_departures.entry(self.stop_times_arena[start_idx].stop_id).or_default();
-                    departures_from_stop.push(start_idx..end_idx);
+                    departures_from_stop.push(stops.sub(i..));
                 }
             }
         }
@@ -431,11 +430,11 @@ impl <'r> GTFSData {
         stops
     }
 
-    pub fn stops(&self, range: Range<usize>) -> &[StopTime] {
-        &self.stop_times_arena[range]
+    pub fn stops(&self, idx: ArenaSliceIndex<StopTime>) -> &[StopTime] {
+        &self.stop_times_arena[idx]
     }
 
-    pub fn stop(&self, id: usize) -> &StopTime {
+    pub fn stop(&self, id: ArenaIndex<StopTime>) -> &StopTime {
         &self.stop_times_arena[id]
     }
 
