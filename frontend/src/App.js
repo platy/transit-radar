@@ -3,6 +3,8 @@ import './App.css';
 import Radar from './Radar';
 import Autocomplete from 'react-autocomplete'
 
+const queryBaseUrl = process.env.REACT_APP_BACKEND_URL || '';
+
 function App() {
   const [suggestions, setSuggestions] = useState([]);
   const [query, setQuery] = useState('');
@@ -14,7 +16,7 @@ function App() {
 
     async function fetchData() {
       if (!ignore && query.length > 3) {
-        const result = await fetch('http://localhost:8080/searchStation/' + query);
+        const result = await fetch(queryBaseUrl + '/searchStation/' + query);
         const json = await result.json();
         setSuggestions(json);
       }
@@ -29,7 +31,7 @@ function App() {
 
     async function fetchData() {
       if (!ignore && station) {
-        const result = await fetch('http://localhost:8080/from/' + station);
+        const result = await fetch(queryBaseUrl + '/from/' + station);
         const json = await result.json();
         setRadarData(json);
         Radar(json)

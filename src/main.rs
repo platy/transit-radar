@@ -236,9 +236,10 @@ async fn main() {
     let station_name_index = Arc::new(data.build_station_word_index());
 
     let port = std::env::var("PORT").unwrap_or("8080".to_owned()).parse().unwrap();
+    let static_dir = std::env::var("STATIC_DIR").unwrap_or("frontend/build".to_owned());
 
     eprintln!("Starting web server on port {}", port);
-    warp::serve(warp::fs::dir("frontend")
+    warp::serve(warp::fs::dir(static_dir)
             .or(json_tree_route(data.clone()))
             .or(station_name_search_route(data.clone(), station_name_index))
         )
