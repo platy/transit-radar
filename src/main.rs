@@ -16,8 +16,8 @@ mod journey_graph;
 
 use geo::algorithm::bearing::Bearing;
 
-fn load_data(day_filter: DayFilter, time_period: Option<Period>) -> Result<db::GTFSData, Box<dyn Error>> {
-    let source = &GTFSSource::new(Path::new("./gtfs/"));
+fn load_data(gtfs_dir: &Path, day_filter: DayFilter, time_period: Option<Period>) -> Result<db::GTFSData, Box<dyn Error>> {
+    let source = &GTFSSource::new(gtfs_dir);
 
     let mut data;
     if let Some(data2) = source.load_cache(day_filter, time_period)? {
@@ -46,7 +46,7 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, period: Period
     let origin = data.get_stop(&station).unwrap();
     plotter.add_origin_station(origin);
     plotter.add_route_types(vec![
-        // 2 // long distance rail
+        // 2, // long distance rail
         3, // some kind of bus
         // 100, // Regional trains
         109, // SBahn
@@ -229,14 +229,17 @@ fn station_name_search_route(data: Arc<db::GTFSData>, station_search: Arc<TSTMap
 
 #[tokio::main]
 async fn main() {
+    let port = std::env::var("PORT").unwrap_or("8080".to_owned()).parse().unwrap();
+    let static_dir = std::env::var("STATIC_DIR").unwrap_or("frontend/build".to_owned());
+    let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());
+    let gtfs_dir = Path::new(&gtfs_dir);
+
     let data = Arc::new(load_data(
+        &gtfs_dir,
         DayFilter::Friday, 
         Some(Period::between(Time::parse("19:00:00").unwrap(), Time::parse("19:30:00").unwrap())),
     ).unwrap());
     let station_name_index = Arc::new(data.build_station_word_index());
-
-    let port = std::env::var("PORT").unwrap_or("8080".to_owned()).parse().unwrap();
-    let static_dir = std::env::var("STATIC_DIR").unwrap_or("frontend/build".to_owned());
 
     eprintln!("Starting web server on port {}", port);
     warp::serve(warp::fs::dir(static_dir)

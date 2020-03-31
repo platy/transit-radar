@@ -128,3 +128,32 @@ type StopId = {
   routeId,
   stopNumber,
 }
+
+# Deploying
+
+Cross build for linux:
+```
+cargo build --release --target x86_64-unknown-linux-musl  
+```
+
+Build frontend:
+```
+cd frontend
+npm run build
+```
+
+Copy to server:
+```
+ scp -r target/x86_64-unknown-linux-musl/release/transit-radar gtfs/cache-fri-19:00:00-19:30:00 frontend/build run.sh service.sh root@s4.njk.onl:/app/transit-radar/ 
+```
+
+(On server)
+Start
+```
+start-stop-daemon --start --oknodo --user transit-radar --name transit-radar --pidfile /run/transit-radar.pid --startas /app/transit-radar/run.sh
+```
+
+Stop
+```
+start-stop-daemon --stop --pidfile /run/transit-radar.pid
+```
