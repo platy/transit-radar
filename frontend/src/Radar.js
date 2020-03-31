@@ -1,4 +1,5 @@
-import { SVG } from './node_modules/@svgdotjs/svg.js/dist/svg.esm.js'
+import './Radar.css'
+import { SVG } from '@svgdotjs/svg.js'
 const xmax = 1000, ymax = 1000
 const maxSeconds = 30 * 60
 var draw
@@ -11,7 +12,6 @@ function drawStop(stop) {
   const stopDia = 6
   draw.circle(stopDia).attr({ cx, cy })
   draw.text(name).move(cx + stopDia + 2, cy - 6)
-  draw.text
 }
 
 function stopCoords({
@@ -36,19 +36,14 @@ function drawConnection({
   draw.line(x1, y1, x2, y2).attr({ class: route_name + ' ' + kind })
 }
 
-async function drawStops() {
+export default async function Radar(data) {
   if (document.querySelector('svg'))
     document.querySelector('svg').remove()
-  let stationName = location.hash.substr(1)
-  let futResponse = fetch(`/from/${stationName}`)
 
   draw = SVG().addTo('body').size(1100, 1400)
   draw.circle((10 * 60 / maxSeconds) * xmax).attr({ cx: xmax / 2, cy: ymax / 2, class: 'grid'})
   draw.circle((20 * 60 / maxSeconds) * xmax).attr({ cx: xmax / 2, cy: ymax / 2, class: 'grid'})
   draw.circle((30 * 60 / maxSeconds) * xmax).attr({ cx: xmax / 2, cy: ymax / 2, class: 'grid'})
-
-  let response = await futResponse
-  let data = await response.json()
 
   // direct the origin stop to the left instead of the right to avoid running over its label
   let origin = data.stops[0]
@@ -64,7 +59,3 @@ async function drawStops() {
     drawConnection(connection, data.stops)
   }
 }
-
-drawStops()
-
-window.onhashchange = drawStops

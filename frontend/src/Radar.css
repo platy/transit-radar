@@ -1,0 +1,174 @@
+.grid {
+  fill: none;
+  stroke: lightgray;
+  stroke-width: 1pt;
+  stroke-dasharray: 10 10;
+}
+text {
+  font-size: 10pt;
+}
+.Rail, .RailwayService, .SuburbanRailway, .UrbanRailwayService {
+  stroke-width: 2pt;
+}
+.BusService, .TramService {
+  stroke-width: 1pt;
+}
+.Rail, .RailwayService {
+  stroke: red
+}
+.BusService {
+  stroke:#a01c7d
+}
+.Ferry {
+  stroke:#0099d6
+}
+.Connection {
+  stroke-dasharray: 2 4;
+}
+.ire {
+  stroke:#e2001a
+}
+.S1 {
+  stroke:#eb588f
+}
+.S2 {
+  stroke:#047939
+}
+.S25 {
+  stroke:#047939
+}
+.S26 {
+  stroke:#047939
+}
+.S3 {
+  stroke:#026597
+}
+.S41 {
+  stroke:#aa3c1f
+}
+.S42 {
+  stroke:#ba622d
+}
+.S45 {
+  stroke:#aa3c1f
+}
+.S46 {
+  stroke:#ca8539
+}
+.S47 {
+  stroke:#ca8539
+}
+.S5 {
+  stroke:#ea561c
+}
+.S7 {
+  stroke:#764d9a
+}
+.S75 {
+  stroke:#764d9a
+}
+.S8 {
+  stroke:#4fa433
+}
+.S85 {
+  stroke:#4fa433
+}
+.S9 {
+  stroke:#951732
+}
+.U1 {
+  stroke:#7dad4c
+}
+.U2 {
+  stroke:#da421e
+}
+.U3 {
+  stroke:#2e937d
+}
+.U4 {
+  stroke:#f0d722
+}
+.U5 {
+  stroke:#7e5330
+}
+.U55 {
+  stroke:#7e5330
+}
+.U6 {
+  stroke:#8c6dab
+}
+.U7 {
+  stroke:#528dba
+}
+.U8 {
+  stroke:#224f86
+}
+.U9 {
+  stroke:#f3791d
+}
+.M1 {
+  stroke:#63b9ea
+}
+.M2 {
+  stroke:#7ab829
+}
+.M4 {
+  stroke:#ca1215
+}
+.M5 {
+  stroke:#c8893b
+}
+.M6 {
+  stroke:#025695
+}
+.M8 {
+  stroke:#ee7100
+}
+.M10 {
+  stroke:#007b3c
+}
+.T12 {
+  stroke:#8870ab
+}
+.M13 {
+  stroke:#00a092
+}
+.T16 {
+  stroke:#027fab
+}
+.M17 {
+  stroke:#a6432a
+}
+.T18 {
+  stroke:#d6ad00
+}
+.T21 {
+  stroke:#bd90c1
+}
+.T27 {
+  stroke:#cb621a
+}
+.T37 {
+  stroke:#825238
+}
+.T50 {
+  stroke:#ea9000
+}
+.T60 {
+  stroke:#039bd9
+}
+.T61 {
+  stroke:#e30313
+}
+.T62 {
+  stroke:#00512d
+}
+.T63 {
+  stroke:#ef7200
+}
+.T67 {
+  stroke:#dd6ca6
+}
+.T68 {
+  stroke:#65b42f
+}

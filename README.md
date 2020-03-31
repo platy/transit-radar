@@ -21,7 +21,8 @@
 [x] Make a day filter option in the data load
 [x] Make web service using old Sunday 7pm data
 [x] Build new multi day cache
-[] Station search & selection
+[x] Station search & selection
+[] Multi word station search
 [] Time selection
 [] Day/time filter in search to enable use of multi day cache
 [] Day selection
@@ -41,6 +42,7 @@
 [x] Modularise the stoptime reader into a struct by understanding the lifetimes (had to use RefCell)
 [x] serialise the data so that i can have faster iteration
 [x] Switch to id_arena - it will serialise easier and I won't need all these borrows complicating things
+[] Build and deploy scripts
 [] Macro for compile time Time literals
 [] Organise all the parsing and data lookups
 [] use debugging

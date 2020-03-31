@@ -6,6 +6,7 @@ use crate::arena::{Arena, ArenaIndex, ArenaSliceIndex};
 use serde::{Serialize, Serializer, Deserialize, Deserializer, de::{Visitor, SeqAccess}, de};
 use std::ops::Deref;
 use std::marker::PhantomData;
+use tst::TSTMap;
 
 use crate::gtfs::*;
 use crate::gtfs::gtfstime::{Period};
@@ -218,6 +219,7 @@ impl<'de> Deserialize<'de> for GTFSData {
                 eprintln!("read {} of trips_by_id", trips_by_id.len());
                 let routes_by_id: HashMap<_,_> = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
                 eprintln!("read {} of routes_by_id", routes_by_id.len());
+
                 Ok(GTFSData {
                     stop_times_arena,
                     stop_departures,
@@ -440,5 +442,23 @@ impl <'r> GTFSData {
 
     pub fn fake_stop(&self) -> &Stop {
         &self.fake_stop
+    }
+
+    pub fn build_station_word_index<'t>(&self) -> TSTMap<Vec<StopId>> {
+        let stops = self.stops_by_id.values();
+
+        let mut map = TSTMap::new();
+        for stop in stops {
+            if stop.parent_station.is_none() {
+                for word in stop.stop_name.split(" ") {
+                    if word.len() > 3 {
+                        let v = map.entry(&word.to_lowercase()).or_insert(vec![]);
+                        v.push(stop.stop_id);
+                    }
+                }
+            }
+        }
+        eprintln!("built station name index of {} words", map.len());
+        map
     }
 }

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use db::{GTFSSource, DayFilter};
 use warp::Filter;
 use urlencoding::decode;
+use tst::TSTMap;
 
 mod arena;
 mod gtfs;
@@ -35,7 +36,9 @@ fn load_data(day_filter: DayFilter, time_period: Option<Period>) -> Result<db::G
 
 fn lookup<'r>(data: &'r db::GTFSData, station_name: String, period: Period) -> Result<FEData<'r>, db::SearchError> {
     let station = data.get_station_by_name(&station_name)?;
-    Ok(produce_tree_json(&data, station.stop_id, period))
+    let output = produce_tree_json(&data, station.stop_id, period);
+    println!("Search for '{}' produced {} stations and {} connections", station.stop_name, output.stops.len(), output.connections.len());
+    Ok(output)
 }
 
 fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, period: Period) -> FEData<'r> {
@@ -151,7 +154,7 @@ impl FEConnectionType {
 
 
 
-fn with_db(db: Arc<db::GTFSData>) -> impl Filter<Extract = (Arc<db::GTFSData>,), Error = std::convert::Infallible> + Clone {
+fn with_data<D: Sync + Send>(db: Arc<D>) -> impl Filter<Extract = (Arc<D>,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || db.clone())
 }
 
@@ -167,16 +170,61 @@ async fn json_tree_handler(name: String, data: Arc<db::GTFSData>) -> Result<impl
             },
         Err(err) => {
             eprintln!("dir: failed to decode route={:?}: {:?}", name, err);
-            // FromUrlEncodingError doesn't implement StdError
+            return Err(warp::reject::reject());
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct FEStationLookup<'s> {
+    stop_id: StopId,
+    name: &'s str,
+}
+
+async fn station_search_handler(prefix: String, data: Arc<db::GTFSData>, station_search: Arc<TSTMap<Vec<StopId>>>) -> Result<impl warp::Reply, warp::Rejection> {
+    match decode(&prefix) {
+        Ok(prefix) => {
+            let mut result = Vec::new();
+            let mut count = 0;
+            for (_word, stop_ids) in station_search.prefix_iter(&prefix.to_lowercase()) {
+                for stop_id in stop_ids {
+                    if count > 20 {
+                        break;
+                    }
+                    let stop = data.get_stop(stop_id).expect("to find stop referenced by search");
+                    result.push(FEStationLookup {
+                        stop_id: *stop_id,
+                        name: &stop.stop_name,
+                    });
+                    count += 1;
+                }
+            }
+            Ok(warp::reply::json(&result))
+        },
+        Err(err) => {
+            eprintln!("dir: failed to decode prefix={:?}: {:?}", &prefix, err);
             return Err(warp::reject::not_found());
         }
     }
 }
 
 fn json_tree_route(data: Arc<db::GTFSData>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    let cors = warp::cors()
+        .allow_any_origin();
     warp::path!("from" / String)
-        .and(with_db(data))
+        .and(with_data(data))
         .and_then(json_tree_handler)
+        .with(cors)
+}
+
+fn station_name_search_route(data: Arc<db::GTFSData>, station_search: Arc<TSTMap<Vec<StopId>>>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    let cors = warp::cors()
+        .allow_any_origin();
+    warp::path!("searchStation" / String)
+        .and(with_data(data))
+        .and(with_data(station_search))
+        .and_then(station_search_handler)
+        .with(cors)
 }
 
 #[tokio::main]
@@ -185,14 +233,15 @@ async fn main() {
         DayFilter::Friday, 
         Some(Period::between(Time::parse("19:00:00").unwrap(), Time::parse("19:30:00").unwrap())),
     ).unwrap());
-
-    let backend = json_tree_route(data);
-    let frontend = warp::fs::dir("frontend");
+    let station_name_index = Arc::new(data.build_station_word_index());
 
     let port = std::env::var("PORT").unwrap_or("8080".to_owned()).parse().unwrap();
 
     eprintln!("Starting web server on port {}", port);
-    warp::serve(backend.or(frontend))
+    warp::serve(warp::fs::dir("frontend")
+            .or(json_tree_route(data.clone()))
+            .or(station_name_search_route(data.clone(), station_name_index))
+        )
         .run(([127, 0, 0, 1], port))
         .await;
 }

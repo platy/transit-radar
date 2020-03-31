@@ -13,3 +13,4 @@ serde_json = "1.0.48"
 tokio = { version = "0.2", features = ["macros"] }
 warp = "0.2"
 urlencoding = "1.0.0"
+tst = "0.10.*"

@@ -1147,6 +1147,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tst",
  "urlencoding",
  "warp",
 ]
@@ -1156,6 +1157,12 @@ name = "try-lock"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e604eb7b43c06650e854be16a2a03155743d3752dd1c943f6829e26b7a36e382"
+
+[[package]]
+name = "tst"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b23a2485c898786d3ff015f65310dc6b009869d4710eb6146c3cca4653c49928"
 
 [[package]]
 name = "tungstenite"
