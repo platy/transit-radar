@@ -241,6 +241,18 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
     self.queue.extend(to_add);
   }
 
+  fn enqueue_slow_trip(&mut self, slow_trip: Vec<QueueItem<'r>>) {
+    // this trip became useful but it might be that we don't board at the first stop where we encountered it, we should board at the stop we can get to the earliest, not the earliest we can board this trip
+    let boarding_idx = slow_trip.iter()
+      .enumerate()
+      .filter_map(|(i, item)| 
+        self.stops.get(&item.from_stop.stop_id)
+        .and_then(|arrival_time_heap| arrival_time_heap.iter().next())
+        .map(|time| (i, *time))
+      ).min_by_key(|(_i, first_arrival)| *first_arrival).map(|(i, _t)| i).unwrap_or(0);
+    self.catch_up.extend(slow_trip.into_iter().skip(boarding_idx));
+  }
+
   fn process_queue_item(&mut self, item: QueueItem<'r>) -> Option<QueueItem<'r>> {
     // get existing nodes for this stop
     let nodes = self.stops.entry(item.to_stop.stop_id).or_default();
@@ -253,9 +265,9 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
           self.enqueue_transfers_from_stop(item.to_stop, item.arrival_time);
           self.enqueue_transfers_from_station(item.to_stop, item.arrival_time);
           // if this now made some slow stops on the trip relevant, they should be emitted as well
-          let slow_trips = self.slow_trips.remove(&trip_id);
-          if let Some(slow_trips) = slow_trips {
-            self.catch_up.extend(slow_trips);
+          let slow_trip = self.slow_trips.remove(&trip_id);
+          if let Some(slow_trip) = slow_trip {
+            self.enqueue_slow_trip(slow_trip);
             self.catch_up.push(item);
             Some(self.catch_up.pop().expect("item from catch up queue"))
           } else {

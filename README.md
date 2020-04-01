@@ -24,7 +24,8 @@
 [x] Station search & selection
 [x] Add only stops with a connection to the search
 [x] Multi word station search
-[] Bug: failing to transfer to U2 from Alex bhf or from hauptbahnhof tief to upstairs
+[x] Bug: failing to transfer to U2 from Alex bhf or from hauptbahnhof tief to upstairs
+[x] Error: to go northbound on S2 it's currently suggesting going south to Humbolthain and then changing to north - i guess its not any slower than waiting for that train at humbolthain, need to optimize for less changes
 [] Time selection
 [] Day/time filter in search to enable use of multi day cache
 [] Day selection
@@ -33,7 +34,6 @@
 [] Reload GTFS data each day
 [] Add text description to svg
 [] CLI tool to lookup departures for debugging eg. below
-[] Error: to go northbound on S2 it's currently suggesting going south to Humbolthain and then changing to north - i guess its not any slower than waiting for that train at humbolthain, need to optimize for less changes
 -
 [] Find stops within a distance of a point sorted by distance
 [] Start from spot between stations
@@ -146,16 +146,25 @@ npm run build
 
 Copy to server:
 ```
- scp -r target/x86_64-unknown-linux-musl/release/transit-radar gtfs/cache-fri-19:00:00-19:30:00 frontend/build run.sh service.sh root@s4.njk.onl:/app/transit-radar/ 
+scp -r target/x86_64-unknown-linux-musl/release/transit-radar gtfs/cache-fri-19:00:00-19:30:00 frontend/build run.sh service.sh root@s4.njk.onl:/app/transit-radar/ 
 ```
 
-(On server)
 Start
 ```
-start-stop-daemon --start --oknodo --user transit-radar --name transit-radar --pidfile /run/transit-radar.pid --startas /app/transit-radar/run.sh
+ssh root@s4.njk.onl /app/transit-radar/service.sh start
 ```
 
 Stop
 ```
-start-stop-daemon --stop --pidfile /run/transit-radar.pid
+ssh root@s4.njk.onl /app/transit-radar/service.sh stop
+```
+
+Restart
+```
+ssh root@s4.njk.onl /app/transit-radar/service.sh restart
+```
+
+Logs 
+```
+ssh root@s4.njk.onl tail -f /var/log/transit-radar/log
 ```
