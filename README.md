@@ -26,6 +26,8 @@
 [x] Multi word station search
 [x] Bug: failing to transfer to U2 from Alex bhf or from hauptbahnhof tief to upstairs
 [x] Error: to go northbound on S2 it's currently suggesting going south to Humbolthain and then changing to north - i guess its not any slower than waiting for that train at humbolthain, need to optimize for less changes
+[x] S85 trip is disjointed on earlier stops while it is slow between arrival times and departure times, as these are slow, it should just use departure times
+[] Eberswalderstrasse u2 is weird
 [] Time selection
 [] Day/time filter in search to enable use of multi day cache
 [] Day selection
