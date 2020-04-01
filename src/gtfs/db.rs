@@ -444,17 +444,8 @@ impl <'r> GTFSData {
         &self.fake_stop
     }
 
-    pub fn build_station_word_index<'t>(&self) -> TSTMap<HashSet<StopId>> {
-        let mut map = TSTMap::new();
-        
-        let mut add_stop_to_search = |stop: &Stop| {
-            for word in stop.stop_name.split(" ") {
-                if word.len() > 3 {
-                    let v = map.entry(&word.to_lowercase()).or_insert(HashSet::new());
-                    v.insert(stop.stop_id);
-                }
-            }
-        };
+    pub fn build_station_word_index<'t>(&self) -> Suggester<StopId> {
+        let mut suggester = Suggester::new();
 
         let mut inserted_parents = HashSet::new();
         for stop_id in self.stop_departures.keys() {
@@ -462,14 +453,51 @@ impl <'r> GTFSData {
             if let Some(parent_station_id) = stop.parent_station {
                 if inserted_parents.insert(parent_station_id) {
                     let stop = self.get_stop(&parent_station_id).unwrap();
-                    add_stop_to_search(stop);
+                    suggester.insert(&stop.stop_name, stop.stop_id);
                 }
             } else {
-                add_stop_to_search(stop);
+                suggester.insert(&stop.stop_name, stop.stop_id);
             }
         }
         
-        eprintln!("built station name index of {} words", map.len());
-        map
+        eprintln!("built station name index of {} words", suggester.num_words());
+        suggester
+    }
+}
+
+pub struct Suggester<T> {
+    map: TSTMap<HashSet<T>>,
+}
+
+impl<T: std::hash::Hash + Eq + Copy> Suggester<T> {
+    fn new() -> Suggester<T> {
+        Suggester {
+            map: TSTMap::new(),
+        }
+    }
+
+    fn insert(&mut self, key: &str, value: T) {
+        for word in key.split_whitespace() {
+            if word.len() > 3 {
+                let v = self.map.entry(&word.to_lowercase()).or_insert(HashSet::new());
+                v.insert(value);
+            }
+        }
+    }
+
+    fn num_words(&self) -> usize { self.map.len() }
+
+    pub fn prefix_iter(&self, prefix: &str) -> impl Iterator<Item = (String, &HashSet<T>)> {
+        self.map.prefix_iter(&prefix.to_lowercase())
+    }
+
+    pub fn search(&self, query: &str) -> impl IntoIterator<Item = T> {
+        let query: Vec<_> = query.split_whitespace().collect();
+        let mut results: HashSet<_> = self.prefix_iter(query[0]).map(|(_, s)| s).flatten().map(|i| *i).collect();
+        for part in &query[1..] {
+            let previous_results = results;
+            results = self.prefix_iter(&part).map(|(_, s)| s).flatten().map(|i| *i).filter(|val| previous_results.contains(val)).collect();
+        }
+        results
     }
 }

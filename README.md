@@ -22,7 +22,9 @@
 [x] Make web service using old Sunday 7pm data
 [x] Build new multi day cache
 [x] Station search & selection
-[] Multi word station search
+[x] Add only stops with a connection to the search
+[x] Multi word station search
+[] Bug: failing to transfer to U2 from Alex bhf or from hauptbahnhof tief to upstairs
 [] Time selection
 [] Day/time filter in search to enable use of multi day cache
 [] Day selection

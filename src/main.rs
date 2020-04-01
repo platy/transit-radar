@@ -1,3 +1,4 @@
+use crate::gtfs::db::Suggester;
 use std::error::Error;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -5,7 +6,6 @@ use std::sync::Arc;
 use db::{GTFSSource, DayFilter};
 use warp::Filter;
 use urlencoding::decode;
-use tst::TSTMap;
 
 mod arena;
 mod gtfs;
@@ -181,28 +181,26 @@ struct FEStationLookup<'s> {
     name: &'s str,
 }
 
-async fn station_search_handler(prefix: String, data: Arc<db::GTFSData>, station_search: Arc<TSTMap<HashSet<StopId>>>) -> Result<impl warp::Reply, warp::Rejection> {
-    match decode(&prefix) {
-        Ok(prefix) => {
+async fn station_search_handler(query: String, data: Arc<db::GTFSData>, station_search: Arc<Suggester<StopId>>) -> Result<impl warp::Reply, warp::Rejection> {
+    match decode(&query) {
+        Ok(query) => {
             let mut result = Vec::new();
             let mut count = 0;
-            for (_word, stop_ids) in station_search.prefix_iter(&prefix.to_lowercase()) {
-                for stop_id in stop_ids {
-                    if count > 20 {
-                        break;
-                    }
-                    let stop = data.get_stop(stop_id).expect("to find stop referenced by search");
-                    result.push(FEStationLookup {
-                        stop_id: *stop_id,
-                        name: &stop.stop_name,
-                    });
-                    count += 1;
+            for stop_id in station_search.search(&query) {
+                if count > 20 {
+                    break;
                 }
+                let stop = data.get_stop(&stop_id).expect("to find stop referenced by search");
+                result.push(FEStationLookup {
+                    stop_id: stop_id,
+                    name: &stop.stop_name,
+                });
+                count += 1;
             }
             Ok(warp::reply::json(&result))
         },
         Err(err) => {
-            eprintln!("dir: failed to decode prefix={:?}: {:?}", &prefix, err);
+            eprintln!("dir: failed to decode query={:?}: {:?}", &query, err);
             return Err(warp::reject::not_found());
         }
     }
@@ -217,7 +215,7 @@ fn json_tree_route(data: Arc<db::GTFSData>) -> impl Filter<Extract = impl warp::
         .with(cors)
 }
 
-fn station_name_search_route(data: Arc<db::GTFSData>, station_search: Arc<TSTMap<HashSet<StopId>>>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn station_name_search_route(data: Arc<db::GTFSData>, station_search: Arc<Suggester<StopId>>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let cors = warp::cors()
         .allow_any_origin();
     warp::path!("searchStation" / String)
