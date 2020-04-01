@@ -444,20 +444,31 @@ impl <'r> GTFSData {
         &self.fake_stop
     }
 
-    pub fn build_station_word_index<'t>(&self) -> TSTMap<Vec<StopId>> {
-        let stops = self.stops_by_id.values();
-
+    pub fn build_station_word_index<'t>(&self) -> TSTMap<HashSet<StopId>> {
         let mut map = TSTMap::new();
-        for stop in stops {
-            if stop.parent_station.is_none() {
-                for word in stop.stop_name.split(" ") {
-                    if word.len() > 3 {
-                        let v = map.entry(&word.to_lowercase()).or_insert(vec![]);
-                        v.push(stop.stop_id);
-                    }
+        
+        let mut add_stop_to_search = |stop: &Stop| {
+            for word in stop.stop_name.split(" ") {
+                if word.len() > 3 {
+                    let v = map.entry(&word.to_lowercase()).or_insert(HashSet::new());
+                    v.insert(stop.stop_id);
                 }
             }
+        };
+
+        let mut inserted_parents = HashSet::new();
+        for stop_id in self.stop_departures.keys() {
+            let stop = self.get_stop(stop_id).unwrap();
+            if let Some(parent_station_id) = stop.parent_station {
+                if inserted_parents.insert(parent_station_id) {
+                    let stop = self.get_stop(&parent_station_id).unwrap();
+                    add_stop_to_search(stop);
+                }
+            } else {
+                add_stop_to_search(stop);
+            }
         }
+        
         eprintln!("built station name index of {} words", map.len());
         map
     }

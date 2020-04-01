@@ -181,7 +181,7 @@ struct FEStationLookup<'s> {
     name: &'s str,
 }
 
-async fn station_search_handler(prefix: String, data: Arc<db::GTFSData>, station_search: Arc<TSTMap<Vec<StopId>>>) -> Result<impl warp::Reply, warp::Rejection> {
+async fn station_search_handler(prefix: String, data: Arc<db::GTFSData>, station_search: Arc<TSTMap<HashSet<StopId>>>) -> Result<impl warp::Reply, warp::Rejection> {
     match decode(&prefix) {
         Ok(prefix) => {
             let mut result = Vec::new();
@@ -217,7 +217,7 @@ fn json_tree_route(data: Arc<db::GTFSData>) -> impl Filter<Extract = impl warp::
         .with(cors)
 }
 
-fn station_name_search_route(data: Arc<db::GTFSData>, station_search: Arc<TSTMap<Vec<StopId>>>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn station_name_search_route(data: Arc<db::GTFSData>, station_search: Arc<TSTMap<HashSet<StopId>>>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let cors = warp::cors()
         .allow_any_origin();
     warp::path!("searchStation" / String)
