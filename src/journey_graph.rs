@@ -150,6 +150,97 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
     self.route_types.extend(route_types);
   }
 
+  fn enqueue_transfers_from_stop(&mut self, stop: &'r Stop, departure_time: Time) {
+    let mut to_add = vec![];
+    for transfer in self.transfers_from(stop.stop_id) {
+      if !self.stops.contains_key(&transfer.to_stop_id) {
+        to_add.push(QueueItem {
+          from_stop: stop,
+          to_stop: self.data.get_stop(&transfer.to_stop_id).unwrap(),
+          departure_time: departure_time,
+          arrival_time: departure_time + transfer.min_transfer_time.unwrap_or_default(),
+          variant: QueueItemVariant::Transfer,
+        });
+      }
+    }
+    self.queue.extend(to_add);
+  }
+
+  fn enqueue_transfers_from_station(&mut self, station: &'r Stop, departure_time: Time) {
+    let station_id = station.parent_station.unwrap_or(station.stop_id);
+    let mut to_add = vec![];
+    for transfer in self.transfers_from(station_id) {
+      // parent stations transfer to parents, so transfer to the children instead
+      for to_stop_id in self.data.stops_by_parent_id(&transfer.to_stop_id) {
+        if !self.stops.contains_key(&transfer.to_stop_id) {
+          to_add.push(QueueItem {
+            from_stop: station,
+            to_stop: self.data.get_stop(&to_stop_id).unwrap(),
+            departure_time: departure_time,
+            arrival_time: departure_time + transfer.min_transfer_time.unwrap_or_default(),
+            variant: QueueItemVariant::Transfer,
+          });
+        }
+      }
+    }
+    self.queue.extend(to_add);
+  }
+
+  fn enqueue_immediate_transfers_to_children_of(&mut self, stop: &'r Stop, from_stop: &'r Stop, departure_time: Time, arrival_time: Time) {
+    let origin_stops = self.data.stops_by_parent_id(&stop.stop_id);
+    let to_add: Vec<QueueItem> = origin_stops.into_iter().map(|stop_id| {
+      let stop = self.data.get_stop(&stop_id).unwrap();
+      // immediately transfer to all the stops of this origin station
+      QueueItem {
+        from_stop: from_stop,
+        to_stop: stop,
+        departure_time: departure_time,
+        arrival_time: arrival_time,
+        variant: QueueItemVariant::Transfer,
+      }
+    }).collect();
+    self.queue.extend(to_add);
+  }
+
+  fn enqueue_connections_and_trips(&mut self, item: &QueueItem<'r>) {
+    let mut to_add = vec![];
+    for stops_range in self.trips_from(item.to_stop.stop_id, self.period.with_start(item.arrival_time)) {
+      let stops = self.data.stops(stops_range.clone());
+      let trip_id = stops[0].trip_id;
+      // check that route type is allowed
+      if self.data.get_route_for_trip(&trip_id).iter().any(|route| self.route_types.contains(&route.route_type)) {
+        // make sure we only add each trip once
+        if !self.enqueued_trips.contains(&trip_id) { 
+          let route = self.data.get_route_for_trip(&trip_id).expect(&format!("to have found a route for trip {}", trip_id));
+          // enqueue connection (transfer + wait)
+          to_add.push(QueueItem{
+            from_stop: item.from_stop,
+            to_stop: item.to_stop,
+            departure_time: item.departure_time,
+            arrival_time: stops[0].departure_time,
+            variant: QueueItemVariant::Connection{ trip_id, route },
+          });
+          let mut is_first = true;
+          for window in stops.windows(2) {
+            if let [from_stop, to_stop] = window {
+              to_add.push(QueueItem {
+                from_stop: self.data.get_stop(&from_stop.stop_id).unwrap(),
+                to_stop: self.data.get_stop(&to_stop.stop_id).unwrap(),
+                departure_time: if is_first { from_stop.departure_time } else { from_stop.arrival_time },
+                arrival_time: to_stop.arrival_time,
+                variant: QueueItemVariant::StopOnTrip{ trip_id, route },
+              });
+            } else {
+              panic!("Bad window");
+            }
+            is_first = false;
+          }
+        }
+      }
+    }
+    self.queue.extend(to_add);
+  }
+
   fn process_queue_item(&mut self, item: QueueItem<'r>) -> Option<QueueItem<'r>> {
     // get existing nodes for this stop
     let nodes = self.stops.entry(item.to_stop.stop_id).or_default();
@@ -159,17 +250,8 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
     if new_earliest_arrival { // if this changes the earliest arrival time for this stop, we possibly have new connections / trips
       match item.variant {
         QueueItemVariant::StopOnTrip { trip_id, route: _route } => {
-          let mut to_add = vec![];
-          for transfer in self.transfers_from(item.to_stop.stop_id) {
-            to_add.push(QueueItem {
-              from_stop: self.data.get_stop(&transfer.from_stop_id).unwrap(),
-              to_stop: self.data.get_stop(&transfer.to_stop_id).unwrap(),
-              departure_time: item.arrival_time,
-              arrival_time: item.arrival_time + transfer.min_transfer_time.unwrap_or_default(),
-              variant: QueueItemVariant::Transfer,
-            });
-          }
-          self.queue.extend(to_add);
+          self.enqueue_transfers_from_stop(item.to_stop, item.arrival_time);
+          self.enqueue_transfers_from_station(item.to_stop, item.arrival_time);
           // if this now made some slow stops on the trip relevant, they should be emitted as well
           let slow_trips = self.slow_trips.remove(&trip_id);
           if let Some(slow_trips) = slow_trips {
@@ -184,42 +266,7 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
           panic!("Unexpected");
         },
         QueueItemVariant::Transfer => {
-          let mut to_add = vec![];
-          for stops_range in self.trips_from(item.to_stop.stop_id, self.period.with_start(item.arrival_time)) {
-            let stops = self.data.stops(stops_range.clone());
-            let trip_id = stops[0].trip_id;
-            // check that route type is allowed
-            if self.data.get_route_for_trip(&trip_id).iter().any(|route| self.route_types.contains(&route.route_type)) {
-              // make sure we only add each trip once
-              if !self.enqueued_trips.contains(&trip_id) { 
-                let route = self.data.get_route_for_trip(&trip_id).expect(&format!("to have found a route for trip {}", trip_id));
-                // enqueue connection (transfer + wait)
-                to_add.push(QueueItem{
-                  from_stop: item.from_stop,
-                  to_stop: item.to_stop,
-                  departure_time: item.departure_time,
-                  arrival_time: stops[0].departure_time,
-                  variant: QueueItemVariant::Connection{ trip_id, route },
-                });
-                let mut is_first = true;
-                for window in stops.windows(2) {
-                  if let [from_stop, to_stop] = window {
-                    to_add.push(QueueItem {
-                      from_stop: self.data.get_stop(&from_stop.stop_id).unwrap(),
-                      to_stop: self.data.get_stop(&to_stop.stop_id).unwrap(),
-                      departure_time: if is_first { from_stop.departure_time } else { from_stop.arrival_time },
-                      arrival_time: to_stop.arrival_time,
-                      variant: QueueItemVariant::StopOnTrip{ trip_id, route },
-                    });
-                  } else {
-                    panic!("Bad window");
-                  }
-                  is_first = false;
-                }
-              }
-            }
-          }
-          self.queue.extend(to_add);
+          self.enqueue_connections_and_trips(&item);
           // we don't emit transfers unless they are to a new station
           if item.from_stop.parent_station == item.to_stop.parent_station {
             None
@@ -228,19 +275,8 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
           }
         },
         QueueItemVariant::OriginStation => {
-          let origin_stops = self.data.stops_by_parent_id(&item.to_stop.stop_id);
-          let to_add: Vec<QueueItem> = origin_stops.into_iter().map(|stop_id| {
-            let stop = self.data.get_stop(&stop_id).unwrap();
-            // immediately transfer to all the stops of this origin station
-            QueueItem {
-              from_stop: item.from_stop,
-              to_stop: stop,
-              departure_time: item.departure_time,
-              arrival_time: item.arrival_time,
-              variant: QueueItemVariant::Transfer,
-            }
-          }).collect();
-          self.queue.extend(to_add);
+          self.enqueue_immediate_transfers_to_children_of(item.to_stop, item.from_stop, item.departure_time, item.arrival_time);
+          self.enqueue_transfers_from_station(item.to_stop, item.arrival_time);
           Some(item)
         }
       }
