@@ -66,7 +66,7 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, period: Period
             stop_id_to_idx.insert(to_id, fe_stops.len());
             fe_stops.push(FEStop {
                 bearing: origin.position().bearing(item.to_stop.position()),
-                name: &item.to_stop.stop_name,
+                name: item.to_stop.stop_name.replace(" (Berlin)", ""),
                 seconds: item.arrival_time - period.start(),
             });
         }
@@ -98,14 +98,14 @@ use serde::Serialize;
 
 #[derive(Serialize)]
 struct FEData<'s> {
-    stops: Vec<FEStop<'s>>,
+    stops: Vec<FEStop>,
     connections: Vec<FEConnection<'s>>,
 }
 
 #[derive(Serialize)]
-struct FEStop<'s> {
+struct FEStop {
     bearing: f64,
-    name: &'s str,
+    name: String,
     seconds: gtfstime::Duration,
 }
 
