@@ -61,32 +61,44 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, period: Period
     let mut connections_check = HashSet::new();
 
     for item in plotter {
-        let to_id = item.to_stop.parent_station.unwrap_or(item.to_stop.stop_id);
-        if !stop_id_to_idx.contains_key(&to_id) {
-            stop_id_to_idx.insert(to_id, fe_stops.len());
-            fe_stops.push(FEStop {
-                bearing: origin.position().bearing(item.to_stop.position()),
-                name: item.to_stop.stop_name.replace(" (Berlin)", ""),
-                seconds: item.arrival_time - period.start(),
-            });
-        }
-
-        let to = *stop_id_to_idx.get(&to_id).unwrap();
-        let from_stop_or_station_id = item.from_stop.parent_station.unwrap_or(item.from_stop.stop_id);
-        let from = *stop_id_to_idx.get(&from_stop_or_station_id).unwrap_or(&to);
-        let route_name = item.get_route_name();
-        let kind = FEConnectionType::from(item.get_route_type());
-        // only emit each connection once
-        if connections_check.insert((from, to, route_name, kind)) {
-            fe_conns.push(FEConnection {
-                from,
-                to,
+        match item {
+            journey_graph::Item::Station {
+                stop,
+                earliest_arrival,
+            } => {
+                stop_id_to_idx.insert(stop.station_id(), fe_stops.len());
+                fe_stops.push(FEStop {
+                    bearing: origin.position().bearing(stop.position()),
+                    name: stop.stop_name.replace(" (Berlin)", ""),
+                    seconds: earliest_arrival - period.start(),
+                });
+            },
+            journey_graph::Item::JourneySegment {
+                departure_time, 
+                arrival_time, 
+                from_stop,
+                to_stop,
                 route_name,
-                kind,
-                from_seconds: item.departure_time - period.start(),
-                to_seconds: item.arrival_time - period.start(),
-            })
+                route_type,
+            } => {
+                let to = *stop_id_to_idx.get(&to_stop.station_id()).unwrap();
+                let from_stop_or_station_id = from_stop.station_id();
+                let from = *stop_id_to_idx.get(&from_stop_or_station_id).unwrap_or(&to);
+                let kind = FEConnectionType::from(route_type);
+                // only emit each connection once
+                if connections_check.insert((from, to, route_name, kind)) {
+                    fe_conns.push(FEConnection {
+                        from,
+                        to,
+                        route_name,
+                        kind,
+                        from_seconds: departure_time - period.start(),
+                        to_seconds: arrival_time - period.start(),
+                    })
+                }
+            }
         }
+        
     }
     FEData {
         stops: fe_stops,

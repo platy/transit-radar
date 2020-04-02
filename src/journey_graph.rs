@@ -1,4 +1,4 @@
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::cmp::Ordering;
 use std::fmt;
 use crate::gtfstime::{Time, Period};
@@ -10,13 +10,14 @@ use crate::arena::ArenaSliceIndex;
 pub struct JourneyGraphPlotter<'r: 's, 's> {
   period: Period, // Search of journeys is within this period
   queue: BinaryHeap<QueueItem<'r>>,
-  /// items which were skipped earlier as it didn't seem they would be part of any minimum span but now are, these have already been processed and are iterated before any more processing from the queue takes place
-  catch_up: BinaryHeap<QueueItem<'r>>, 
+  /// items which were skipped earlier as it didn't seem they would be part of any minimum span but now are, these have already been processed and ordered and are iterated before any more processing from the queue takes place
+  catch_up: VecDeque<Item<'r>>, 
   enqueued_trips: HashSet<TripId>,
   /// trips which so far have only gotten us late to stops, but they may end up leading to useful stops - will need to clean this up when the last stop in a trip is reached as it will probably grow badly
   slow_trips: HashMap<TripId, Vec<QueueItem<'r>>>,
   // stops that have been arrived at and the earliest time they are arrived at
   stops: HashMap<StopId, Time>, 
+  emitted_stations: HashSet<StopId>,
   trips_from_stops: &'s HashMap<StopId, Vec<ArenaSliceIndex<StopTime>>>,
   data: &'r GTFSData,
   route_types: HashSet<RouteType>,
@@ -27,10 +28,11 @@ impl <'r: 's, 's> JourneyGraphPlotter<'r, 's> {
     JourneyGraphPlotter {
       period: period,
       queue: BinaryHeap::new(),
-      catch_up: BinaryHeap::new(),
+      catch_up: VecDeque::new(),
       enqueued_trips: HashSet::new(),
       slow_trips: HashMap::new(),
       stops: HashMap::new(),
+      emitted_stations: HashSet::new(),
       trips_from_stops: data.borrow_stop_departures(),
       data: data,
       route_types: HashSet::new(),
@@ -86,24 +88,20 @@ impl <'node, 'r> PartialEq for QueueItem<'r> {
 impl <'node, 'r> Eq for QueueItem<'r> {}
 
 #[derive(Debug)]
-pub struct JourneySegment<'r> {
-  pub departure_time: Time,
-  pub arrival_time: Time,
-  pub from_stop: &'r Stop,
-  pub to_stop: &'r Stop,
-  route_name: Option<&'r str>,
-  route_type: Option<RouteType>,
-}
-
-impl<'r> JourneySegment<'r> {
-  pub fn get_route_name(&self) -> Option<&'r str> {
-    self.route_name
-    }
-
-  pub fn get_route_type(&self) -> Option<RouteType> {
-    self.route_type
-    }
+pub enum Item<'r> {
+  JourneySegment {
+    departure_time: Time,
+    arrival_time: Time,
+    from_stop: &'r Stop,
+    to_stop: &'r Stop,
+    route_name: Option<&'r str>,
+    route_type: Option<RouteType>,
+  },
+  Station {
+    stop: &'r Stop,
+    earliest_arrival: Time,
   }
+}
 
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq)]
 enum QueueItemVariant<'r> {
@@ -122,35 +120,59 @@ enum QueueItemVariant<'r> {
 }
 
 impl<'r, 's> Iterator for JourneyGraphPlotter<'r, 's> {
-  type Item = JourneySegment<'r>;
+  type Item = Item<'r>;
 
   fn next(&mut self) -> Option<Self::Item> {
-    if let Some(item) = self.catch_up.pop() {
-      return Some(self.convert_item(item));
+    if let Some(item) = self.catch_up.pop_front() {
+      return Some(item);
     }
-    while let Some(item) = self.queue.pop() {
-      if !self.period.contains(item.arrival_time) {
-        return None // we ran out of the time period
-      } else {
-        if let Some(item) = self.process_queue_item(item) { // when a queue item is processed and emitted, it could have added items to catch up which should go before it
-          return Some(self.convert_item(item)) // we found something that's worth drawing
-        }
-      }
+    let mut next_block = self.next_block().into_iter();
+    if let Some(first) = next_block.next() {
+      self.catch_up.extend(next_block);
+      Some(first)
+    } else {
+      None // we exhausted the queues
     }
-    None // we exhausted the queues
   }
 }
 
-// departure_time:  //  use the previous arrival time only if it was the quickest arrival at the from_stop, otherwise the departure stop
-// arrival_time:  // likewise, this should only be arrival if it is the quickest arrival at to_stop, optherwise it should be the departure time of the next segment
 impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
+  // returns the next items to be emitted in order, or empty if there are no more
+  fn next_block(&mut self) -> Vec<Item<'r>> {
+    while let Some(item) = self.queue.pop() {
+      if !self.period.contains(item.arrival_time) {
+        return vec![]; // we ran out of the time period
+      } else {
+        if item.from_stop.station_id() == 900000110006 || item.to_stop.station_id() == 900000110006 {
+          println!("popped {:#?}", item);
+        }
+        let processed = self.process_queue_item(item);
+        if !processed.is_empty() {
+          return processed.into_iter().flat_map(|item| {
+            let mut to_emit = vec![];
+            // if this arrives at a new station, emit that first
+            if self.emitted_stations.insert(item.to_stop.station_id()) {
+              to_emit.push(Item::Station {
+                stop: item.to_stop,
+                earliest_arrival: item.arrival_time,
+              });
+            }
+            to_emit.push(self.convert_item(item));
+            to_emit // we found something that's worth drawing
+          }).collect()
+        }
+      }
+    }
+    vec![]
+  }
+
   fn convert_item(&self, QueueItem {
       from_stop,
       to_stop,
       mut departure_time,
       mut arrival_time,
       variant,
-    }: QueueItem<'r>) -> JourneySegment<'r> {
+    }: QueueItem<'r>) -> Item<'r> {
       if let QueueItemVariant::StopOnTrip {
         trip_id: _,
         route: _,
@@ -164,13 +186,12 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
           arrival_time = next_departure_time;
         }
       }
-      JourneySegment {
+      Item::JourneySegment {
         from_stop,
         to_stop,
         departure_time,
         arrival_time,
-        route_name: 
-        match variant {
+        route_name: match variant {
           QueueItemVariant::OriginStation => None,
           QueueItemVariant::Transfer => None,
           QueueItemVariant::Connection{trip_id: _, route} => {
@@ -180,8 +201,7 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
             Some(&route.route_short_name)
           },
         },
-        route_type: 
-        match variant {
+        route_type: match variant {
           QueueItemVariant::OriginStation => None,
           QueueItemVariant::Transfer => None,
           QueueItemVariant::Connection{trip_id: _, route: _} => None,
@@ -221,9 +241,8 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
   }
 
   fn enqueue_transfers_from_station(&mut self, station: &'r Stop, departure_time: Time) {
-    let station_id = station.parent_station.unwrap_or(station.stop_id);
     let mut to_add = vec![];
-    for transfer in self.transfers_from(station_id) {
+    for transfer in self.transfers_from(station.station_id()) {
       // parent stations transfer to parents, so transfer to the children instead
       for to_stop_id in self.data.stops_by_parent_id(&transfer.to_stop_id) {
         if !self.stops.contains_key(&transfer.to_stop_id) {
@@ -298,7 +317,7 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
         .cloned()
   }
 
-  fn enqueue_slow_trip(&mut self, slow_trip: Vec<QueueItem<'r>>) {
+  fn filter_slow_trip(&mut self, slow_trip: Vec<QueueItem<'r>>) -> Vec<QueueItem<'r>> {
     // this trip became useful but it might be that we don't board at the first stop where we encountered it, we should board at the stop we can get to the earliest, not the earliest we can board this trip
     let boarding_idx = slow_trip.iter()
       .enumerate()
@@ -306,7 +325,7 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
         self.earliest_arrival_at(item.from_stop.stop_id)
         .map(|time| (i, time))
       ).min_by_key(|(_i, first_arrival)| *first_arrival).map(|(i, _t)| i).unwrap_or(0);
-    self.catch_up.extend(slow_trip.into_iter().skip(boarding_idx));
+    slow_trip.into_iter().skip(boarding_idx).collect()
   }
 
   fn set_arrival_time(&mut self, stop_id: StopId, new_arrival_time: Time) -> bool {
@@ -318,7 +337,7 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
     }
   }
 
-  fn process_queue_item(&mut self, item: QueueItem<'r>) -> Option<QueueItem<'r>> {
+  fn process_queue_item(&mut self, item: QueueItem<'r>) -> Vec<QueueItem<'r>> {
     if self.set_arrival_time(item.to_stop.stop_id, item.arrival_time) { // if this changes the earliest arrival time for this stop, we possibly have new connections / trips
       match item.variant {
         QueueItemVariant::StopOnTrip { trip_id, route: _route, previous_arrival_time: _, next_departure_time: _ } => {
@@ -327,11 +346,11 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
           // if this now made some slow stops on the trip relevant, they should be emitted as well
           let slow_trip = self.slow_trips.remove(&trip_id);
           if let Some(slow_trip) = slow_trip {
-            self.enqueue_slow_trip(slow_trip);
-            self.catch_up.push(item);
-            Some(self.catch_up.pop().expect("item from catch up queue"))
+            let mut to_emit = self.filter_slow_trip(slow_trip);
+            to_emit.push(item);
+            to_emit
           } else {
-            Some(item)
+            vec![item]
           }
         },
         QueueItemVariant::Connection { trip_id: _, route: _ } => {
@@ -341,15 +360,15 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
           self.enqueue_connections_and_trips(&item);
           // we don't emit transfers unless they are to a new station
           if item.from_stop.parent_station == item.to_stop.parent_station {
-            None
+            vec![]
           } else {
-            Some(item)
+            vec![item]
           }
         },
         QueueItemVariant::OriginStation => {
           self.enqueue_immediate_transfers_to_children_of(item.to_stop, item.from_stop, item.departure_time, item.arrival_time);
           self.enqueue_transfers_from_station(item.to_stop, item.arrival_time);
-          Some(item)
+          vec![item]
         }
       }
     } else {
@@ -365,7 +384,7 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
         },
         _ => () // late arrival by transfer - drop it
       }
-      None // the item will not be emitted
+      vec![] // the item will not be emitted
     }
   }
 

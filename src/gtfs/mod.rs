@@ -125,6 +125,10 @@ impl Stop {
     pub fn position(&self) -> geo::Point<f64> {
         geo::Point::new(self.stop_lat, self.stop_lon)
     }
+
+    pub fn station_id(&self) -> StopId {
+        self.parent_station.unwrap_or(self.stop_id)
+    }
 }
 
 /// The VBB route id format is eg. `19105_700`, the first part seems to be unique on its own and the second part just seems to duplicate the route type, so we discard it
