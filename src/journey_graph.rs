@@ -143,9 +143,6 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
       if !self.period.contains(item.arrival_time) {
         return vec![]; // we ran out of the time period
       } else {
-        if item.from_stop.station_id() == 900000110006 || item.to_stop.station_id() == 900000110006 {
-          println!("popped {:#?}", item);
-        }
         let processed = self.process_queue_item(item);
         if !processed.is_empty() {
           return processed.into_iter().flat_map(|item| {
@@ -343,14 +340,19 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
         QueueItemVariant::StopOnTrip { trip_id, route: _route, previous_arrival_time: _, next_departure_time: _ } => {
           self.enqueue_transfers_from_stop(item.to_stop, item.arrival_time);
           self.enqueue_transfers_from_station(item.to_stop, item.arrival_time);
-          // if this now made some slow stops on the trip relevant, they should be emitted as well
-          let slow_trip = self.slow_trips.remove(&trip_id);
-          if let Some(slow_trip) = slow_trip {
-            let mut to_emit = self.filter_slow_trip(slow_trip);
-            to_emit.push(item);
-            to_emit
+          // only emit if we got to a new station
+          if !self.emitted_stations.contains(&item.to_stop.station_id()) {
+            // if this now made some slow stops on the trip relevant, they should be emitted as well
+            let slow_trip = self.slow_trips.remove(&trip_id);
+            if let Some(slow_trip) = slow_trip {
+              let mut to_emit = self.filter_slow_trip(slow_trip);
+              to_emit.push(item);
+              to_emit
+            } else {
+              vec![item]
+            }
           } else {
-            vec![item]
+            vec![]
           }
         },
         QueueItemVariant::Connection { trip_id: _, route: _ } => {
