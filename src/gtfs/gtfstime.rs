@@ -60,7 +60,7 @@ impl <'de> Deserialize<'de> for Duration {
 /// * time can go over 24 hours to enable the continuation of the day's schedule
 /// * operations that are needed for this project
 /// * second precision
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct Time {
   seconds_since_midnight: u32,
 }
@@ -124,6 +124,12 @@ impl Sub<Time> for Time {
       Duration::seconds(
           self.seconds_since_midnight as i32 - rhs.seconds_since_midnight as i32,
       )
+  }
+}
+
+impl fmt::Debug for Time {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+      fmt::Display::fmt(self, f)
   }
 }
 

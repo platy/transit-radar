@@ -1,5 +1,6 @@
-use std::collections::{BinaryHeap, HashMap, BTreeSet, HashSet};
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::cmp::Ordering;
+use std::fmt;
 use crate::gtfstime::{Time, Period};
 use crate::gtfs::*;
 use crate::gtfs::db::GTFSData;
@@ -14,7 +15,8 @@ pub struct JourneyGraphPlotter<'r: 's, 's> {
   enqueued_trips: HashSet<TripId>,
   /// trips which so far have only gotten us late to stops, but they may end up leading to useful stops - will need to clean this up when the last stop in a trip is reached as it will probably grow badly
   slow_trips: HashMap<TripId, Vec<QueueItem<'r>>>,
-  stops: HashMap<StopId, BTreeSet<Time>>, 
+  // stops that have been arrived at and the earliest time they are arrived at
+  stops: HashMap<StopId, Time>, 
   trips_from_stops: &'s HashMap<StopId, Vec<ArenaSliceIndex<StopTime>>>,
   data: &'r GTFSData,
   route_types: HashSet<RouteType>,
@@ -36,13 +38,24 @@ impl <'r: 's, 's> JourneyGraphPlotter<'r, 's> {
   }
 }
 
-#[derive(Debug)]
 struct QueueItem<'r> {
   departure_time: Time,
   arrival_time: Time,
   from_stop: &'r Stop,
   to_stop: &'r Stop,
   variant: QueueItemVariant<'r>,
+}
+
+impl<'r> fmt::Debug for QueueItem<'r> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("QueueItem")
+     .field("from_stop", &format!("{} ({}{})", self.from_stop.stop_name, self.from_stop.stop_id, if self.from_stop.parent_station.is_none() { "*" } else { "" }))
+     .field("to_stop", &format!("{} ({}{})", self.to_stop.stop_name, self.to_stop.stop_id, if self.to_stop.parent_station.is_none() { "*" } else { "" }))
+     .field("departure_time", &self.departure_time)
+     .field("arrival_time", &self.arrival_time)
+     .field("variant", &self.variant)
+     .finish()
+  }
 }
 
 /// The ordering on the queue items puts those with the earliest arrival times as the greatest,
@@ -78,32 +91,19 @@ pub struct JourneySegment<'r> {
   pub arrival_time: Time,
   pub from_stop: &'r Stop,
   pub to_stop: &'r Stop,
-  variant: QueueItemVariant<'r>,
+  route_name: Option<&'r str>,
+  route_type: Option<RouteType>,
 }
 
 impl<'r> JourneySegment<'r> {
   pub fn get_route_name(&self) -> Option<&'r str> {
-    match self.variant {
-      QueueItemVariant::OriginStation => None,
-      QueueItemVariant::Transfer => None,
-      QueueItemVariant::Connection{trip_id: _, route} => {
-        Some(&route.route_short_name)
-      },
-      QueueItemVariant::StopOnTrip{trip_id: _, route, previous_arrival_time: _, next_departure_time: _} => {
-        Some(&route.route_short_name)
-      },
+    self.route_name
     }
-  }
 
   pub fn get_route_type(&self) -> Option<RouteType> {
-    match self.variant {
-      QueueItemVariant::OriginStation => None,
-      QueueItemVariant::Transfer => None,
-      QueueItemVariant::Connection{trip_id: _, route: _} => None,
-      QueueItemVariant::StopOnTrip{trip_id: _, route, previous_arrival_time: _, next_departure_time: _} => Some(route.route_type),
+    self.route_type
     }
   }
-}
 
 #[derive(Debug, Ord, PartialOrd, PartialEq, Eq)]
 enum QueueItemVariant<'r> {
@@ -169,7 +169,24 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
         to_stop,
         departure_time,
         arrival_time,
-        variant,
+        route_name: 
+        match variant {
+          QueueItemVariant::OriginStation => None,
+          QueueItemVariant::Transfer => None,
+          QueueItemVariant::Connection{trip_id: _, route} => {
+            Some(&route.route_short_name)
+          },
+          QueueItemVariant::StopOnTrip{trip_id: _, route, previous_arrival_time: _, next_departure_time: _} => {
+            Some(&route.route_short_name)
+          },
+        },
+        route_type: 
+        match variant {
+          QueueItemVariant::OriginStation => None,
+          QueueItemVariant::Transfer => None,
+          QueueItemVariant::Connection{trip_id: _, route: _} => None,
+          QueueItemVariant::StopOnTrip{trip_id: _, route, previous_arrival_time: _, next_departure_time: _} => Some(route.route_type),
+        },
       }
   }
 
@@ -278,7 +295,6 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
 
   fn earliest_arrival_at(&self, stop_id: StopId) -> Option<Time> {
     self.stops.get(&stop_id)
-        .and_then(|arrival_time_heap| arrival_time_heap.iter().next())
         .cloned()
   }
 
@@ -293,13 +309,17 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
     self.catch_up.extend(slow_trip.into_iter().skip(boarding_idx));
   }
 
+  fn set_arrival_time(&mut self, stop_id: StopId, new_arrival_time: Time) -> bool {
+    if self.stops.get(&stop_id).iter().all(|&&previous_earliest_arrival| new_arrival_time < previous_earliest_arrival) {
+      self.stops.insert(stop_id, new_arrival_time);
+      true
+    } else {
+      false
+    }
+  }
+
   fn process_queue_item(&mut self, item: QueueItem<'r>) -> Option<QueueItem<'r>> {
-    // get existing nodes for this stop
-    let nodes = self.stops.entry(item.to_stop.stop_id).or_default();
-    let new_earliest_arrival = nodes.is_empty() || Some(&item.arrival_time) < nodes.iter().next();
-    // add node in ordered by arrival_time
-    nodes.insert(item.arrival_time);
-    if new_earliest_arrival { // if this changes the earliest arrival time for this stop, we possibly have new connections / trips
+    if self.set_arrival_time(item.to_stop.stop_id, item.arrival_time) { // if this changes the earliest arrival time for this stop, we possibly have new connections / trips
       match item.variant {
         QueueItemVariant::StopOnTrip { trip_id, route: _route, previous_arrival_time: _, next_departure_time: _ } => {
           self.enqueue_transfers_from_stop(item.to_stop, item.arrival_time);
