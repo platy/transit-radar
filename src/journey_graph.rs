@@ -94,8 +94,22 @@ pub enum Item<'r> {
     arrival_time: Time,
     from_stop: &'r Stop,
     to_stop: &'r Stop,
-    route_name: Option<&'r str>,
-    route_type: Option<RouteType>,
+  },
+  ConnectionToTrip {
+    departure_time: Time,
+    arrival_time: Time,
+    from_stop: &'r Stop,
+    to_stop: &'r Stop,
+    route_name: &'r str,
+  },
+  SegmentOfTrip {
+    departure_time: Time,
+    arrival_time: Time,
+    from_stop: &'r Stop,
+    to_stop: &'r Stop,
+    trip_id: TripId,
+    route_name: &'r str,
+    route_type: RouteType,
   },
   Station {
     stop: &'r Stop,
@@ -183,26 +197,36 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
           arrival_time = next_departure_time;
         }
       }
-      Item::JourneySegment {
-        from_stop,
-        to_stop,
-        departure_time,
-        arrival_time,
-        route_name: match variant {
-          QueueItemVariant::OriginStation => None,
-          QueueItemVariant::Transfer => None,
-          QueueItemVariant::Connection{trip_id: _, route} => {
-            Some(&route.route_short_name)
-          },
-          QueueItemVariant::StopOnTrip{trip_id: _, route, previous_arrival_time: _, next_departure_time: _} => {
-            Some(&route.route_short_name)
-          },
+      match variant {
+        QueueItemVariant::OriginStation => Item::JourneySegment {
+          from_stop,
+          to_stop,
+          departure_time,
+          arrival_time,
         },
-        route_type: match variant {
-          QueueItemVariant::OriginStation => None,
-          QueueItemVariant::Transfer => None,
-          QueueItemVariant::Connection{trip_id: _, route: _} => None,
-          QueueItemVariant::StopOnTrip{trip_id: _, route, previous_arrival_time: _, next_departure_time: _} => Some(route.route_type),
+        QueueItemVariant::Transfer => {
+          Item::JourneySegment {
+            from_stop,
+            to_stop,
+            departure_time,
+            arrival_time,
+          }
+        },
+        QueueItemVariant::Connection{trip_id: _, route} => Item::ConnectionToTrip {
+          from_stop,
+          to_stop,
+          departure_time,
+          arrival_time,
+          route_name: &route.route_short_name,
+        },
+        QueueItemVariant::StopOnTrip {trip_id, route, previous_arrival_time: _, next_departure_time: _} => Item::SegmentOfTrip {
+          from_stop,
+          to_stop,
+          departure_time,
+          arrival_time,
+          trip_id,
+          route_name: &route.route_short_name,
+          route_type: route.route_type,
         },
       }
   }

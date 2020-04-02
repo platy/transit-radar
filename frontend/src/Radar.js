@@ -23,17 +23,35 @@ function stopCoords({
   return [(x+1)*xmax/2, (-y+1)*ymax/2]
 }
 
+function drawRoute({
+  route_name,
+  kind,
+  segments,
+}, stops) {
+  let path = ''
+  for (let {
+    from,
+    to,
+    from_seconds,
+    to_seconds,
+  } of segments) {
+    let [x1, y1] = stopCoords({ bearing: stops[from].bearing, seconds: from_seconds })
+    let [x2, y2] = stopCoords({ bearing: stops[to].bearing, seconds: to_seconds })
+    path += `M ${x1} ${y1} L ${x2} ${y2} `
+  }
+  draw.path(path).attr({ class: route_name + ' ' + kind })
+}
+
 function drawConnection({
   from,
   to,
   from_seconds,
   to_seconds,
   route_name,
-  kind,
 }, stops) {
   let [x1, y1] = stopCoords({ bearing: stops[from].bearing, seconds: from_seconds })
   let [x2, y2] = stopCoords({ bearing: stops[to].bearing, seconds: to_seconds })
-  draw.line(x1, y1, x2, y2).attr({ class: route_name + ' ' + kind })
+  draw.line(x1, y1, x2, y2).attr({ class: route_name && route_name + ' Connection' || 'Transfer' })
 }
 
 export default async function Radar(data) {
@@ -57,5 +75,9 @@ export default async function Radar(data) {
 
   for (let connection of data.connections.reverse()) {
     drawConnection(connection, data.stops)
+  }
+
+  for (let route of data.trips) {
+    drawRoute(route, data.stops)
   }
 }

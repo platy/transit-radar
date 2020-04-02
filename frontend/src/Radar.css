@@ -25,6 +25,10 @@ text {
 .Connection {
   stroke-dasharray: 2 4;
 }
+.Transfer {
+  stroke-dasharray: 4 8;
+  stroke: black;
+}
 .ire {
   stroke:#e2001a
 }
