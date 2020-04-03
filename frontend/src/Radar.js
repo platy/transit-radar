@@ -44,11 +44,31 @@ function controlPoints([x1, y1], [x2, y2], [x3, y3]) {
   return [[x2 + dx * cp2mag, y2 + dy * cp2mag], [x2 + dx * cp3mag, y2 + dy * cp3mag]]
 }
 
+// Find a control point that directs the curve away from the origin, [x1, y1] is used if that works, otherwise orthogonal to the origin
+function initialControlPoint([x1, y1], [x2, y2], [ox, oy]) {
+  let angle_to_origin = Math.atan2(oy - y1, ox - x1)
+  let angle_to_next = Math.atan2(y2 - y1, x2 - x1)
+  // things to adjust and improve
+  let angle_between = angle_to_origin - angle_to_next
+  if (angle_between < 0) angle_between = 2 * Math.PI + angle_between
+  if (angle_between < Math.PI / 2) {
+    let cpangle = angle_to_origin - Math.PI / 2
+    let cpmag = 0.5 * Math.sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2))
+    return [x1 + cpmag * Math.cos(cpangle), y1 + cpmag * Math.sin(cpangle)]
+  } else if (angle_between > 3 * Math.PI / 2) {
+    let cpangle = angle_to_origin + Math.PI / 2
+    let cpmag = 0.5 * Math.sqrt((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2))
+    return [x1 + cpmag * Math.cos(cpangle), y1 + cpmag * Math.sin(cpangle)]
+  } else {
+    return [x1, y1]
+  }
+}
+
 function Route({
   route_name,
   kind,
   segments,
-}, stops) {
+}, stops, origin) {
   let prevx, prevy
   let points = []
   for (let {
@@ -70,9 +90,10 @@ function Route({
   for (var i=0; i< points.length; i++) {
     let {x, y, cpbx, cpby, move} = points[i] // TODO support move
     if (i === 0) { // must be move
+      let [cpbx, cpby] = initialControlPoint([x, y], [points[1].x, points[1].y], origin)
       path += `M ${x} ${y} `
-      points[i+1].cpbx = x
-      points[i+1].cpby = y
+      points[i+1].cpbx = cpbx
+      points[i+1].cpby = cpby
     } else if (i < points.length - 1) {
       let [[cpex, cpey], [cpbx2, cpby2]] = controlPoints([points[i-1].x, points[i-1].y], [x, y], [points[i+1].x, points[i+1].y])
       points[i+1].cpbx = cpbx2
@@ -121,6 +142,6 @@ export default function Radar({data}) {
     <circle class="grid" r={(30 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />
     {data.stops.map(Stop)}
     {data.connections.reverse().map(conn => Connection(conn, data.stops))}
-    {data.trips.map(trip => Route(trip, data.stops))}
+    {data.trips.map(trip => Route(trip, data.stops, [500, 500]))}
   </svg>
 }

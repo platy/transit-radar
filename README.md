@@ -69,7 +69,7 @@
 [x] Have the initial wait go to the left to not run over the station name
 [x] Draw connections in reverse order to have the first / shorter ones on top
 [x] Connect with curves
-[] Trip start control point to reduce curve into the origin
+[x] Trip start control point to reduce curve into the origin
 [] Heuristic choice of start bearing to reduce curve into the origin
 -
 [] Add key with emphasis highlighting
@@ -155,6 +155,11 @@ Deploy backend change:
 ssh root@s4.njk.onl /app/transit-radar/service.sh stop
 scp target/x86_64-unknown-linux-musl/release/transit-radar root@s4.njk.onl:/app/transit-radar/ 
 ssh root@s4.njk.onl /app/transit-radar/service.sh start
+```
+
+Deploy frontend change:
+```
+scp -r frontend/build root@s4.njk.onl:/app/transit-radar/ 
 ```
 
 Deploy everything:

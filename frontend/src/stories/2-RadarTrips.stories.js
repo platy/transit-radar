@@ -1,6 +1,8 @@
 import React from 'react';
 import Radar from '../Radar';
 import voltaData from './volta-data.json'
+import ostbahnhofData from './ostbahnhof-data.json'
+import alexData from './alex-data.json'
 
 export default {
   title: 'Radar Trips',
@@ -11,3 +13,5 @@ const schönefeldData = {"stops":[{"bearing":0,"name":"S Flughafen Berlin-Schön
 
 export const Schoenefeld = () => <Radar data={schönefeldData} />;
 export const Voltastraße = () => <Radar data={voltaData} />;
+export const Ostbahnhof = () => <Radar data={ostbahnhofData} />;
+export const Alexanderplatz = () => <Radar data={alexData} />;
