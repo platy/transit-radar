@@ -9,7 +9,7 @@ function App() {
   const [suggestions, setSuggestions] = useState([]);
   const [query, setQuery] = useState('');
   const [station, setStation] = useState(null);
-  const [radarData, setRadarData] = useState({});
+  const [radarData, setRadarData] = useState(null);
 
   useEffect(() => {
     let ignore = false;
@@ -33,8 +33,7 @@ function App() {
       if (!ignore && station) {
         const result = await fetch(queryBaseUrl + '/from/' + station);
         const json = await result.json();
-        setRadarData(json);
-        Radar(json)
+        setRadarData(json)
       }
     }
 
@@ -63,6 +62,7 @@ function App() {
         using SBahn or UBahn from the selected station, it currently assumes you are departing 
         on a Friday at 19:00 and uses VBB's published timetables at 24/03/2020.
       </p>
+      <Radar data={radarData} />
     </>
   );
 }

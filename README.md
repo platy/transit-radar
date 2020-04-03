@@ -27,15 +27,18 @@
 [x] Bug: failing to transfer to U2 from Alex bhf or from hauptbahnhof tief to upstairs
 [x] Error: to go northbound on S2 it's currently suggesting going south to Humbolthain and then changing to north - i guess its not any slower than waiting for that train at humbolthain, need to optimize for less changes
 [x] S85 trip is disjointed on earlier stops while it is slow between arrival times and departure times, as these are slow, it should just use departure times
-[] Eberswalderstrasse u2 southbound from schönhauser allee arrives 30 seconds after the northbound from senefelderplatz, as the transfer takes 3 mins between the platforms they are both the earliest arrivals at their respective stations. We only want to emit the earliest arrival at a station, but for the search we need the earliest arrival at each stop
+[x] Eberswalderstrasse u2 southbound from schönhauser allee arrives 30 seconds after the northbound from senefelderplatz, as the transfer takes 3 mins between the platforms they are both the earliest arrivals at their respective stations. We only want to emit the earliest arrival at a station, but for the search we need the earliest arrival at each stop
+[] Filter out transfers to stations with no trips
 [] Time selection
 [] Day/time filter in search to enable use of multi day cache
 [] Day selection
-[] Build svg in backend
+-
 [] Handle the D_ stopids in the gtfs data
 [] Reload GTFS data each day
+-
 [] Add text description to svg
-[] CLI tool to lookup departures for debugging eg. below
+[] Build svg in backend
+[] CLI tool to lookup departures for debugging
 -
 [] Find stops within a distance of a point sorted by distance
 [] Start from spot between stations
@@ -46,7 +49,7 @@
 [x] Modularise the stoptime reader into a struct by understanding the lifetimes (had to use RefCell)
 [x] serialise the data so that i can have faster iteration
 [x] Switch to id_arena - it will serialise easier and I won't need all these borrows complicating things
-[] Build and deploy scripts
+[x] Build and deploy scripts
 [] Macro for compile time Time literals
 [] Organise all the parsing and data lookups
 [] use debugging
@@ -65,10 +68,11 @@
 [x] show wait times / transfers together and distinct from travel
 [x] Have the initial wait go to the left to not run over the station name
 [x] Draw connections in reverse order to have the first / shorter ones on top
+[x] Connect with curves
+[] Trip start control point to reduce curve into the origin
+[] Heuristic choice of start bearing to reduce curve into the origin
 -
 [] Add key with emphasis highlighting
-[] Connect with curves
-[] Heuristic choice of start bearing to reduce curve into the origin
 [] Show / hide station names / show on hover?
 [] get geo position for search
 
@@ -146,7 +150,14 @@ cd frontend
 npm run build
 ```
 
-Copy to server:
+Deploy backend change:
+```
+ssh root@s4.njk.onl /app/transit-radar/service.sh stop
+scp target/x86_64-unknown-linux-musl/release/transit-radar root@s4.njk.onl:/app/transit-radar/ 
+ssh root@s4.njk.onl /app/transit-radar/service.sh start
+```
+
+Deploy everything:
 ```
 scp -r target/x86_64-unknown-linux-musl/release/transit-radar gtfs/cache-fri-19:00:00-19:30:00 frontend/build run.sh service.sh root@s4.njk.onl:/app/transit-radar/ 
 ```
