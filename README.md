@@ -28,9 +28,9 @@
 [x] Error: to go northbound on S2 it's currently suggesting going south to Humbolthain and then changing to north - i guess its not any slower than waiting for that train at humbolthain, need to optimize for less changes
 [x] S85 trip is disjointed on earlier stops while it is slow between arrival times and departure times, as these are slow, it should just use departure times
 [x] Eberswalderstrasse u2 southbound from schönhauser allee arrives 30 seconds after the northbound from senefelderplatz, as the transfer takes 3 mins between the platforms they are both the earliest arrivals at their respective stations. We only want to emit the earliest arrival at a station, but for the search we need the earliest arrival at each stop
-[] Filter out transfers to stations with no trips
-[] Time selection
-[] Day/time filter in search to enable use of multi day cache
+[x] Filter out transfers to stations with no trips
+[x] Time selection
+[] Day filter in search to enable use of multi day cache
 [] Day selection
 -
 [] Handle the D_ stopids in the gtfs data
@@ -43,6 +43,8 @@
 [] Find stops within a distance of a point sorted by distance
 [] Start from spot between stations
 [] Build a graph of average times
+
+# Animation 
 
 ## Code 
 [x]StopId should not be String, maybe &str / str?
@@ -70,7 +72,7 @@
 [x] Draw connections in reverse order to have the first / shorter ones on top
 [x] Connect with curves
 [x] Trip start control point to reduce curve into the origin
-[] Heuristic choice of start bearing to reduce curve into the origin
+[x] Start bearing toward next stop to avoid curve into the origin
 -
 [] Add key with emphasis highlighting
 [] Show / hide station names / show on hover?

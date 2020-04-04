@@ -157,12 +157,19 @@ export default function Radar({data}) {
     delete origin.bearing
   }
 
-  return <svg xmlns="http://www.w3.org/2000/svg" width={1200} height={1000}>
-    <circle class="grid" r={(10 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />
-    <circle class="grid" r={(20 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />
-    <circle class="grid" r={(30 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />
-    {data.stops.map(Stop)}
-    {data.connections.reverse().map(conn => Connection(conn, data.stops))}
-    {data.trips.map(trip => Route(trip, data.stops, [500, 500]))}
-  </svg>
+  return <>
+    <p>
+      The transit radar shows all the destinations you could reach within { data.duration_minutes }mins
+      using SBahn or UBahn from the selected station, departing 
+      on a { data.departure_day } at { data.departure_time } and uses VBB's published timetables at 24/03/2020.
+    </p>
+    <svg xmlns="http://www.w3.org/2000/svg" width={1200} height={1000}>
+      <circle class="grid" r={(10 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />
+      <circle class="grid" r={(20 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />
+      <circle class="grid" r={(30 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />
+      {data.stops.map(Stop)}
+      {data.connections.reverse().map(conn => Connection(conn, data.stops))}
+      {data.trips.map(trip => Route(trip, data.stops, [500, 500]))}
+    </svg>
+  </>
 }

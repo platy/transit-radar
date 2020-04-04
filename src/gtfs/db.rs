@@ -167,7 +167,7 @@ pub struct GTFSData {
     stop_departures: HashMap<StopId, Vec<ArenaSliceIndex<StopTime>>>,
     transfers: HashMap<StopId, Vec<Transfer>>,
     stops_by_id: HashMap<StopId, Stop>,
-    trips_by_id: HashMap<TripId, Trip>,
+    pub trips_by_id: HashMap<TripId, Trip>,
     routes_by_id: HashMap<RouteId, Route>,
     fake_stop: Stop,
 }

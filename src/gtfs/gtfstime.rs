@@ -16,6 +16,16 @@ impl Duration {
       seconds: seconds,
     }
   }
+
+  pub fn minutes(minutes: i32) -> Duration {
+    Duration {
+      seconds: minutes * 60,
+    }
+  }
+
+  pub fn mins(&self) -> i32 {
+    self.seconds / 60
+  }
 }
 
 impl AddAssign<Duration> for Duration {
@@ -66,6 +76,14 @@ pub struct Time {
 }
 
 impl Time {
+  /// # Panics
+  /// On out of range input
+  pub fn from_hms(hours: u32, minutes: u32, seconds: u32) -> Time {
+    Time {
+      seconds_since_midnight: (hours * 60 + minutes) * 60 + seconds,
+    }
+  }
+
   pub fn parse(string: &str) -> Result<Time, Box<dyn Error>> {
     let parts: Vec<&str> = string.splitn(3, ":").collect();
     if parts.len() != 3 || parts[0].len() == 0 || parts[0].len() > 2 || parts[1].len() != 2 || parts[2].len() != 2 {
@@ -209,6 +227,10 @@ impl Period {
 
   pub fn start(&self) -> Time {
     self.start
+  }
+
+  pub fn duration(&self) -> Duration {
+    self.end - self.start
   }
 }
 

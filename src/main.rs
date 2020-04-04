@@ -6,11 +6,12 @@ use std::sync::Arc;
 use db::{GTFSSource, DayFilter};
 use warp::Filter;
 use urlencoding::decode;
+use chrono::prelude::*;
 
 mod arena;
 mod gtfs;
 use gtfs::*;
-use gtfs::gtfstime::{Time, Period};
+use gtfs::gtfstime::{Time, Period, Duration};
 
 mod journey_graph;
 
@@ -147,6 +148,9 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, period: Period
         stops: fe_stops,
         connections: fe_conns,
         trips: fe_trips.into_iter().map(|(_k, v)| v).collect(),
+        departure_day: "Saturday",
+        departure_time: period.start(),
+        duration_minutes: period.duration().mins(),
     }
 }
 
@@ -157,6 +161,9 @@ struct FEData<'s> {
     stops: Vec<FEStop>,
     connections: Vec<FEConnection<'s>>,
     trips: Vec<FERoute<'s>>,
+    departure_day: &'static str,
+    departure_time: Time,
+    duration_minutes: i32,
 }
 
 #[derive(Serialize)]
@@ -219,15 +226,14 @@ impl FEConnectionType {
     }
 }
 
-
-
 fn with_data<D: Sync + Send>(db: Arc<D>) -> impl Filter<Extract = (Arc<D>,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || db.clone())
 }
 
-
 async fn json_tree_handler(name: String, data: Arc<db::GTFSData>) -> Result<impl warp::Reply, warp::Rejection> {
-    let period = Period::between(Time::parse("19:00:00").unwrap(), Time::parse("19:30:00").unwrap());
+    let date_time = chrono::Utc::now().with_timezone(&chrono_tz::Europe::Berlin);
+    let now = Time::from_hms(date_time.hour(), date_time.minute(), date_time.second());
+    let period = Period::between(now, now + Duration::minutes(30));
 
     match decode(&name) {
         Ok(name) => 
@@ -301,8 +307,8 @@ async fn main() {
 
     let data = Arc::new(load_data(
         &gtfs_dir,
-        DayFilter::Friday, 
-        Some(Period::between(Time::parse("19:00:00").unwrap(), Time::parse("19:30:00").unwrap())),
+        DayFilter::Saturday, 
+        None,
     ).unwrap());
     let station_name_index = Arc::new(data.build_station_word_index());
 

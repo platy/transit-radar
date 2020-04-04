@@ -11,6 +11,12 @@ function App() {
   const [station, setStation] = useState(null);
   const [radarData, setRadarData] = useState(null);
 
+  async function fetchRadarData() {
+    const result = await fetch(queryBaseUrl + '/from/' + station);
+    const json = await result.json();
+    setRadarData(json)
+  }
+
   useEffect(() => {
     let ignore = false;
 
@@ -31,9 +37,7 @@ function App() {
 
     async function fetchData() {
       if (!ignore && station) {
-        const result = await fetch(queryBaseUrl + '/from/' + station);
-        const json = await result.json();
-        setRadarData(json)
+        fetchRadarData()
       }
     }
 
@@ -57,11 +61,7 @@ function App() {
         onSelect={(val) => setStation(val)}
       />
       <h2>{station}</h2>
-      <p>
-        The transit radar shows all the destinations you could reach within 30mins
-        using SBahn or UBahn from the selected station, it currently assumes you are departing 
-        on a Friday at 19:00 and uses VBB's published timetables at 24/03/2020.
-      </p>
+      <input type="button" onClick={() => fetchRadarData()} value="Reload" />
       <Radar data={radarData} />
     </>
   );
