@@ -37,7 +37,7 @@ fn load_data(gtfs_dir: &Path, day_filter: DayFilter, time_period: Option<Period>
 fn lookup<'r>(data: &'r db::GTFSData, station_name: String, period: Period) -> Result<FEData<'r>, db::SearchError> {
     let station = data.get_station_by_name(&station_name)?;
     let output = produce_tree_json(&data, station.stop_id, period);
-    println!("Search for '{}' produced {} stations and {} connections", station.stop_name, output.stops.len(), output.connections.len());
+    println!("Search for '{}' produced {} stations, {} trips and {} connections", station.stop_name, output.stops.len(), output.trips.len(), output.connections.len());
     Ok(output)
 }
 

@@ -157,7 +157,7 @@ export default function Radar({data}) {
     delete origin.bearing
   }
 
-  return <svg xmlns="http://www.w3.org/2000/svg" width={1100} height={1000}>
+  return <svg xmlns="http://www.w3.org/2000/svg" width={1200} height={1000}>
     <circle class="grid" r={(10 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />
     <circle class="grid" r={(20 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />
     <circle class="grid" r={(30 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />

@@ -296,7 +296,7 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
     self.queue.extend(to_add);
   }
 
-  fn enqueue_connections_and_trips(&mut self, item: &QueueItem<'r>) {
+  fn enqueue_connections_and_trips(&mut self, item: &QueueItem<'r>) -> usize {
     let mut to_add = vec![];
     for stops_range in self.trips_from(item.to_stop.stop_id, self.period.with_start(item.arrival_time)) {
       let stops = self.data.stops(stops_range.clone());
@@ -330,7 +330,9 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
         }
       }
     }
+    let enqueued_count = to_add.len();
     self.queue.extend(to_add);
+    enqueued_count
   }
 
   fn earliest_arrival_at(&self, stop_id: StopId) -> Option<Time> {
@@ -383,9 +385,9 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
           panic!("Unexpected");
         },
         QueueItemVariant::Transfer => {
-          self.enqueue_connections_and_trips(&item);
-          // we don't emit transfers unless they are to a new station
-          if item.from_stop.parent_station == item.to_stop.parent_station {
+          let enqueued_count = self.enqueue_connections_and_trips(&item);
+          // we don't emit transfers unless they are to a new station which accesses other trips
+          if enqueued_count == 0 || item.from_stop.parent_station == item.to_stop.parent_station {
             vec![]
           } else {
             vec![item]
