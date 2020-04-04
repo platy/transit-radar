@@ -22,6 +22,7 @@ function stopCoords({
   seconds,
 }) {
   let h = seconds / maxSeconds
+  if (bearing === undefined) return [xmax/2, ymax/2]
   let [x, y] = [h * Math.cos(bearing * Math.PI / 180), h * Math.sin(bearing * Math.PI / 180)]
   return [(x+1)*xmax/2, (-y+1)*ymax/2]
 }
@@ -71,13 +72,30 @@ function Route({
 }, stops, origin) {
   let prevx, prevy
   let points = []
+  let originConnection = <></>
+  if (stops[segments[0].from].bearing === undefined) {
+    let {
+      from,
+      to,
+      from_seconds,
+    } = segments[0]
+    let connection = {
+      from,
+      to,
+      from_seconds: 0,
+      to_seconds: from_seconds,
+      route_name,
+    }
+    originConnection = Connection(connection, stops)
+  }
+
   for (let {
     from,
     to,
     from_seconds,
     to_seconds,
   } of segments) {
-    let [x1, y1] = stopCoords({ bearing: stops[from].bearing, seconds: from_seconds })
+    let [x1, y1] = stopCoords({ bearing: stops[from].bearing || stops[to].bearing, seconds: from_seconds })
     let [x2, y2] = stopCoords({ bearing: stops[to].bearing, seconds: to_seconds })
     if (x1 !== prevx || y1 !== prevy) {
       points.push({x: x1, y: y1, move: true})
@@ -88,7 +106,7 @@ function Route({
   }
   let path = ''
   for (var i=0; i< points.length; i++) {
-    let {x, y, cpbx, cpby, move} = points[i] // TODO support move
+    let {x, y, cpbx, cpby, move} = points[i]
     if (i === 0) { // must be move
       let [cpbx, cpby] = initialControlPoint([x, y], [points[1].x, points[1].y], origin)
       path += `M ${x} ${y} `
@@ -107,7 +125,10 @@ function Route({
       path += `C ${cpbx} ${cpby}, ${x} ${y}, ${x} ${y}`
     }
   }
-  return <path d={path} class={route_name + ' ' + kind} />
+  return <>
+      {originConnection}
+      <path d={path} class={route_name + ' ' + kind} />
+    </>
 }
 
 function Connection({
@@ -132,8 +153,8 @@ export default function Radar({data}) {
   if (!data) return <p>No data</p>
   // direct the origin stop to the left instead of the right to avoid running over its label
   let origin = data.stops[0]
-  if (origin.bearing === 0 && origin.seconds === 0) {
-    origin.bearing = 180
+  if (origin.seconds === 0) {
+    delete origin.bearing
   }
 
   return <svg xmlns="http://www.w3.org/2000/svg" width={1100} height={1000}>
