@@ -127,7 +127,7 @@ function Route({
   }
   return <>
       {originConnection}
-      <path d={path} class={route_name + ' ' + kind} />
+      <path d={path} className={route_name + ' ' + kind} />
     </>
 }
 
@@ -146,16 +146,18 @@ function Connection({
   } else {
     className = 'Transfer'
   }
-  return <line x1={x1} y1={y1} x2={x2} y2={y2} class={className} />
+  return <line x1={x1} y1={y1} x2={x2} y2={y2} className={className} />
 }
 
-export default function Radar({data}) {
+export default function Radar({data, showStations }) {
   if (!data) return <p>No data</p>
   // direct the origin stop to the left instead of the right to avoid running over its label
   let origin = data.stops[0]
   if (origin.seconds === 0) {
     delete origin.bearing
   }
+  let stations = <></>
+  if (showStations) stations = data.stops.map(Stop)
 
   return <>
     <p>
@@ -164,10 +166,10 @@ export default function Radar({data}) {
       on a { data.departure_day } at { data.departure_time } and uses VBB's published timetables at 24/03/2020.
     </p>
     <svg xmlns="http://www.w3.org/2000/svg" width={1200} height={1000}>
-      <circle class="grid" r={(10 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />
-      <circle class="grid" r={(20 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />
-      <circle class="grid" r={(30 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />
-      {data.stops.map(Stop)}
+      <circle className="grid" r={(10 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />
+      <circle className="grid" r={(20 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />
+      <circle className="grid" r={(30 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />
+      {stations}
       {data.connections.reverse().map(conn => Connection(conn, data.stops))}
       {data.trips.map(trip => Route(trip, data.stops, [500, 500]))}
     </svg>

@@ -10,6 +10,8 @@ function App() {
   const [query, setQuery] = useState('');
   const [station, setStation] = useState(null);
   const [radarData, setRadarData] = useState(null);
+  const [showStations, setShowStations] = useState(true);
+  const [animate, setAnimate] = useState(true);
 
   async function fetchRadarData() {
     const result = await fetch(queryBaseUrl + '/from/' + station);
@@ -45,6 +47,18 @@ function App() {
     return () => { ignore = true; }
   }, [station]);
 
+  useEffect(() => {
+    let timeout
+    let ignore = false
+
+    async function tick() {
+      await fetchRadarData()
+      if (!ignore) timeout = setTimeout(tick, 1000)
+    }
+    if (animate && station) tick()
+    return () => { clearTimeout(timeout); ignore = true }
+  }, [animate, station]);
+
   return (
     <>
       <span>Search a station in Berlin :</span>
@@ -61,8 +75,18 @@ function App() {
         onSelect={(val) => setStation(val)}
       />
       <h2>{station}</h2>
+      <Radar data={radarData} showStations={showStations} />
       <input type="button" onClick={() => fetchRadarData()} value="Reload" />
-      <Radar data={radarData} />
+      <input type="checkbox" 
+        onChange={(e) => setShowStations(e.target.checked)}
+        checked={showStations} 
+        name="showStations" />
+      <label for="showStations">Show Stations</label>
+      <input type="checkbox" 
+        onChange={(e) => setAnimate(e.target.checked)}
+        checked={animate} 
+        name="animate" />
+      <label for="animate">Animate</label>
     </>
   );
 }
