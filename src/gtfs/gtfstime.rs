@@ -152,19 +152,21 @@ impl std::str::FromStr for Time {
   type Err = ParseError;
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
+    let s = s.as_bytes();
     let (hh, mm, ss) = 
       if s.len() == 8 { 
-        if s[2..3] != *":" || s[5..6] != *":" { return Err(ParseError::InvalidFormat) }
+        if s[2] != b':' || s[5] != b':' { return Err(ParseError::InvalidFormat) }
         (&s[0..2], &s[3..5], &s[6..8])
       } else if s.len() == 7 { 
-        if s[1..2] != *":" || s[4..5] != *":" { return Err(ParseError::InvalidFormat) }
+        if s[1] != b':' || s[4] != b':' { return Err(ParseError::InvalidFormat) }
         (&s[0..1], &s[2..4], &s[5..7])
       } else {
         return Err(ParseError::InvalidFormat)
       };
-    let hours: u32 = hh.parse()?;
-    let minutes: u32 = mm.parse()?;
-    let seconds: u32 = ss.parse()?;
+    use std::str::from_utf8;
+    let hours: u32 = from_utf8(hh)?.parse()?;
+    let minutes: u32 = from_utf8(mm)?.parse()?;
+    let seconds: u32 = from_utf8(ss)?.parse()?;
     if seconds > 59 || minutes > 59 {
       Err(ParseError::TooManySecondsOrMinutes)?;
     }
@@ -220,6 +222,12 @@ pub enum ParseError {
 impl From<std::num::ParseIntError> for ParseError {
   fn from(err: std::num::ParseIntError) -> ParseError {
     ParseError::ParseIntError(err)
+  }
+}
+
+impl std::convert::From<std::str::Utf8Error> for ParseError {
+  fn from(err: std::str::Utf8Error) -> ParseError {
+    ParseError::InvalidFormat
   }
 }
 
