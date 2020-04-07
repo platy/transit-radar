@@ -1,4 +1,5 @@
 use std::cmp::Ord;
+use std::fmt;
 use serde::{Deserialize, Serialize};
 
 pub mod gtfstime;
@@ -38,6 +39,43 @@ pub struct Calendar { // "service_id","monday","tuesday","wednesday","thursday",
     pub sunday: u8,
     // start_date: String, // date
     // end_date: String, // date
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Serialize)]
+pub enum Day {
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Saturday,
+    Sunday,
+}
+
+impl Calendar {
+    fn days(&self) -> Vec<Day> {
+        let mut days = vec![];
+        for (day, val) in [Day::Monday, Day::Tuesday].iter().zip([self.monday, self.tuesday].iter()) {
+            if *val > 0 {
+                days.push(*day);
+            }
+        }
+        days
+    }
+}
+
+impl std::fmt::Display for Day {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Day::Monday => "mon",
+            Day::Tuesday => "tue",
+            Day::Wednesday => "wed",
+            Day::Thursday => "thu",
+            Day::Friday => "fri",
+            Day::Saturday => "sat",
+            Day::Sunday => "sun",
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq)]

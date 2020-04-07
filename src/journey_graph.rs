@@ -9,6 +9,7 @@ use crate::arena::ArenaSliceIndex;
 
 pub struct JourneyGraphPlotter<'r: 's, 's> {
   period: Period, // Search of journeys is within this period
+  services: HashSet<ServiceId>, // these services are searched
   queue: BinaryHeap<QueueItem<'r>>,
   /// items which were skipped earlier as it didn't seem they would be part of any minimum span but now are, these have already been processed and ordered and are iterated before any more processing from the queue takes place
   catch_up: VecDeque<Item<'r>>, 
@@ -24,9 +25,10 @@ pub struct JourneyGraphPlotter<'r: 's, 's> {
 }
 
 impl <'r: 's, 's> JourneyGraphPlotter<'r, 's> {
-  pub fn new(period: Period, data: &'r GTFSData) -> JourneyGraphPlotter<'r, 's> {
+  pub fn new(day: Day, period: Period, data: &'r GTFSData) -> JourneyGraphPlotter<'r, 's> {
     JourneyGraphPlotter {
       period: period,
+      services: data.services_of_day(day).clone(),
       queue: BinaryHeap::new(),
       catch_up: VecDeque::new(),
       enqueued_trips: HashSet::new(),
@@ -419,7 +421,10 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
   /// finds all trips leaving a stop within a time period, includes the stop time for that stop and all following stops
   fn trips_from(&self, stop: StopId, period: Period) -> impl Iterator<Item = &ArenaSliceIndex<StopTime>> {
     let departures: Option<&Vec<ArenaSliceIndex<StopTime>>> = self.trips_from_stops.get(&stop);
-    departures.map(|vec| vec.iter()).unwrap_or([].iter()).filter(move |stop_range: &&ArenaSliceIndex<StopTime>| period.contains(self.data.stop(stop_range.iter().next().unwrap()).departure_time))
+    departures.map(|vec| vec.iter()).unwrap_or([].iter()).filter(move |stop_range: &&ArenaSliceIndex<StopTime>| {
+      let stop_time = self.data.stop(stop_range.iter().next().unwrap());
+      period.contains(stop_time.departure_time) && self.services.contains(&self.data.trips_by_id.get(&stop_time.trip_id).unwrap().service_id)
+    })
   }
 
   /// finds all connections from a stop

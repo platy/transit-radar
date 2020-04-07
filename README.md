@@ -30,21 +30,26 @@
 [x] Eberswalderstrasse u2 southbound from schönhauser allee arrives 30 seconds after the northbound from senefelderplatz, as the transfer takes 3 mins between the platforms they are both the earliest arrivals at their respective stations. We only want to emit the earliest arrival at a station, but for the search we need the earliest arrival at each stop
 [x] Filter out transfers to stations with no trips
 [x] Time selection
-[] Day filter in search to enable use of multi day cache
-[] Day selection
--
+[x] Day filter in search to enable use of multi day cache
+[x] Day selection
 [] Handle the D_ stopids in the gtfs data
 [] Reload GTFS data each day
+[] Tool to filter GTFS data for development so that cache is not needed
+[] Remove the cache
 -
-[] Add text description to svg
-[] Build svg in backend
 [] CLI tool to lookup departures for debugging
 -
 [] Find stops within a distance of a point sorted by distance
 [] Start from spot between stations
 [] Build a graph of average times
 
-# Animation 
+# Performance
+
+[x] Improve Time deserialisation, no parsing to string or splitting ~ 25%
+[x] Remove duplication of trips read ~ 4%
+[x] Parse Time as byte array as checking the char boundaries is slow and unnecessary maybe 6%
+[] Parallelize stoptime deserialisation and reading, reading is 30% and deserialisation is 50%
+[] Buffer reads from the cache and writes to it
 
 ## Code 
 [x]StopId should not be String, maybe &str / str?
@@ -73,42 +78,21 @@
 [x] Connect with curves
 [x] Trip start control point to reduce curve into the origin
 [x] Start bearing toward next stop to avoid curve into the origin
--
+[] Add text description to svg
+[] Save button
 [] Add key with emphasis highlighting
-[] Show / hide station names / show on hover?
-[] get geo position for search
+[] Show station names on hover
 
-## Stretch
+# Both
 
-[] Choose start point
-[] Find start point with GPS
-[] Choose which lines to include
-[] Offer data update when available
-[] Cache all needed data offline
-
-# Algorithm & Data structure
-
-Pre steps involve loading filtered data into maps and vecs for fast lookup
-
-prioritized queue sorted in order of arrival time containing:
-* stop times (representing being on a particular trip at a particular station at a particular time)
-* connections ( making a connection between stops or trips in a particular amount of time)
-
-(multi)map of stop ids to their nodes in the graph ordered by arrival time
-
-graph of possible journeys
-
-For each element taken from the queue:
-if it is a stop time: If the arrival for that stop is not the fastest, nothing to do, otherwise:
-1. lookup connections for the arrival stop and add to the queue if they are within the time limit
-2. add entry for stop to graph and into/replace stop map
-if it is a connection: If the arrival for that stop is not the fastest, nothing to do, otherwise:
-1. lookup stoptimes departing from the arrival stop in a reasonable time period and add their remaining trips to the queue
-2. add entry for stop to graph and into/replace stop map
-
-Edge cases:
-* if stop arrivals are very similar (within 1 minute) we would want to merge them together rather than discarding the slower one - so maybe we don't include just the fastest node in the stops map but maybe the sorted collection of stop arrivals so that the view layer can make these decisions
-
+[] Filters for buses, trams, etc
+[] Shareable Uris
+[] Start from coords
+[] Switch to times from seconds
+[] Smooth animation
+  [] hack - how long is first departure from origin - load that much extra data and then just rerender until that departure and then reload data
+  [] hack+ - on reload do a complete search in the backend but just send a diff. We may add some new stations and change the earliest arrival time at some other stations. Some trips are removed and added, and some stops on trips which were not shown will be shown. Calculate placement of transfers in frontend
+  [] lower the backend calculations by re searching over the existing tree rather than from scratch after a missed departure. This will massively complicate the algorithm and structure and i can't really justify it now.
 
 # Intermediate data format
 

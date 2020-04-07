@@ -25,6 +25,7 @@ fn load_data(gtfs_dir: &Path, day_filter: DayFilter, time_period: Option<Period>
         data = data2
     } else {
         data = gtfs::db::GTFSData::new();
+        data.load_calendar(source)?;
         data.load_transfers_of_stop(source)?;
         data.load_stops_by_id(source)?;
         data.load_trips_by_id(source, day_filter)?;
@@ -35,15 +36,15 @@ fn load_data(gtfs_dir: &Path, day_filter: DayFilter, time_period: Option<Period>
     Ok(data)
 }
 
-fn lookup<'r>(data: &'r db::GTFSData, station_name: String, period: Period) -> Result<FEData<'r>, db::SearchError> {
+fn lookup<'r>(data: &'r db::GTFSData, station_name: String, day: Day, period: Period) -> Result<FEData<'r>, db::SearchError> {
     let station = data.get_station_by_name(&station_name)?;
-    let output = produce_tree_json(&data, station.stop_id, period);
+    let output = produce_tree_json(&data, station.stop_id, day, period);
     println!("Search for '{}' produced {} stations, {} trips and {} connections", station.stop_name, output.stops.len(), output.trips.len(), output.connections.len());
     Ok(output)
 }
 
-fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, period: Period) -> FEData<'r> {
-    let mut plotter = journey_graph::JourneyGraphPlotter::new(period, data);
+fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, day: Day, period: Period) -> FEData<'r> {
+    let mut plotter = journey_graph::JourneyGraphPlotter::new(day, period, data);
     let origin = data.get_stop(&station).unwrap();
     plotter.add_origin_station(origin);
     plotter.add_route_types(vec![
@@ -148,7 +149,7 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, period: Period
         stops: fe_stops,
         connections: fe_conns,
         trips: fe_trips.into_iter().map(|(_k, v)| v).collect(),
-        departure_day: "Saturday",
+        departure_day: day,
         departure_time: period.start(),
         duration_minutes: period.duration().mins(),
     }
@@ -161,7 +162,7 @@ struct FEData<'s> {
     stops: Vec<FEStop>,
     connections: Vec<FEConnection<'s>>,
     trips: Vec<FERoute<'s>>,
-    departure_day: &'static str,
+    departure_day: Day,
     departure_time: Time,
     duration_minutes: i32,
 }
@@ -233,11 +234,20 @@ fn with_data<D: Sync + Send>(db: Arc<D>) -> impl Filter<Extract = (Arc<D>,), Err
 async fn json_tree_handler(name: String, data: Arc<db::GTFSData>) -> Result<impl warp::Reply, warp::Rejection> {
     let date_time = chrono::Utc::now().with_timezone(&chrono_tz::Europe::Berlin);
     let now = Time::from_hms(date_time.hour(), date_time.minute(), date_time.second());
+    let day = match date_time.weekday() {
+        Weekday::Mon => Day::Monday,
+        Weekday::Tue => Day::Tuesday,
+        Weekday::Wed => Day::Wednesday,
+        Weekday::Thu => Day::Thursday,
+        Weekday::Fri => Day::Friday,
+        Weekday::Sat => Day::Saturday,
+        Weekday::Sun => Day::Sunday,
+    };
     let period = Period::between(now, now + Duration::minutes(30));
 
     match decode(&name) {
         Ok(name) => 
-            match lookup(&data, name, period) {
+            match lookup(&data, name, day, period) {
                 Ok(result) => Ok(warp::reply::json(&result)),
                 Err(error) => Err(warp::reject::custom(error)),
             },
@@ -307,7 +317,7 @@ async fn main() {
 
     let data = Arc::new(load_data(
         &gtfs_dir,
-        DayFilter::Saturday, 
+        DayFilter::All, 
         None,
     ).unwrap());
     let station_name_index = Arc::new(data.build_station_word_index());

@@ -126,33 +126,17 @@ impl GTFSSource {
     Ok(())
   }
 
-  pub fn get_services(&self, day_filter: DayFilter) -> Result<HashSet<ServiceId>, Box<dyn Error>> {
-    let mut rdr = self.open_csv("calendar.txt")?;
-    let mut services = HashSet::new();
-    for result in rdr.deserialize() {
-        let record: Calendar = result?;
-        if match day_filter {
-            DayFilter::All => true,
-            DayFilter::Monday => record.monday > 0,
-            DayFilter::Tuesday => record.tuesday > 0,
-            DayFilter::Wednesday => record.wednesday > 0,
-            DayFilter::Thursday => record.thursday > 0,
-            DayFilter::Friday => record.friday > 0,
-            DayFilter::Saturday => record.saturday > 0,
-            DayFilter::Sunday => record.sunday > 0,
-        } { // should also filter the date range
-            services.insert(record.service_id);
-        }
-    }
-    return Ok(services)
+  pub fn get_calendar(&self) -> Result<impl Iterator<Item = Result<Calendar, csv::Error>>, csv::Error> {
+    let rdr = self.open_csv("calendar.txt")?;
+    Ok(rdr.into_deserialize())
   }
 
-  pub fn get_trips(&self, route_id: Option<RouteId>, service_ids: HashSet<ServiceId>, direction: Option<DirectionId>) -> Result<impl Iterator<Item = Result<Trip, csv::Error>>, csv::Error> {
+  pub fn get_trips(&self, route_id: Option<RouteId>, service_ids: Option<HashSet<ServiceId>>, direction: Option<DirectionId>) -> Result<impl Iterator<Item = Result<Trip, csv::Error>>, csv::Error> {
     let rdr = self.open_csv("trips.txt")?;
     let iter = rdr.into_deserialize().filter(move |result: &Result<Trip, csv::Error>| {
         if let Ok(trip) = result {
-            route_id.as_ref().map(|route_id| route_id == &trip.route_id).unwrap_or(true)
-                && service_ids.contains(&trip.service_id)
+            route_id.map(|route_id| route_id == trip.route_id).unwrap_or(true)
+                && service_ids.as_ref().map(|service_ids| service_ids.contains(&trip.service_id)).unwrap_or(true)
                 && direction.map(|direction| direction == trip.direction_id).unwrap_or(true)
         } else {
             false
@@ -167,6 +151,8 @@ pub struct GTFSData {
     stop_departures: HashMap<StopId, Vec<ArenaSliceIndex<StopTime>>>,
     transfers: HashMap<StopId, Vec<Transfer>>,
     stops_by_id: HashMap<StopId, Stop>,
+    stops_by_parent_id: HashMap<StopId, Vec<StopId>>,
+    services_by_day: HashMap<Day, HashSet<ServiceId>>,
     pub trips_by_id: HashMap<TripId, Trip>,
     routes_by_id: HashMap<RouteId, Route>,
     fake_stop: Stop,
@@ -220,14 +206,18 @@ impl<'de> Deserialize<'de> for GTFSData {
                 let routes_by_id: HashMap<_,_> = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
                 eprintln!("read {} of routes_by_id", routes_by_id.len());
 
+                let stops_by_parent_id = GTFSData::generate_stops_by_parent_id(&stops_by_id);
+
                 Ok(GTFSData {
                     stop_times_arena,
                     stop_departures,
                     transfers,
                     stops_by_id,
+                    stops_by_parent_id,
                     trips_by_id,
                     routes_by_id,
                     fake_stop: Stop::fake(),
+                    services_by_day: panic!("PANIC!"),
                 })
             }
         }
@@ -241,27 +231,15 @@ impl<'de> Deserialize<'de> for GTFSData {
 #[allow(dead_code)]
 pub enum DayFilter {
     All,
-    Monday,
-    Tuesday,
-    Wednesday,
-    Thursday,
-    Friday,
-    Saturday,
-    Sunday,
+    Single(Day),
 }
 
 impl std::fmt::Display for DayFilter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            DayFilter::All => "all",
-            DayFilter::Monday => "mon",
-            DayFilter::Tuesday => "tue",
-            DayFilter::Wednesday => "wed",
-            DayFilter::Thursday => "thu",
-            DayFilter::Friday => "fri",
-            DayFilter::Saturday => "sat",
-            DayFilter::Sunday => "sun",
-        })
+        match self {
+            DayFilter::All => f.write_str("all"),
+            DayFilter::Single(day) => day.fmt(f),
+        }
     }
 }
 
@@ -310,6 +288,8 @@ impl <'r> GTFSData {
             stop_departures: HashMap::new(),
             transfers: HashMap::new(),
             stops_by_id: HashMap::new(),
+            stops_by_parent_id: HashMap::new(),
+            services_by_day: HashMap::new(),
             trips_by_id: HashMap::new(),
             routes_by_id: HashMap::new(),
             fake_stop: Stop::fake(),
@@ -330,11 +310,26 @@ impl <'r> GTFSData {
             let stop: Stop = result?;
             self.stops_by_id.insert(stop.stop_id.clone(), stop);
         }
+        self.stops_by_parent_id = Self::generate_stops_by_parent_id(&self.stops_by_id);
+        Ok(())
+    }
+
+    pub fn load_calendar(&mut self, source: &GTFSSource) -> Result<(), Box<dyn Error>> {
+        for result in source.get_calendar()? {
+            let calendar: Calendar = result?;
+            for day in calendar.days() {
+                self.services_by_day.entry(day).or_default().insert(calendar.service_id);
+            }
+        }
         Ok(())
     }
 
     pub fn load_trips_by_id(&mut self, source: &GTFSSource, day_filter: DayFilter) -> Result<(), Box<dyn Error>> {
-        for result in source.get_trips(None, source.get_services(day_filter)?, None)? {
+        let services = match day_filter {
+            DayFilter::All => None,
+            DayFilter::Single(day) => Some(self.services_by_day.get(&day).unwrap().clone()),
+        };
+        for result in source.get_trips(None, services, None)? {
             let trip: Trip = result?;
             self.trips_by_id.insert(trip.trip_id.clone(), trip);
         }
@@ -384,6 +379,10 @@ impl <'r> GTFSData {
         }
     }
 
+    pub fn services_of_day(&self, day: Day) -> HashSet<ServiceId> {
+        self.services_by_day.get(&day).cloned().unwrap_or(HashSet::new())
+    }
+
     pub fn departure_lookup(&'r mut self, period: Option<Period>, source: &GTFSSource) -> Result<(), Box<dyn Error>> {
         let mut rdr = source.open_csv("stop_times.txt")?;
         let mut iter = SuperIter {
@@ -417,14 +416,18 @@ impl <'r> GTFSData {
         Ok(())
     }
 
-    pub fn stops_by_parent_id(&self, parent: &StopId) -> Vec<StopId> {
-        let mut stops = vec![];
-        for stop in self.stops_by_id.values() {
-            if Some(*parent) == stop.parent_station {
-                stops.push(stop.stop_id);
+    fn generate_stops_by_parent_id(stops_by_id: &HashMap<StopId, Stop>) -> HashMap<StopId, Vec<StopId>> {
+        let mut stops_by_parent_id: HashMap<StopId, Vec<StopId>> = HashMap::new();
+        for stop in stops_by_id.values() {
+            if let Some(parent) = stop.parent_station {
+                stops_by_parent_id.entry(parent).or_default().push(stop.stop_id);
             }
         }
-        stops
+        stops_by_parent_id
+    }
+
+    pub fn stops_by_parent_id(&self, parent: &StopId) -> Vec<StopId> {
+        self.stops_by_parent_id.get(parent).cloned().unwrap_or_default()
     }
 
     pub fn stops(&self, idx: ArenaSliceIndex<StopTime>) -> &[StopTime] {
