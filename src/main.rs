@@ -27,10 +27,10 @@ fn load_data(gtfs_dir: &Path, day_filter: DayFilter, time_period: Option<Period>
         data = gtfs::db::GTFSData::new();
         data.load_transfers_of_stop(source)?;
         data.load_stops_by_id(source)?;
-        data.load_trips_by_id(source)?;
+        data.load_trips_by_id(source, day_filter)?;
         data.load_routes_by_id(source)?;
-        data.departure_lookup(day_filter, time_period, &source)?;
-        source.write_cache(day_filter, time_period, &data)?;
+        data.departure_lookup(time_period, &source)?;
+        // source.write_cache(day_filter, time_period, &data)?;
     };
     Ok(data)
 }

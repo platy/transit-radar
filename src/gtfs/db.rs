@@ -39,29 +39,29 @@ struct SuperIter<'r, R: 'r + std::io::Read> {
 }
 impl <'r, R: 'r + std::io::Read> SuperIter<'r, R> {
     fn next<'s>(&'s mut self) -> Option<csv::Result<(TripId, Iter<'s, 'r, R>)>> {
-        // skip any reecords with the existing trip id
-        let mut next;
+        // skip any records with the existing trip id
         loop {
-            next = self.records.peek();
-            if self.trip_id == next.and_then(|result| result.as_ref().ok()).map(|stop_time| stop_time.trip_id) {
-                self.records.next(); // skip as its the old trip
-            } else {
-                break;
+            match self.records.peek() {
+                Some(Ok(stop_time)) => {
+                    if self.trip_id == Some(stop_time.trip_id) {
+                        self.records.next(); // skip as its the old trip
+                    } else {
+                        // Return a sub iterator, the internal next will be called next on that
+                        let trip_id = stop_time.trip_id;
+                        self.trip_id = Some(trip_id);
+                        return Some(Ok((stop_time.trip_id, Iter{records: &mut self.records, trip_id: trip_id})))
+                    }
+                },
+                // if next is an error, consume it
+                Some(Err(_error)) => {
+                    return Some(Err(self.records.next().unwrap().unwrap_err()))
+                },
+                None => return None,
             }
-        }
-        // next is now either a new trip, an error or none
-        if let Some(Ok(stop_time)) = next {
-            let trip_id = stop_time.trip_id;
-            self.trip_id = Some(trip_id);
-            Some(Ok((stop_time.trip_id, Iter{records: &mut self.records, trip_id: trip_id})))
-        } else if let Some(Err(_error)) = next {
-            // if next is an error, consume it
-            Some(Err(self.records.next().unwrap().unwrap_err()))
-        } else {
-            None
         }
     }
 }
+
 struct Iter<'s, 'r, R: 'r + std::io::Read> {
     records: &'s mut std::iter::Peekable<csv::DeserializeRecordsIter<'r, R, StopTime>>,
     trip_id: TripId,
@@ -127,38 +127,38 @@ impl GTFSSource {
   }
 
   pub fn get_services(&self, day_filter: DayFilter) -> Result<HashSet<ServiceId>, Box<dyn Error>> {
-      let mut rdr = self.open_csv("calendar.txt")?;
-      let mut services = HashSet::new();
-      for result in rdr.deserialize() {
-          let record: Calendar = result?;
-          if match day_filter {
-              DayFilter::All => true,
-              DayFilter::Monday => record.monday > 0,
-              DayFilter::Tuesday => record.tuesday > 0,
-              DayFilter::Wednesday => record.wednesday > 0,
-              DayFilter::Thursday => record.thursday > 0,
-              DayFilter::Friday => record.friday > 0,
-              DayFilter::Saturday => record.saturday > 0,
-              DayFilter::Sunday => record.sunday > 0,
-          } { // should also filter the date range
-              services.insert(record.service_id);
-          }
-      }
-      return Ok(services)
+    let mut rdr = self.open_csv("calendar.txt")?;
+    let mut services = HashSet::new();
+    for result in rdr.deserialize() {
+        let record: Calendar = result?;
+        if match day_filter {
+            DayFilter::All => true,
+            DayFilter::Monday => record.monday > 0,
+            DayFilter::Tuesday => record.tuesday > 0,
+            DayFilter::Wednesday => record.wednesday > 0,
+            DayFilter::Thursday => record.thursday > 0,
+            DayFilter::Friday => record.friday > 0,
+            DayFilter::Saturday => record.saturday > 0,
+            DayFilter::Sunday => record.sunday > 0,
+        } { // should also filter the date range
+            services.insert(record.service_id);
+        }
+    }
+    return Ok(services)
   }
 
-  pub fn get_trips(&self, route_id: Option<RouteId>, service_ids: HashSet<ServiceId>, direction: Option<DirectionId>) -> Result<Vec<Trip>, Box<dyn Error>> {
-      let mut rdr = self.open_csv("trips.txt")?;
-      let mut trips = Vec::new();
-      for result in rdr.deserialize() {
-          let record: Trip = result?;
-          if route_id.as_ref().map(|route_id| route_id == &record.route_id).unwrap_or(true)
-                  && service_ids.contains(&record.service_id)
-                  && direction.map(|direction| direction == record.direction_id).unwrap_or(true) {
-              trips.push(record);
-          }
-      }
-      Ok(trips)
+  pub fn get_trips(&self, route_id: Option<RouteId>, service_ids: HashSet<ServiceId>, direction: Option<DirectionId>) -> Result<impl Iterator<Item = Result<Trip, csv::Error>>, csv::Error> {
+    let rdr = self.open_csv("trips.txt")?;
+    let iter = rdr.into_deserialize().filter(move |result: &Result<Trip, csv::Error>| {
+        if let Ok(trip) = result {
+            route_id.as_ref().map(|route_id| route_id == &trip.route_id).unwrap_or(true)
+                && service_ids.contains(&trip.service_id)
+                && direction.map(|direction| direction == trip.direction_id).unwrap_or(true)
+        } else {
+            false
+        }
+    });
+    Ok(iter)
   }
 }
 
@@ -333,9 +333,8 @@ impl <'r> GTFSData {
         Ok(())
     }
 
-    pub fn load_trips_by_id(&mut self, source: &GTFSSource) -> Result<(), Box<dyn Error>> {
-        let mut rdr = source.open_csv("trips.txt")?;
-        for result in rdr.deserialize() {
+    pub fn load_trips_by_id(&mut self, source: &GTFSSource, day_filter: DayFilter) -> Result<(), Box<dyn Error>> {
+        for result in source.get_trips(None, source.get_services(day_filter)?, None)? {
             let trip: Trip = result?;
             self.trips_by_id.insert(trip.trip_id.clone(), trip);
         }
@@ -385,11 +384,7 @@ impl <'r> GTFSData {
         }
     }
 
-    pub fn departure_lookup(&'r mut self, day_filter: DayFilter, period: Option<Period>, source: &GTFSSource,) -> Result<(), Box<dyn Error>> {
-        let services = source.get_services(day_filter)?;
-        let available_trips = source.get_trips(None, services, None)?;
-        let available_trips: HashMap<TripId, Trip> = available_trips.into_iter().map(|trip| (trip.trip_id, trip)).collect();
-
+    pub fn departure_lookup(&'r mut self, period: Option<Period>, source: &GTFSSource) -> Result<(), Box<dyn Error>> {
         let mut rdr = source.open_csv("stop_times.txt")?;
         let mut iter = SuperIter {
             records: rdr.deserialize().peekable(),
@@ -398,7 +393,7 @@ impl <'r> GTFSData {
         let mut count = 0;
         while let Some(result) = iter.next() {
             let (trip_id, stops) = result?;
-            if available_trips.contains_key(&trip_id) {
+            if self.trips_by_id.contains_key(&trip_id) {
                 let stops = stops.skip_while(|result| 
                     if let (Ok(stop), Some(period)) = (result, period) {
                         !period.contains(stop.departure_time)
@@ -406,7 +401,7 @@ impl <'r> GTFSData {
                         false
                     }
                 );
-                let stops = self.stop_times_arena.alloc_extend(stops.flatten());
+                let stops = self.stop_times_arena.alloc_extend_result(stops)?;
                 if stops.len() > 0 {
                     count += 1;
                 }

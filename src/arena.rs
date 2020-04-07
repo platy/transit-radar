@@ -60,6 +60,31 @@ impl<T> Arena<T> {
     }
   }
 
+  /// Extends the arena with the ok value of each of the items in the iterator, if any iteration fails, the error is returned and the allocation does not occur
+  pub fn alloc_extend_result<I, E>(&mut self, iterable: I) -> Result<ArenaSliceIndex<T>, E>
+  where
+    I: IntoIterator<Item = Result<T, E>>,
+  {
+    let start = self.vec.len();
+    let mut iter = iterable.into_iter();
+    self.vec.reserve(iter.size_hint().0); // reserve enought for the minimum size if provided
+    while let Some(element) = iter.next() {
+      match element {
+        Ok(element) => 
+          self.vec.push(element),
+        Err(err) => {
+          self.vec.truncate(start);
+          return Err(err)
+        }
+      }
+    }
+    Ok(ArenaSliceIndex {
+      marker: std::marker::PhantomData,
+      start,
+      end: self.vec.len(),
+    })
+  }
+
   pub fn len(&self) -> usize {
     self.vec.len()
   }
@@ -414,5 +439,23 @@ mod test {
     assert_eq!([Stop(3), Stop(4), Stop(5)], arena[subref]);
     let subref = slice_ref.sub(..2);
     assert_eq!([Stop(1), Stop(2)], arena[subref]);
+  }
+
+  #[test]
+  fn test_alloc_extend_result_ok() {
+    let mut arena: Arena<Stop> = Arena::new();
+    let stops_vec: Vec<Result<Stop, i64>> = vec![Ok(Stop(1)), Ok(Stop(2)), Ok(Stop(3)), Ok(Stop(4)), Ok(Stop(5))];
+    let slice_ref = arena.alloc_extend_result(stops_vec.clone().into_iter()).unwrap();
+    assert_eq!([Stop(1), Stop(2), Stop(3), Stop(4), Stop(5)], arena[slice_ref]);
+    assert_eq!(5, arena.len());
+  }
+
+  #[test]
+  fn test_alloc_extend_result_err() {
+    let mut arena: Arena<Stop> = Arena::new();
+    let stops_vec = vec![Ok(Stop(1)), Ok(Stop(2)), Ok(Stop(3)), Ok(Stop(4)), Err("fail")];
+    let err = arena.alloc_extend_result(stops_vec.clone().into_iter()).unwrap_err();
+    assert_eq!(err, "fail");
+    assert_eq!(0, arena.len());
   }
 }
