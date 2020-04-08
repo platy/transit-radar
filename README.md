@@ -34,10 +34,10 @@
 [x] Day selection
 [x] Handle the D_ stopids in the gtfs data
 [x] Get the timetable publish date from the calendar.txt
-[] Reload GTFS data each day
-[] Filter GTFS data for development so that cache is not needed
+[x] Filter GTFS data for development so that cache is not needed
 [] Remove the cache
 [] Allow connections to several trips of the same station and route (eg different directions), currently it is filtered to one
+[] Reload GTFS data each day
 -
 [] read from zip
 [] CLI tool to lookup departures for debugging
@@ -55,7 +55,7 @@
 [] Buffer reads from the cache and writes to it
 
 ## Code 
-[x]StopId should not be String, maybe &str / str?
+[x] StopId should not be String, maybe &str / str?
 [x] Modularise the stoptime reader into a struct by understanding the lifetimes (had to use RefCell)
 [x] serialise the data so that i can have faster iteration
 [x] Switch to id_arena - it will serialise easier and I won't need all these borrows complicating things
