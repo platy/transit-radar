@@ -88,7 +88,7 @@ impl GTFSSource {
       }
   }
 
-  fn open_csv(&self, filename: &str) -> Result<csv::Reader<std::fs::File>, csv::Error> {
+  pub fn open_csv(&self, filename: &str) -> Result<csv::Reader<std::fs::File>, csv::Error> {
       let path = self.dir_path.join(filename);
       eprintln!("Opening {}", path.to_str().expect("path invalid"));
       let reader = csv::Reader::from_path(path)?;
@@ -164,8 +164,8 @@ impl <'r> GTFSData {
         &self.timetable_start_date
     }
 
-    pub fn get_route_for_trip(&self, trip_id: &TripId) -> Option<&Route> {
-        self.trips_by_id.get(trip_id).and_then(|trip| self.routes_by_id.get(&trip.route_id))
+    pub fn get_route_for_trip(&self, trip_id: &TripId) -> &Route {
+        self.trips_by_id.get(trip_id).and_then(|trip| self.routes_by_id.get(&trip.route_id)).expect("To have route entry for trip")
     }
 
     pub fn borrow_stop_departures(&self) -> &HashMap<StopId, Vec<ArenaSliceIndex<StopTime>>> {

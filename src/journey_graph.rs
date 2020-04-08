@@ -298,43 +298,48 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
     self.queue.extend(to_add);
   }
 
-  fn enqueue_connections_and_trips(&mut self, item: &QueueItem<'r>) -> usize {
+  fn enqueue_connections_and_trips(&mut self, item: &QueueItem<'r>) -> bool {
     let mut to_add = vec![];
     for stops_range in self.trips_from(item.to_stop.stop_id, self.period.with_start(item.arrival_time)) {
       let stops = self.data.stops(stops_range.clone());
       let trip_id = stops[0].trip_id;
+      let mut trip_to_add = vec![];
       // check that route type is allowed
-      if self.data.get_route_for_trip(&trip_id).iter().any(|route| self.route_types.contains(&route.route_type)) {
-        // make sure we only add each trip once
-        if !self.enqueued_trips.contains(&trip_id) { 
-          let route = self.data.get_route_for_trip(&trip_id).expect(&format!("to have found a route for trip {}", trip_id));
-          // enqueue connection (transfer + wait)
-          to_add.push(QueueItem{
-            from_stop: item.from_stop,
-            to_stop: item.to_stop,
-            departure_time: item.departure_time,
-            arrival_time: stops[0].departure_time,
-            variant: QueueItemVariant::Connection{ trip_id, route },
-          });
-          for window in stops.windows(2) {
-            if let [from_stop, to_stop] = window {
-              to_add.push(QueueItem {
-                from_stop: self.data.get_stop(&from_stop.stop_id).unwrap(),
-                to_stop: self.data.get_stop(&to_stop.stop_id).unwrap(),
-                departure_time: from_stop.departure_time,
-                arrival_time: to_stop.arrival_time,
-                variant: QueueItemVariant::StopOnTrip{ trip_id, route, previous_arrival_time: from_stop.arrival_time, next_departure_time: to_stop.departure_time },
-              });
-            } else {
-              panic!("Bad window");
-            }
+      if self.route_types.contains(&self.data.get_route_for_trip(&trip_id).route_type) {
+        let route = self.data.get_route_for_trip(&trip_id);
+        // enqueue connection (transfer + wait)
+        trip_to_add.push(QueueItem{
+          from_stop: item.from_stop,
+          to_stop: item.to_stop,
+          departure_time: item.departure_time,
+          arrival_time: stops[0].departure_time,
+          variant: QueueItemVariant::Connection{ trip_id, route },
+        });
+        for window in stops.windows(2) {
+          if let [from_stop, to_stop] = window {
+            trip_to_add.push(QueueItem {
+              from_stop: self.data.get_stop(&from_stop.stop_id).unwrap(),
+              to_stop: self.data.get_stop(&to_stop.stop_id).unwrap(),
+              departure_time: from_stop.departure_time,
+              arrival_time: to_stop.arrival_time,
+              variant: QueueItemVariant::StopOnTrip{ trip_id, route, previous_arrival_time: from_stop.arrival_time, next_departure_time: to_stop.departure_time },
+            });
+          } else {
+            panic!("Bad window");
           }
         }
       }
+      to_add.push((trip_id, trip_to_add));
     }
-    let enqueued_count = to_add.len();
-    self.queue.extend(to_add);
-    enqueued_count
+    let mut extended = false;
+    for (trip_id, to_add) in to_add {
+      // make sure we only add each trip once
+      if self.enqueued_trips.insert(trip_id) {
+        extended = true;
+        self.queue.extend(to_add);
+      }
+    }
+    extended
   }
 
   fn earliest_arrival_at(&self, stop_id: StopId) -> Option<Time> {
@@ -387,9 +392,9 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
           panic!("Unexpected");
         },
         QueueItemVariant::Transfer => {
-          let enqueued_count = self.enqueue_connections_and_trips(&item);
+          let extended = self.enqueue_connections_and_trips(&item);
           // we don't emit transfers unless they are to a new station which accesses other trips
-          if enqueued_count == 0 || item.from_stop.parent_station == item.to_stop.parent_station {
+          if !extended || item.from_stop.parent_station == item.to_stop.parent_station {
             vec![]
           } else {
             vec![item]

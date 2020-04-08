@@ -1,19 +1,15 @@
-use crate::gtfs::db::Suggester;
 use std::error::Error;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
-use db::{GTFSSource, DayFilter};
 use warp::Filter;
 use urlencoding::decode;
 use chrono::prelude::*;
 
-mod arena;
-mod gtfs;
-use gtfs::*;
+use transit_radar::journey_graph;
+use transit_radar::gtfs::{self, *};
+use transit_radar::gtfs::db::{self, Suggester, GTFSSource, DayFilter};
 use gtfs::gtfstime::{Time, Period, Duration};
-
-mod journey_graph;
 
 use geo::algorithm::bearing::Bearing;
 
@@ -99,13 +95,13 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, day: Day, peri
                 let from_stop_or_station_id = from_stop.station_id();
                 let from = *stop_id_to_idx.get(&from_stop_or_station_id).unwrap_or(&to);
                 let kind = FEConnectionType::from(route_type);
-                let route = fe_trips.entry(trip_id).or_insert(FERoute { route_name, kind, segments: vec![] });
-                route.segments.push(FESegment {
+                let trip = fe_trips.entry(trip_id).or_insert(FERoute { route_name, kind, segments: vec![] });
+                trip.segments.push(FESegment {
                     from,
                     to,
                     from_seconds: departure_time - period.start(),
                     to_seconds: arrival_time - period.start(),
-                })
+                });
             },
             journey_graph::Item::ConnectionToTrip {
                 departure_time, 
@@ -126,7 +122,6 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, day: Day, peri
                 })
             },
         }
-        
     }
     FEData {
         stops: fe_stops,
