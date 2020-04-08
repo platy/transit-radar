@@ -3,9 +3,7 @@ use std::fmt;
 use std::collections::{HashSet, HashMap};
 use std::path::{Path, PathBuf};
 use crate::arena::{Arena, ArenaIndex, ArenaSliceIndex};
-use serde::{Serialize, Serializer, Deserialize, Deserializer, de::{Visitor, SeqAccess}, de};
 use std::ops::Deref;
-use std::marker::PhantomData;
 use tst::TSTMap;
 
 use crate::gtfs::*;
@@ -97,35 +95,6 @@ impl GTFSSource {
       Ok(reader)
   }
 
-  pub fn load_cache(&self, day_filter: DayFilter, period: Option<Period>) -> Result<Option<GTFSData>, Box<dyn Error>> {
-    let file_name = if let Some(period) = period {
-        format!("cache-{}-{}", day_filter, period)
-    } else {
-        format!("cache-{}-all", day_filter).to_owned()
-    };
-    let path = self.dir_path.join(file_name);
-    if path.is_file() {
-        eprintln!("Loading cache {}", path.to_str().unwrap());
-        let file = std::fs::File::open(path)?;
-        let data = rmp_serde::decode::from_read(file)?;
-        Ok(Some(data))
-    } else {
-        Ok(None)
-    }
-  }
-
-  pub fn write_cache(&self, day_filter: DayFilter, period: Option<Period>, data: &GTFSData) -> Result<(), Box<dyn Error>> {
-    let file_name = if let Some(period) = period {
-        format!("cache-{}-{}", day_filter, period)
-    } else {
-        format!("cache-{}-all", day_filter).to_owned()
-    };
-    let path = self.dir_path.join(file_name);
-    let mut file = std::fs::File::create(path)?;
-    rmp_serde::encode::write(&mut file, data)?;
-    Ok(())
-  }
-
   pub fn get_calendar(&self) -> Result<impl Iterator<Item = Result<Calendar, csv::Error>>, csv::Error> {
     let rdr = self.open_csv("calendar.txt")?;
     Ok(rdr.into_deserialize())
@@ -159,76 +128,6 @@ pub struct GTFSData {
     timetable_start_date: String,
 }
 
-/// only supports the struct being serialised as a sequence
-impl<'de> Deserialize<'de> for GTFSData {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct GTFSDataVisitor {
-          marker: PhantomData<fn() -> GTFSData>,
-        }
-
-        impl<'de, 'r> Visitor<'de> for GTFSDataVisitor {
-            type Value = GTFSData;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("struct GTFSData")
-            }
-
-            /// serialisation is
-            /// arena
-            /// stop_departures_count: u32
-            /// [(stop_id: StopId, Vec<Range<u32>); stop_departures_count]
-            /// transfers
-            /// stops_by_id
-            fn visit_seq<V>(self, mut seq: V) -> Result<GTFSData, V::Error>
-            where
-                V: SeqAccess<'de>,
-            {
-                let stop_times_arena: Arena<StopTime> = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                eprintln!("read {} of arena", stop_times_arena.len());
-                // i should be able to make some Visitor for this and perhaps extract a trait
-                let stop_departures_count: usize = seq.next_element::<u32>()?.ok_or_else(|| de::Error::invalid_length(0, &self))? as usize;
-                eprintln!("reading {} of departures", stop_departures_count);
-                let mut stop_departures: HashMap<StopId, Vec<ArenaSliceIndex<StopTime>>> = HashMap::with_capacity(stop_departures_count);
-                for _i in 0..stop_departures_count {
-                    let (stop_id, trips): (StopId, Vec<ArenaSliceIndex<StopTime>>) = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                    stop_departures.insert(stop_id, trips);
-                }
-                eprintln!("read {} of departures", stop_departures_count);
-
-                let transfers: HashMap<_,_> = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                eprintln!("read {} of transfers", transfers.len());
-                let stops_by_id: HashMap<_,_> = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                eprintln!("read {} of stops_by_id", stops_by_id.len());
-                let trips_by_id: HashMap<_,_> = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                eprintln!("read {} of trips_by_id", trips_by_id.len());
-                let routes_by_id: HashMap<_,_> = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
-                eprintln!("read {} of routes_by_id", routes_by_id.len());
-
-                let stops_by_parent_id = GTFSData::generate_stops_by_parent_id(&stops_by_id);
-
-                Ok(GTFSData {
-                    stop_times_arena,
-                    stop_departures,
-                    transfers,
-                    stops_by_id,
-                    stops_by_parent_id,
-                    trips_by_id,
-                    routes_by_id,
-                    fake_stop: Stop::fake(),
-                    services_by_day: panic!("PANIC!"),
-                    timetable_start_date: panic!("PANIC!"),
-                })
-            }
-        }
-
-        deserializer.deserialize_seq(GTFSDataVisitor { marker: PhantomData })
-    }
-}
-
-
 #[derive(Copy, Clone)]
 #[allow(dead_code)]
 pub enum DayFilter {
@@ -242,44 +141,6 @@ impl std::fmt::Display for DayFilter {
             DayFilter::All => f.write_str("all"),
             DayFilter::Single(day) => day.fmt(f),
         }
-    }
-}
-
-use serde::ser::{SerializeSeq};
-
-
-/// serialisation is
-/// arena
-/// stop_departures_count: u32
-/// [(stop_id: StopId, Vec<Range<u32>); stop_departures_count]
-/// transfers
-/// stops_by_id
-impl <'r> Serialize for GTFSData {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let stop_departures = &self.stop_departures;
-        let mut seq = serializer.serialize_seq(Some(stop_departures.len() + 6))?; // this is stupid
-        seq.serialize_element(&self.stop_times_arena)?;
-        eprintln!("written {} of arena", self.stop_times_arena.len());
-        seq.serialize_element(&stop_departures.len())?;
-        eprintln!("writing {} of departures", stop_departures.len());
-        for (stop_id, trips) in stop_departures.iter() {
-            seq.serialize_element(&(stop_id, trips))?;
-        }
-        eprintln!("written {} of departures", stop_departures.len());
-
-        eprintln!("writing {} of transfers", self.transfers.len());
-        seq.serialize_element(&self.transfers)?;
-        eprintln!("writing {} of stops_by_id", self.stops_by_id.len());
-        seq.serialize_element(&self.stops_by_id)?;
-        eprintln!("writing {} of trips_by_id", self.trips_by_id.len());
-        seq.serialize_element(&self.trips_by_id)?;
-        eprintln!("writing {} of routes_by_id", self.routes_by_id.len());
-        seq.serialize_element(&self.routes_by_id)?;
-
-        seq.end()
     }
 }
 

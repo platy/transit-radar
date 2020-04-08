@@ -1,6 +1,6 @@
 use std::cmp::Ord;
 use std::fmt;
-use serde::{self, Serialize, Serializer, de, Deserialize, Deserializer};
+use serde::{self, de, Deserialize, Deserializer};
 use std::convert::TryInto;
 
 pub mod gtfstime;
@@ -41,7 +41,7 @@ pub struct Calendar { // "service_id","monday","tuesday","wednesday","thursday",
     // end_date: String, // date
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Serialize)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Day {
     Monday,
     Tuesday,
@@ -50,6 +50,12 @@ pub enum Day {
     Friday,
     Saturday,
     Sunday,
+}
+
+impl StopId {
+    pub fn into_inner(self) -> u64 {
+        self.0
+    }
 }
 
 impl Calendar {
@@ -79,7 +85,7 @@ impl std::fmt::Display for Day {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Deserialize, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Route { //"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
     pub route_id: RouteId,
     agency_id: AgencyId,
@@ -91,7 +97,7 @@ pub struct Route { //"route_id","agency_id","route_short_name","route_long_name"
     // route_desc: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct Trip { // "route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
     pub route_id: RouteId,
     pub service_id: ServiceId,
@@ -105,7 +111,7 @@ pub struct Trip { // "route_id","service_id","trip_id","trip_headsign","trip_sho
     bikes_allowed: BikesAllowed,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct StopTime { // "trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
     pub trip_id: TripId,
     pub arrival_time: Time,
@@ -117,7 +123,7 @@ pub struct StopTime { // "trip_id","arrival_time","departure_time","stop_id","st
     // stop_headsign: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Stop { // "stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","zone_id"
     pub stop_id: StopId,
     // stop_code: Option<String>,
@@ -132,7 +138,7 @@ pub struct Stop { // "stop_id","stop_code","stop_name","stop_desc","stop_lat","s
     // zone_id: Option<ZoneId>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct Transfer { // "from_stop_id","to_stop_id","transfer_type","min_transfer_time","from_route_id","to_route_id","from_trip_id","to_trip_id"
     pub from_stop_id: StopId,
     pub to_stop_id: StopId,
@@ -163,15 +169,6 @@ impl Stop {
 
     pub fn station_id(&self) -> StopId {
         self.parent_station.unwrap_or(self.stop_id)
-    }
-}
-
-impl Serialize for RouteId {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_u32(self.0)
     }
 }
 
@@ -220,15 +217,6 @@ impl<'de> Deserialize<'de> for RouteId {
         }
 
         deserializer.deserialize_any(StringOrInt)   
-    }
-}
-
-impl Serialize for StopId {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_u64(self.0)
     }
 }
 
@@ -290,13 +278,13 @@ impl<'de> Deserialize<'de> for StopId {
 #[cfg(test)]
 mod test_route_id {
     use super::RouteId;
-    use serde_test::{Token, assert_tokens, assert_de_tokens};
+    use serde_test::{Token, assert_de_tokens};
 
     #[test]
     fn test_0() {
         let id = RouteId(0);
 
-        assert_tokens(&id, &[
+        assert_de_tokens(&id, &[
             Token::U32 (0),
         ]);
     }
@@ -305,7 +293,7 @@ mod test_route_id {
     fn test_max() {
         let id = RouteId(std::u32::MAX);
 
-        assert_tokens(&id, &[
+        assert_de_tokens(&id, &[
             Token::U32 (std::u32::MAX),
         ]);
     }
@@ -323,13 +311,13 @@ mod test_route_id {
 #[cfg(test)]
 mod test_stop_id {
     use super::StopId;
-    use serde_test::{Token, assert_tokens, assert_de_tokens};
+    use serde_test::{Token, assert_de_tokens};
 
     #[test]
     fn test_0() {
         let id = StopId(0);
 
-        assert_tokens(&id, &[
+        assert_de_tokens(&id, &[
             Token::U64 (0),
         ]);
     }
@@ -338,7 +326,7 @@ mod test_stop_id {
     fn test_max() {
         let id = StopId(std::u64::MAX);
 
-        assert_tokens(&id, &[
+        assert_de_tokens(&id, &[
             Token::U64 (std::u64::MAX),
         ]);
     }

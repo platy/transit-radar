@@ -20,19 +20,13 @@ use geo::algorithm::bearing::Bearing;
 fn load_data(gtfs_dir: &Path, day_filter: DayFilter, time_period: Option<Period>) -> Result<db::GTFSData, Box<dyn Error>> {
     let source = &GTFSSource::new(gtfs_dir);
 
-    let mut data;
-    if let Some(data2) = source.load_cache(day_filter, time_period)? {
-        data = data2
-    } else {
-        data = gtfs::db::GTFSData::new();
-        data.load_calendar(source)?;
-        data.load_transfers_of_stop(source)?;
-        data.load_stops_by_id(source)?;
-        data.load_trips_by_id(source, day_filter)?;
-        data.load_routes_by_id(source)?;
-        data.departure_lookup(time_period, &source)?;
-        // source.write_cache(day_filter, time_period, &data)?;
-    };
+    let mut data = gtfs::db::GTFSData::new();
+    data.load_calendar(source)?;
+    data.load_transfers_of_stop(source)?;
+    data.load_stops_by_id(source)?;
+    data.load_trips_by_id(source, day_filter)?;
+    data.load_routes_by_id(source)?;
+    data.departure_lookup(time_period, &source)?;
     Ok(data)
 }
 
@@ -150,7 +144,7 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, day: Day, peri
         connections: fe_conns,
         trips: fe_trips.into_iter().map(|(_k, v)| v).collect(),
         timetable_date: data.timetable_start_date().to_string(),
-        departure_day: day,
+        departure_day: day.to_string(),
         departure_time: period.start(),
         duration_minutes: period.duration().mins(),
     }
@@ -164,7 +158,7 @@ struct FEData<'s> {
     connections: Vec<FEConnection<'s>>,
     trips: Vec<FERoute<'s>>,
     timetable_date: String,
-    departure_day: Day,
+    departure_day: String,
     departure_time: Time,
     duration_minutes: i32,
 }
@@ -262,7 +256,7 @@ async fn json_tree_handler(name: String, data: Arc<db::GTFSData>) -> Result<impl
 
 #[derive(Serialize)]
 struct FEStationLookup<'s> {
-    stop_id: StopId,
+    stop_id: u64,
     name: &'s str,
 }
 
@@ -277,7 +271,7 @@ async fn station_search_handler(query: String, data: Arc<db::GTFSData>, station_
                 }
                 let stop = data.get_stop(&stop_id).expect("to find stop referenced by search");
                 result.push(FEStationLookup {
-                    stop_id: stop_id,
+                    stop_id: stop_id.into_inner(),
                     name: &stop.stop_name,
                 });
                 count += 1;
