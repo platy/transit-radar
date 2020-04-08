@@ -1,6 +1,6 @@
 use crate::gtfs::db::Suggester;
 use std::error::Error;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use db::{GTFSSource, DayFilter};
@@ -55,7 +55,6 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, day: Day, peri
     let mut fe_conns: Vec<FEConnection> = vec![];
     let mut fe_trips: HashMap<TripId, FERoute> = HashMap::new();
     let mut stop_id_to_idx = HashMap::new();
-    let mut connections_check = HashSet::new();
 
     for item in plotter {
         match item {
@@ -79,17 +78,13 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, day: Day, peri
                 let to = *stop_id_to_idx.get(&to_stop.station_id()).unwrap();
                 let from_stop_or_station_id = from_stop.station_id();
                 let from = *stop_id_to_idx.get(&from_stop_or_station_id).unwrap_or(&to);
-                let kind = FEConnectionType::Connection;
-                // only emit each connection once
-                if connections_check.insert((from, to, None, kind)) {
-                    fe_conns.push(FEConnection {
-                        from,
-                        to,
-                        route_name: None,
-                        from_seconds: departure_time - period.start(),
-                        to_seconds: arrival_time - period.start(),
-                    })
-                }
+                fe_conns.push(FEConnection {
+                    from,
+                    to,
+                    route_name: None,
+                    from_seconds: departure_time - period.start(),
+                    to_seconds: arrival_time - period.start(),
+                })
             },
             journey_graph::Item::SegmentOfTrip {
                 departure_time, 
@@ -104,16 +99,13 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, day: Day, peri
                 let from_stop_or_station_id = from_stop.station_id();
                 let from = *stop_id_to_idx.get(&from_stop_or_station_id).unwrap_or(&to);
                 let kind = FEConnectionType::from(route_type);
-                // only emit each connection once
-                if connections_check.insert((from, to, Some(route_name), kind)) {
-                    let route = fe_trips.entry(trip_id).or_insert(FERoute { route_name, kind, segments: vec![] });
-                    route.segments.push(FESegment {
-                        from,
-                        to,
-                        from_seconds: departure_time - period.start(),
-                        to_seconds: arrival_time - period.start(),
-                    })
-                }
+                let route = fe_trips.entry(trip_id).or_insert(FERoute { route_name, kind, segments: vec![] });
+                route.segments.push(FESegment {
+                    from,
+                    to,
+                    from_seconds: departure_time - period.start(),
+                    to_seconds: arrival_time - period.start(),
+                })
             },
             journey_graph::Item::ConnectionToTrip {
                 departure_time, 
@@ -125,16 +117,13 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, day: Day, peri
                 let to = *stop_id_to_idx.get(&to_stop.station_id()).unwrap();
                 let from_stop_or_station_id = from_stop.station_id();
                 let from = *stop_id_to_idx.get(&from_stop_or_station_id).unwrap_or(&to);
-                // only emit each connection once
-                if connections_check.insert((from, to, Some(route_name), FEConnectionType::Connection)) {
-                    fe_conns.push(FEConnection {
-                        from,
-                        to,
-                        route_name: Some(route_name),
-                        from_seconds: departure_time - period.start(),
-                        to_seconds: arrival_time - period.start(),
-                    })
-                }
+                fe_conns.push(FEConnection {
+                    from,
+                    to,
+                    route_name: Some(route_name),
+                    from_seconds: departure_time - period.start(),
+                    to_seconds: arrival_time - period.start(),
+                })
             },
         }
         
@@ -196,7 +185,6 @@ struct FEConnection<'s> {
 
 #[derive(Serialize, Eq, PartialEq, Hash, Copy, Clone)]
 enum FEConnectionType {
-    Connection, // walking, waiting
     Rail,//long distance 2
     Bus, //3
     RailwayService,//100 RE/RB

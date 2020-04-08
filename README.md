@@ -35,8 +35,9 @@
 [x] Handle the D_ stopids in the gtfs data
 [x] Get the timetable publish date from the calendar.txt
 [x] Filter GTFS data for development so that cache is not needed
-[] Remove the cache
-[] Allow connections to several trips of the same station and route (eg different directions), currently it is filtered to one
+[x] Remove the cache
+[x] Allow connections to several trips of the same station and route (eg different directions), currently it is filtered to one
+[] Replace arena with a map of trips
 [] Reload GTFS data each day
 -
 [] read from zip
