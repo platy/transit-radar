@@ -53,8 +53,8 @@ struct QueueItem<'r> {
 impl<'r> fmt::Debug for QueueItem<'r> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_struct("QueueItem")
-     .field("from_stop", &format!("{} ({}{})", self.from_stop.stop_name, self.from_stop.stop_id, if self.from_stop.parent_station.is_none() { "*" } else { "" }))
-     .field("to_stop", &format!("{} ({}{})", self.to_stop.stop_name, self.to_stop.stop_id, if self.to_stop.parent_station.is_none() { "*" } else { "" }))
+     .field("from_stop", &format!("{} ({:?}{})", self.from_stop.stop_name, self.from_stop.stop_id, if self.from_stop.parent_station.is_none() { "*" } else { "" }))
+     .field("to_stop", &format!("{} ({:?}{})", self.to_stop.stop_name, self.to_stop.stop_id, if self.to_stop.parent_station.is_none() { "*" } else { "" }))
      .field("departure_time", &self.departure_time)
      .field("arrival_time", &self.arrival_time)
      .field("variant", &self.variant)

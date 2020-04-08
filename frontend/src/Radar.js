@@ -163,7 +163,7 @@ export default function Radar({data, showStations }) {
     <p>
       The transit radar shows all the destinations you could reach within { data.duration_minutes }mins
       using SBahn or UBahn from the selected station, departing 
-      on a { data.departure_day } at { data.departure_time } and uses VBB's published timetables at 24/03/2020.
+      on a { data.departure_day } at { data.departure_time } and uses VBB's published timetables at { data.timetable_date }.
     </p>
     <svg xmlns="http://www.w3.org/2000/svg" width={1200} height={1000}>
       <circle className="grid" r={(10 * 60 / maxSeconds) * xmax / 2} cx={500} cy={500} />

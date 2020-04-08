@@ -226,7 +226,7 @@ impl From<std::num::ParseIntError> for ParseError {
 }
 
 impl std::convert::From<std::str::Utf8Error> for ParseError {
-  fn from(err: std::str::Utf8Error) -> ParseError {
+  fn from(_err: std::str::Utf8Error) -> ParseError {
     ParseError::InvalidFormat
   }
 }

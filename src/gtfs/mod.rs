@@ -1,16 +1,21 @@
 use std::cmp::Ord;
 use std::fmt;
-use serde::{Deserialize, Serialize};
+use serde::{self, Serialize, Serializer, de, Deserialize, Deserializer};
+use std::convert::TryInto;
 
 pub mod gtfstime;
 pub mod db;
 use gtfstime::{Time, Duration};
 
 type AgencyId = u16;
-pub type RouteId = u32;
+
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy)]
+pub struct RouteId(u32);
 pub type RouteType = u16;
 pub type TripId = u64;
-pub type StopId = u64;
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy)]
+pub struct StopId(u64);
+// pub type StopId = u64;
 type ShapeId = u16;
 // type BlockId = String;
 pub type ServiceId = u16;
@@ -21,11 +26,6 @@ pub type DirectionId = u8; // 0 or 1
 type BikesAllowed = Option<u8>; // 0, 1, or 2
 type WheelchairAccessible = Option<u8>; // 0, 1, 2
 type TransferType = u8;
-
-#[derive(Debug, Deserialize)]
-pub struct WithTripId {
-    pub trip_id: TripId,
-}
 
 #[derive(Debug, Deserialize)]
 pub struct Calendar { // "service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
@@ -81,7 +81,6 @@ impl std::fmt::Display for Day {
 
 #[derive(Debug, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Route { //"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
-    #[serde(with = "route_id_format")]
     pub route_id: RouteId,
     agency_id: AgencyId,
     pub route_short_name: String,
@@ -94,7 +93,6 @@ pub struct Route { //"route_id","agency_id","route_short_name","route_long_name"
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Trip { // "route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
-    #[serde(with = "route_id_format")]
     pub route_id: RouteId,
     pub service_id: ServiceId,
     pub trip_id: TripId,
@@ -140,9 +138,7 @@ pub struct Transfer { // "from_stop_id","to_stop_id","transfer_type","min_transf
     pub to_stop_id: StopId,
     transfer_type: TransferType,
     pub min_transfer_time: Option<Duration>,
-    #[serde(with = "route_id_option_format")]
     from_route_id: Option<RouteId>,
-    #[serde(with = "route_id_option_format")]
     to_route_id: Option<RouteId>,
     from_trip_id: Option<TripId>,
     to_trip_id: Option<TripId>,
@@ -151,7 +147,7 @@ pub struct Transfer { // "from_stop_id","to_stop_id","transfer_type","min_transf
 impl Stop {
     pub fn fake() -> Stop {
         Stop {
-            stop_id: 0,
+            stop_id: StopId(0),
             location_type: 0,
             parent_station: None,
             stop_lat: 0.0,
@@ -170,26 +166,18 @@ impl Stop {
     }
 }
 
-/// The VBB route id format is eg. `19105_700`, the first part seems to be unique on its own and the second part just seems to duplicate the route type, so we discard it
-/// Maybe I can remove both of these if i use a newtype?
-mod route_id_format {
-    use std::convert::TryInto;
-    use serde::{self, Deserializer, Serializer};
-    use super::RouteId;
-
-    pub fn serialize<S>(
-        route_id: &RouteId,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
+impl Serialize for RouteId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        serializer.serialize_u32(*route_id)
+        serializer.serialize_u32(self.0)
     }
-    
-    pub fn deserialize<'de, D>(
-        deserializer: D,
-    ) -> Result<RouteId, D::Error>
+}
+
+/// The VBB route id format is eg. `19105_700`, the first part seems to be unique on its own and the second part just seems to duplicate the route type, so we discard it
+impl<'de> Deserialize<'de> for RouteId {
+    fn deserialize<D>(deserializer: D) -> Result<RouteId, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -207,27 +195,27 @@ mod route_id_format {
             where
                 E: serde::de::Error,
             {
-                string.split("_").next().unwrap().parse().map(|v| v).map_err(|e| serde::de::Error::custom(e))
+                string.split("_").next().unwrap().parse().map(|v| RouteId(v)).map_err(|e| serde::de::Error::custom(e))
             }
 
             fn visit_u32<E>(self, num: u32) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                Ok(num)
+                Ok(RouteId(num))
             }
 
             fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                Ok(v.try_into().map_err(|e| serde::de::Error::custom(e))?)
+                Ok(RouteId(v.try_into().map_err(|e| serde::de::Error::custom(e))?))
             }
             fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                Ok(v.try_into().map_err(|e| serde::de::Error::custom(e))?)
+                Ok(RouteId(v.try_into().map_err(|e| serde::de::Error::custom(e))?))
             }
         }
 
@@ -235,85 +223,132 @@ mod route_id_format {
     }
 }
 
-mod route_id_option_format {
-    use std::convert::TryInto;
-    use serde::{self, Deserializer, Serializer};
-    use super::RouteId;
-
-    pub fn serialize<S>(
-        route_id: &Option<RouteId>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
+impl Serialize for StopId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        if let Some(route_id) = route_id {
-            serializer.serialize_some(&route_id)
-        } else {
-            serializer.serialize_none()
-        }
+        serializer.serialize_u64(self.0)
     }
+}
 
-    pub fn deserialize<'de, D>(
-        deserializer: D,
-    ) -> Result<Option<RouteId>, D::Error>
+/// One of VBB's StopIds has 'D_' in front of it, I don't know why. This deserialiser strips that off and parses a u64
+impl<'de> Deserialize<'de> for StopId {
+    fn deserialize<D>(deserializer: D) -> Result<StopId, D::Error>
     where
         D: Deserializer<'de>,
     {
-        struct StringOrInt;
+        struct StrippedLeadingGarbage;
                     
-        impl<'de> serde::de::Visitor<'de> for StringOrInt
+        impl<'de> serde::de::Visitor<'de> for StrippedLeadingGarbage
         {
-            type Value = Option<u32>;
+            type Value = StopId;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("string or int")
+                formatter.write_str("u64, possibly preceded with some garbage")
             }
 
-            fn visit_str<E>(self, string: &str) -> Result<Option<u32>, E>
+            fn visit_str<E>(self, string: &str) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                string.split("_").next().unwrap().parse().map(|v| Some(v)).map_err(|e| serde::de::Error::custom(e))
-            }
-
-            fn visit_u32<E>(self, num: u32) -> Result<Option<u32>, E>
-            where
-                E: serde::de::Error,
-            {
-                Ok(Some(num))
+                string.bytes().skip_while(|b| !b.is_ascii_digit()).try_fold(0u64, |mut result, b| {
+                    let x: u64 = match (b as char).to_digit(10) {
+                        Some(x) => x as u64,
+                        None => return Err(de::Error::invalid_type(de::Unexpected::Str(string), &self)),
+                    };
+                    result = match result.checked_mul(10) {
+                        Some(result) => result,
+                        None => return Err(de::Error::invalid_value(de::Unexpected::Str(string), &self)),
+                    };
+                    result = match result.checked_add(x) {
+                        Some(result) => result,
+                        None => return Err(de::Error::invalid_value(de::Unexpected::Str(string), &self)),
+                    };
+                    Ok(result)
+                }).map(|u| StopId(u))
             }
 
             fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                Ok(Some(v.try_into().map_err(|e| serde::de::Error::custom(e))?))
+                Ok(StopId(v))
             }
             fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                Ok(Some(v.try_into().map_err(|e| serde::de::Error::custom(e))?))
-            }
-
-            fn visit_none<E>(self) -> Result<Self::Value, E>
-            where
-            E: serde::de::Error,
-            {
-                Ok(None)
-            }
-        
-            fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-            where
-                D: Deserializer<'de>,
-            {
-                deserializer.deserialize_any(self)
+                Ok(StopId(v.try_into().map_err(|e| serde::de::Error::custom(e))?))
             }
         }
 
-        deserializer.deserialize_option(StringOrInt)   
+        deserializer.deserialize_any(StrippedLeadingGarbage)   
+    }
+}
+
+#[cfg(test)]
+mod test_route_id {
+    use super::RouteId;
+    use serde_test::{Token, assert_tokens, assert_de_tokens};
+
+    #[test]
+    fn test_0() {
+        let id = RouteId(0);
+
+        assert_tokens(&id, &[
+            Token::U32 (0),
+        ]);
     }
 
+    #[test]
+    fn test_max() {
+        let id = RouteId(std::u32::MAX);
 
+        assert_tokens(&id, &[
+            Token::U32 (std::u32::MAX),
+        ]);
+    }
+
+    #[test]
+    fn test_route_type_suffix() {
+        let id = RouteId(12345);
+
+        assert_de_tokens(&id, &[
+            Token::BorrowedStr ("12345_700"),
+        ]);
+    }
+}
+
+#[cfg(test)]
+mod test_stop_id {
+    use super::StopId;
+    use serde_test::{Token, assert_tokens, assert_de_tokens};
+
+    #[test]
+    fn test_0() {
+        let id = StopId(0);
+
+        assert_tokens(&id, &[
+            Token::U64 (0),
+        ]);
+    }
+
+    #[test]
+    fn test_max() {
+        let id = StopId(std::u64::MAX);
+
+        assert_tokens(&id, &[
+            Token::U64 (std::u64::MAX),
+        ]);
+    }
+
+    #[test]
+    fn test_garbage_prefix() {
+        let id = StopId(000008003774);
+
+        assert_de_tokens(&id, &[
+            Token::BorrowedStr ("D_000008003774"),
+        ]);
+    }
 }
