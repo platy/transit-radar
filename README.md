@@ -35,10 +35,11 @@
 [x] Handle the D_ stopids in the gtfs data
 [x] Get the timetable publish date from the calendar.txt
 [] Reload GTFS data each day
-[] Tool to filter GTFS data for development so that cache is not needed
+[] Filter GTFS data for development so that cache is not needed
 [] Remove the cache
 [] Allow connections to several trips of the same station and route (eg different directions), currently it is filtered to one
 -
+[] read from zip
 [] CLI tool to lookup departures for debugging
 -
 [] Find stops within a distance of a point sorted by distance
@@ -152,7 +153,12 @@ scp -r frontend/build root@s4.njk.onl:/app/transit-radar/
 
 Deploy everything:
 ```
-scp -r target/x86_64-unknown-linux-musl/release/transit-radar gtfs/cache-fri-19:00:00-19:30:00 frontend/build run.sh service.sh root@s4.njk.onl:/app/transit-radar/ 
+scp -r target/x86_64-unknown-linux-musl/release/transit-radar frontend/build run.sh service.sh update-timetables.sh root@s4.njk.onl:/app/transit-radar/ 
+```
+
+Update timetables:
+```
+ssh root@s4.njk.onl /app/transit-radar/update-timetables.sh
 ```
 
 Start
