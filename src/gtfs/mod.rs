@@ -37,7 +37,7 @@ pub struct Calendar { // "service_id","monday","tuesday","wednesday","thursday",
     pub friday: u8,
     pub saturday: u8,
     pub sunday: u8,
-    // start_date: String, // date
+    start_date: String, // date
     // end_date: String, // date
 }
 

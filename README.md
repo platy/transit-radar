@@ -33,8 +33,8 @@
 [x] Day filter in search to enable use of multi day cache
 [x] Day selection
 [x] Handle the D_ stopids in the gtfs data
+[x] Get the timetable publish date from the calendar.txt
 [] Reload GTFS data each day
-[] Get the timetable publish date from the calendar.txt
 [] Tool to filter GTFS data for development so that cache is not needed
 [] Remove the cache
 [] Allow connections to several trips of the same station and route (eg different directions), currently it is filtered to one

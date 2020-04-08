@@ -156,6 +156,7 @@ pub struct GTFSData {
     pub trips_by_id: HashMap<TripId, Trip>,
     routes_by_id: HashMap<RouteId, Route>,
     fake_stop: Stop,
+    timetable_start_date: String,
 }
 
 /// only supports the struct being serialised as a sequence
@@ -218,6 +219,7 @@ impl<'de> Deserialize<'de> for GTFSData {
                     routes_by_id,
                     fake_stop: Stop::fake(),
                     services_by_day: panic!("PANIC!"),
+                    timetable_start_date: panic!("PANIC!"),
                 })
             }
         }
@@ -293,7 +295,12 @@ impl <'r> GTFSData {
             trips_by_id: HashMap::new(),
             routes_by_id: HashMap::new(),
             fake_stop: Stop::fake(),
+            timetable_start_date: "".to_string(),
         }
+    }
+
+    pub fn timetable_start_date(&self) -> &str {
+        &self.timetable_start_date
     }
 
     pub fn get_route_for_trip(&self, trip_id: &TripId) -> Option<&Route> {
@@ -320,6 +327,7 @@ impl <'r> GTFSData {
             for day in calendar.days() {
                 self.services_by_day.entry(day).or_default().insert(calendar.service_id);
             }
+            self.timetable_start_date = calendar.start_date;
         }
         Ok(())
     }
