@@ -55,7 +55,8 @@ pub enum Day {
 impl Calendar {
     fn days(&self) -> Vec<Day> {
         let mut days = vec![];
-        for (day, val) in [Day::Monday, Day::Tuesday].iter().zip([self.monday, self.tuesday].iter()) {
+        for (day, val) in [Day::Monday, Day::Tuesday, Day::Wednesday, Day::Thursday, Day::Friday, Day::Saturday, Day::Sunday].iter()
+                     .zip([self.monday, self.tuesday, self.wednesday, self.thursday, self.friday, self.saturday, self.sunday].iter()) {
             if *val > 0 {
                 days.push(*day);
             }
