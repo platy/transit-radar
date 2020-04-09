@@ -26,26 +26,23 @@ fn load_data(gtfs_dir: &Path, day_filter: DayFilter, time_period: Option<Period>
     Ok(data)
 }
 
-fn lookup<'r>(data: &'r db::GTFSData, station_name: String, day: Day, period: Period) -> Result<FEData<'r>, db::SearchError> {
+fn lookup<'r>(data: &'r db::GTFSData, station_name: String, options: RadarOptions, day: Day, period: Period) -> Result<FEData<'r>, db::SearchError> {
     let station = data.get_station_by_name(&station_name)?;
-    let output = produce_tree_json(&data, station.stop_id, day, period);
-    println!("Search for '{}' produced {} stations, {} trips and {} connections", station.stop_name, output.stops.len(), output.trips.len(), output.connections.len());
+    let output = produce_tree_json(&data, station.stop_id, day, period, &options);
+    println!("Search for '{}' {:?} produced {} stations, {} trips and {} connections", station.stop_name, options, output.stops.len(), output.trips.len(), output.connections.len());
     Ok(output)
 }
 
-fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, day: Day, period: Period) -> FEData<'r> {
+fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, day: Day, period: Period, options: &RadarOptions) -> FEData<'r> {
     let mut plotter = journey_graph::JourneyGraphPlotter::new(day, period, data);
     let origin = data.get_stop(&station).unwrap();
     plotter.add_origin_station(origin);
-    plotter.add_route_types(vec![
-        // 2, // long distance rail
-        3, // some kind of bus
-        // 100, // Regional trains
-        109, // SBahn
-        400, // UBahn
-        // 700 // Bus
-        // 900 // Tram
-    ]);
+    if options.ubahn { plotter.add_route_type(RouteType::UrbanRailway); }
+    if options.sbahn { plotter.add_route_type(RouteType::SuburbanRailway); }
+    if options.bus { plotter.add_route_type(RouteType::BusService); }
+    if options.tram { plotter.add_route_type(RouteType::TramService); }
+    if options.regio { plotter.add_route_type(RouteType::RailwayService); }
+    if options.bus { plotter.add_route_type(RouteType::Bus); }
 
     let mut fe_stops: Vec<FEStop> = vec![];
     let mut fe_conns: Vec<FEConnection> = vec![];
@@ -78,6 +75,7 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, day: Day, peri
                     from,
                     to,
                     route_name: None,
+                    kind: None,
                     from_seconds: departure_time - period.start(),
                     to_seconds: arrival_time - period.start(),
                 })
@@ -109,6 +107,7 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, day: Day, peri
                 from_stop,
                 to_stop,
                 route_name,
+                route_type,
             } => {
                 let to = *stop_id_to_idx.get(&to_stop.station_id()).unwrap();
                 let from_stop_or_station_id = from_stop.station_id();
@@ -117,6 +116,7 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, day: Day, peri
                     from,
                     to,
                     route_name: Some(route_name),
+                    kind: Some(FEConnectionType::from(route_type)),
                     from_seconds: departure_time - period.start(),
                     to_seconds: arrival_time - period.start(),
                 })
@@ -176,6 +176,7 @@ struct FEConnection<'s> {
     from: usize,
     to: usize,
     route_name: Option<&'s str>,
+    kind: Option<FEConnectionType>,
 }
 
 #[derive(Serialize, Eq, PartialEq, Hash, Copy, Clone)]
@@ -187,21 +188,21 @@ enum FEConnectionType {
     UrbanRailwayService,//400
     BusService, //700
     TramService, //900
-    Other(RouteType),
+    WaterTransportService, //1000
 }
 
 impl FEConnectionType {
     fn from(route_type: RouteType) -> FEConnectionType {
         use FEConnectionType::*;
         match route_type {
-            2 => Rail,
-            3 => Bus,
-            100 => RailwayService,
-            109 => SuburbanRailway,
-            400 => UrbanRailwayService,
-            700 => BusService,
-            900 => TramService,
-            other => Other(other),
+            RouteType::Rail => Rail,
+            RouteType::Bus => Bus,
+            RouteType::RailwayService => RailwayService,
+            RouteType::SuburbanRailway => SuburbanRailway,
+            RouteType::UrbanRailway => UrbanRailwayService,
+            RouteType::BusService => BusService,
+            RouteType::TramService => TramService,
+            RouteType::WaterTransportService => WaterTransportService,
         }
     }
 }
@@ -210,7 +211,7 @@ fn with_data<D: Sync + Send>(db: Arc<D>) -> impl Filter<Extract = (Arc<D>,), Err
     warp::any().map(move || db.clone())
 }
 
-async fn json_tree_handler(name: String, data: Arc<db::GTFSData>) -> Result<impl warp::Reply, warp::Rejection> {
+async fn json_tree_handler(name: String, options: RadarOptions, data: Arc<db::GTFSData>) -> Result<impl warp::Reply, warp::Rejection> {
     let date_time = chrono::Utc::now().with_timezone(&chrono_tz::Europe::Berlin);
     let now = Time::from_hms(date_time.hour(), date_time.minute(), date_time.second());
     let day = match date_time.weekday() {
@@ -226,7 +227,7 @@ async fn json_tree_handler(name: String, data: Arc<db::GTFSData>) -> Result<impl
 
     match decode(&name) {
         Ok(name) => 
-            match lookup(&data, name, day, period) {
+            match lookup(&data, name, options, day, period) {
                 Ok(result) => Ok(warp::reply::json(&result)),
                 Err(error) => Err(warp::reject::custom(error)),
             },
@@ -268,10 +269,20 @@ async fn station_search_handler(query: String, data: Arc<db::GTFSData>, station_
     }
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct RadarOptions {
+    pub ubahn: bool,
+    pub sbahn: bool,
+    pub bus: bool,
+    pub regio: bool,
+    pub tram: bool,
+}
+
 fn json_tree_route(data: Arc<db::GTFSData>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let cors = warp::cors()
         .allow_any_origin();
     warp::path!("from" / String)
+        .and(warp::query::<RadarOptions>())
         .and(with_data(data))
         .and_then(json_tree_handler)
         .with(cors)

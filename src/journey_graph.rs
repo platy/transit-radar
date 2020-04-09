@@ -1,7 +1,7 @@
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::cmp::Ordering;
 use std::fmt;
-use crate::gtfstime::{Time, Period};
+use crate::gtfs::gtfstime::{Time, Period};
 use crate::gtfs::*;
 use crate::gtfs::db::GTFSData;
 use crate::arena::ArenaSliceIndex;
@@ -103,6 +103,7 @@ pub enum Item<'r> {
     from_stop: &'r Stop,
     to_stop: &'r Stop,
     route_name: &'r str,
+    route_type: RouteType,
   },
   SegmentOfTrip {
     departure_time: Time,
@@ -220,6 +221,7 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
           departure_time,
           arrival_time,
           route_name: &route.route_short_name,
+          route_type: route.route_type,
         },
         QueueItemVariant::StopOnTrip {trip_id, route, previous_arrival_time: _, next_departure_time: _} => Item::SegmentOfTrip {
           from_stop,
@@ -243,8 +245,8 @@ impl <'node, 'r, 's> JourneyGraphPlotter<'r, 's> {
     });
   }
 
-  pub fn add_route_types(&mut self, route_types: impl IntoIterator<Item = RouteType>) {
-    self.route_types.extend(route_types);
+  pub fn add_route_type(&mut self, route_type: RouteType) {
+    self.route_types.insert(route_type);
   }
 
   fn enqueue_transfers_from_stop(&mut self, stop: &'r Stop, departure_time: Time) {

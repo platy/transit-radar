@@ -11,7 +11,6 @@ type AgencyId = u16;
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy)]
 pub struct RouteId(u32);
-pub type RouteType = u16;
 pub type TripId = u64;
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy)]
 pub struct StopId(u64);
@@ -26,6 +25,18 @@ pub type DirectionId = u8; // 0 or 1
 type BikesAllowed = Option<u8>; // 0, 1, or 2
 type WheelchairAccessible = Option<u8>; // 0, 1, 2
 type TransferType = u8;
+
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Clone, Copy)]
+pub enum RouteType {
+    Rail, //2
+    Bus, //3
+    RailwayService, // 100
+    SuburbanRailway, // 109
+    UrbanRailway, // 400
+    BusService, // 700
+    TramService, // 900
+    WaterTransportService,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct Calendar { // "service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
@@ -50,39 +61,6 @@ pub enum Day {
     Friday,
     Saturday,
     Sunday,
-}
-
-impl StopId {
-    pub fn into_inner(self) -> u64 {
-        self.0
-    }
-}
-
-impl Calendar {
-    fn days(&self) -> Vec<Day> {
-        let mut days = vec![];
-        for (day, val) in [Day::Monday, Day::Tuesday, Day::Wednesday, Day::Thursday, Day::Friday, Day::Saturday, Day::Sunday].iter()
-                     .zip([self.monday, self.tuesday, self.wednesday, self.thursday, self.friday, self.saturday, self.sunday].iter()) {
-            if *val > 0 {
-                days.push(*day);
-            }
-        }
-        days
-    }
-}
-
-impl std::fmt::Display for Day {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Day::Monday => "mon",
-            Day::Tuesday => "tue",
-            Day::Wednesday => "wed",
-            Day::Thursday => "thu",
-            Day::Friday => "fri",
-            Day::Saturday => "sat",
-            Day::Sunday => "sun",
-        })
-    }
 }
 
 #[derive(Debug, Deserialize, Ord, PartialOrd, Eq, PartialEq)]
@@ -150,6 +128,39 @@ pub struct Transfer { // "from_stop_id","to_stop_id","transfer_type","min_transf
     to_trip_id: Option<TripId>,
 }
 
+impl StopId {
+    pub fn into_inner(self) -> u64 {
+        self.0
+    }
+}
+
+impl Calendar {
+    fn days(&self) -> Vec<Day> {
+        let mut days = vec![];
+        for (day, val) in [Day::Monday, Day::Tuesday, Day::Wednesday, Day::Thursday, Day::Friday, Day::Saturday, Day::Sunday].iter()
+                     .zip([self.monday, self.tuesday, self.wednesday, self.thursday, self.friday, self.saturday, self.sunday].iter()) {
+            if *val > 0 {
+                days.push(*day);
+            }
+        }
+        days
+    }
+}
+
+impl std::fmt::Display for Day {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Day::Monday => "mon",
+            Day::Tuesday => "tue",
+            Day::Wednesday => "wed",
+            Day::Thursday => "thu",
+            Day::Friday => "fri",
+            Day::Saturday => "sat",
+            Day::Sunday => "sun",
+        })
+    }
+}
+
 impl Stop {
     pub fn fake() -> Stop {
         Stop {
@@ -169,6 +180,26 @@ impl Stop {
 
     pub fn station_id(&self) -> StopId {
         self.parent_station.unwrap_or(self.stop_id)
+    }
+}
+
+impl<'de> Deserialize<'de> for RouteType {
+    fn deserialize<D>(deserializer: D) -> Result<RouteType, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use RouteType::*;
+        u16::deserialize(deserializer).and_then(|ordinal| match ordinal {
+            2 => Ok(Rail),
+            3 => Ok(Bus),
+            100 => Ok(RailwayService),
+            109 => Ok(SuburbanRailway),
+            400 => Ok(UrbanRailway),
+            700 => Ok(BusService),
+            900 => Ok(TramService),
+            1000 => Ok(WaterTransportService),
+            num => Err(de::Error::custom(format!("Unknown route type : {}", num))),
+        })
     }
 }
 

@@ -12,9 +12,14 @@ function App() {
   const [radarData, setRadarData] = useState(null);
   const [showStations, setShowStations] = useState(true);
   const [animate, setAnimate] = useState(true);
+  const [showSBahn, setShowSBahn] = useState(true);
+  const [showUBahn, setShowUBahn] = useState(true);
+  const [showBus, setShowBus] = useState(false);
+  const [showTrams, setShowTrams] = useState(false);
+  const [showRegional, setShowRegional] = useState(false);
 
   async function fetchRadarData() {
-    const result = await fetch(queryBaseUrl + '/from/' + station);
+    const result = await fetch(`${queryBaseUrl}/from/${station}?ubahn=${showUBahn}&sbahn=${showSBahn}&bus=${showBus}&tram=${showTrams}&regio=${showRegional}`);
     const json = await result.json();
     setRadarData(json)
   }
@@ -57,7 +62,7 @@ function App() {
     }
     if (animate && station) tick()
     return () => { clearTimeout(timeout); ignore = true }
-  }, [animate, station]);
+  }, [animate, station, showUBahn, showSBahn, showBus, showTrams, showRegional]);
 
   return (
     <>
@@ -75,7 +80,6 @@ function App() {
         onSelect={(val) => setStation(val)}
       />
       <h2>{station}</h2>
-      <Radar data={radarData} showStations={showStations} />
       <input type="button" onClick={() => fetchRadarData()} value="Reload" />
       <input type="checkbox" 
         onChange={(e) => setShowStations(e.target.checked)}
@@ -87,6 +91,32 @@ function App() {
         checked={animate} 
         name="animate" />
       <label for="animate">Animate</label>
+      <input type="checkbox" 
+        onChange={(e) => setShowSBahn(e.target.checked)}
+        checked={showSBahn} 
+        name="animate" />
+      <label for="animate">Show SBahn</label>
+      <input type="checkbox" 
+        onChange={(e) => setShowUBahn(e.target.checked)}
+        checked={showUBahn} 
+        name="animate" />
+      <label for="animate">Show UBahn</label>
+      <input type="checkbox" 
+        onChange={(e) => setShowBus(e.target.checked)}
+        checked={showBus} 
+        name="animate" />
+      <label for="animate">Show buses</label>
+      <input type="checkbox" 
+        onChange={(e) => setShowTrams(e.target.checked)}
+        checked={showTrams} 
+        name="animate" />
+      <label for="animate">Show trams</label>
+      <input type="checkbox" 
+        onChange={(e) => setShowRegional(e.target.checked)}
+        checked={showRegional} 
+        name="animate" />
+      <label for="animate">Show regional trains</label>
+      <Radar data={radarData} showStations={showStations} />
     </>
   );
 }

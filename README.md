@@ -89,7 +89,8 @@
 
 # Both
 
-[] Filters for buses, trams, etc
+[x] Filters for buses, trams, etc
+[] Search up to an hour
 [] Shareable Uris
 [] Start from coords
 [] Switch to times from seconds
@@ -143,7 +144,7 @@ npm run build
 Deploy backend change:
 ```
 ssh root@s4.njk.onl /app/transit-radar/service.sh stop
-scp target/x86_64-unknown-linux-musl/release/transit-radar root@s4.njk.onl:/app/transit-radar/ 
+scp target/x86_64-unknown-linux-musl/release/webserver root@s4.njk.onl:/app/transit-radar/transit-radar
 ssh root@s4.njk.onl /app/transit-radar/service.sh start
 ```
 

@@ -85,6 +85,7 @@ function Route({
       from_seconds: 0,
       to_seconds: from_seconds,
       route_name,
+      kind,
     }
     originConnection = Connection(connection, stops)
   }
@@ -137,12 +138,13 @@ function Connection({
   from_seconds,
   to_seconds,
   route_name,
+  kind,
 }, stops) {
   let [x1, y1] = stopCoords({ bearing: stops[from].bearing, seconds: from_seconds })
   let [x2, y2] = stopCoords({ bearing: stops[to].bearing, seconds: to_seconds })
   let className
   if (route_name) {
-    className = route_name + ' Connection'
+    className = route_name + ' ' + kind + ' Connection'
   } else {
     className = 'Transfer'
   }
@@ -162,7 +164,7 @@ export default function Radar({data, showStations }) {
   return <>
     <p>
       The transit radar shows all the destinations you could reach within { data.duration_minutes }mins
-      using SBahn or UBahn from the selected station, departing 
+      using the selected transport modes from the selected station, departing 
       on a { data.departure_day } at { data.departure_time } and uses VBB's published timetables at { data.timetable_date }.
     </p>
     <svg xmlns="http://www.w3.org/2000/svg" width={1200} height={1000}>

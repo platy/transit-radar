@@ -2,7 +2,7 @@ use std::error::Error;
 use std::collections::HashSet;
 use std::path::Path;
 use transit_radar::gtfs::db::GTFSSource;
-use transit_radar::gtfs::{StopTime, Route, Trip};
+use transit_radar::gtfs::{StopTime, Route, Trip, RouteType};
 
 fn print_record(record: &csv::StringRecord) {
   for field in record.into_iter() {
@@ -20,7 +20,7 @@ fn mainr() -> Result<(), Box<dyn Error>> {
   let mut rdr = source.open_csv("routes.txt")?;
   for result in rdr.deserialize() {
       let route: Route = result?;
-      if [400, 109].contains(&route.route_type) { // ubahn / sbahn
+      if [RouteType::UrbanRailway, RouteType::SuburbanRailway].contains(&route.route_type) { // ubahn / sbahn
           route_ids.insert(route.route_id);
       }
   }

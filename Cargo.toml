@@ -4,6 +4,11 @@ version = "0.1.0"
 authors = ["Mike Bush <platy@njk.onl>"]
 edition = "2018"
 
+[workspace]
+
+[lib]
+name = "transit_radar"
+
 [dependencies]
 csv = "1.1"
 serde = { version = "1", features = ["derive"] }
