@@ -5,25 +5,34 @@ use std::ops::{Add, Sub, AddAssign, Div};
 use serde::{Serialize, Serializer, de, Deserialize, Deserializer};
 
 
+/// Duration in seconds as represented in GTFS data, used for transfers.txt
+/// # Examples
+/// ```rust
+/// use transit_radar::gtfs::Duration;
+/// assert_eq!(Duration::seconds(60), Duration::minutes(1));
+/// ```
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct Duration {
   seconds: i32,
 }
 
 impl Duration {
+  /// Construct a duration of a number of seconds
   pub fn seconds(seconds: i32) -> Duration {
     Duration {
       seconds: seconds,
     }
   }
 
+  /// Construct a duration of a number of minutes
   pub fn minutes(minutes: i32) -> Duration {
     Duration {
       seconds: minutes * 60,
     }
   }
 
-  pub fn mins(&self) -> i32 {
+  /// Convert to minutes
+  pub fn to_mins(&self) -> i32 {
     self.seconds / 60
   }
 }
@@ -76,8 +85,6 @@ pub struct Time {
 }
 
 impl Time {
-  /// # Panics
-  /// On out of range input
   pub fn from_hms(hours: u32, minutes: u32, seconds: u32) -> Time {
     Time {
       seconds_since_midnight: (hours * 60 + minutes) * 60 + seconds,
@@ -111,7 +118,7 @@ impl Add<Duration> for Time {
     let time: i64 = self.seconds_since_midnight.into();
     let duration : i64 = rhs.seconds.into();
     Time {
-      seconds_since_midnight: (time + duration).try_into().unwrap(),
+      seconds_since_midnight: (time + duration).try_into().expect("duration not to be negative enough to roll over to yesterday"),
     }
   }
 }
@@ -143,32 +150,33 @@ impl fmt::Display for Time {
 
 /// # String representations
 /// ```rust
-/// let time: Time = "0:00:00".parse()
-/// let time: Time = "1:00:00".parse()
-/// let time: Time = "09:00:00".parse()
-/// let time: Time = "23:59:59".parse()
-/// let time: Time = "25:00:00".parse()
+/// use transit_radar::gtfs::Time;
+/// let time: Time = "0:00:00".parse().unwrap();
+/// let time: Time = "1:00:00".parse().unwrap();
+/// let time: Time = "09:00:00".parse().unwrap();
+/// let time: Time = "23:59:59".parse().unwrap();
+/// let time: Time = "25:00:00".parse().unwrap();
 impl std::str::FromStr for Time {
-  type Err = ParseError;
+  type Err = TimeParseError;
 
   fn from_str(s: &str) -> Result<Self, Self::Err> {
     let s = s.as_bytes();
     let (hh, mm, ss) = 
       if s.len() == 8 { 
-        if s[2] != b':' || s[5] != b':' { return Err(ParseError::InvalidFormat) }
+        if s[2] != b':' || s[5] != b':' { return Err(TimeParseError::InvalidFormat) }
         (&s[0..2], &s[3..5], &s[6..8])
       } else if s.len() == 7 { 
-        if s[1] != b':' || s[4] != b':' { return Err(ParseError::InvalidFormat) }
+        if s[1] != b':' || s[4] != b':' { return Err(TimeParseError::InvalidFormat) }
         (&s[0..1], &s[2..4], &s[5..7])
       } else {
-        return Err(ParseError::InvalidFormat)
+        return Err(TimeParseError::InvalidFormat)
       };
     use std::str::from_utf8;
     let hours: u32 = from_utf8(hh)?.parse()?;
     let minutes: u32 = from_utf8(mm)?.parse()?;
     let seconds: u32 = from_utf8(ss)?.parse()?;
     if seconds > 59 || minutes > 59 {
-      Err(ParseError::TooManySecondsOrMinutes)?;
+      Err(TimeParseError::TooManySecondsOrMinutes)?;
     }
     Ok(Time {
       seconds_since_midnight: hours * 60 * 60 + minutes * 60 + seconds,
@@ -213,37 +221,39 @@ impl Serialize for Time {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ParseError {
+pub enum TimeParseError {
   InvalidFormat,
   TooManySecondsOrMinutes,
   ParseIntError(std::num::ParseIntError),
 }
 
-impl From<std::num::ParseIntError> for ParseError {
-  fn from(err: std::num::ParseIntError) -> ParseError {
-    ParseError::ParseIntError(err)
+impl From<std::num::ParseIntError> for TimeParseError {
+  fn from(err: std::num::ParseIntError) -> TimeParseError {
+    TimeParseError::ParseIntError(err)
   }
 }
 
-impl std::convert::From<std::str::Utf8Error> for ParseError {
-  fn from(_err: std::str::Utf8Error) -> ParseError {
-    ParseError::InvalidFormat
+impl std::convert::From<std::str::Utf8Error> for TimeParseError {
+  fn from(_err: std::str::Utf8Error) -> TimeParseError {
+    TimeParseError::InvalidFormat
   }
 }
 
-impl fmt::Display for ParseError {
+impl fmt::Display for TimeParseError {
   #[inline(always)]
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    use TimeParseError::*;
    match self {
-    ParseError::InvalidFormat => write!(f, "Time should use format eg. 23:59:59"),
-    ParseError::TooManySecondsOrMinutes => write!(f, "Maximum minutes or seconds is 59"),
-    ParseError::ParseIntError(err) => err.fmt(f),
+    InvalidFormat => write!(f, "Time should use format eg. 23:59:59"),
+    TooManySecondsOrMinutes => write!(f, "Maximum minutes or seconds is 59"),
+    ParseIntError(err) => err.fmt(f),
    }
   }
 }
 
-impl Error for ParseError {}
+impl Error for TimeParseError {}
 
+/// A period between 2 Times on the same day
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Period {
   start: Time,
@@ -292,6 +302,11 @@ impl fmt::Display for Period {
 #[cfg(test)]
 mod test {
   use super::{Time, Duration};
+
+  #[test]
+  fn hms_times() {
+    assert_eq!(Time::from_hms(12, 59, 59), "12:59:59".parse().unwrap());
+  }
 
   #[test]
   fn subtract_times() {

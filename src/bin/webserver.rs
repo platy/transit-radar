@@ -9,7 +9,6 @@ use chrono::prelude::*;
 use transit_radar::journey_graph;
 use transit_radar::gtfs::{self, *};
 use transit_radar::gtfs::db::{self, Suggester, GTFSSource, DayFilter};
-use gtfs::gtfstime::{Time, Period, Duration};
 
 use geo::algorithm::bearing::Bearing;
 
@@ -130,7 +129,7 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, day: Day, peri
         timetable_date: data.timetable_start_date().to_string(),
         departure_day: day.to_string(),
         departure_time: period.start(),
-        duration_minutes: period.duration().mins(),
+        duration_minutes: period.duration().to_mins(),
     }
 }
 
@@ -151,7 +150,7 @@ struct FEData<'s> {
 struct FEStop {
     bearing: f64,
     name: String,
-    seconds: gtfstime::Duration,
+    seconds: Duration,
 }
 
 #[derive(Serialize)]
@@ -163,16 +162,16 @@ struct FERoute<'s> {
 
 #[derive(Serialize)]
 struct FESegment {
-    from_seconds: gtfstime::Duration,
-    to_seconds: gtfstime::Duration,
+    from_seconds: Duration,
+    to_seconds: Duration,
     from: usize,
     to: usize,
 }
 
 #[derive(Serialize)]
 struct FEConnection<'s> {
-    from_seconds: gtfstime::Duration,
-    to_seconds: gtfstime::Duration,
+    from_seconds: Duration,
+    to_seconds: Duration,
     from: usize,
     to: usize,
     route_name: Option<&'s str>,

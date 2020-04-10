@@ -7,7 +7,7 @@ use std::ops::Deref;
 use tst::TSTMap;
 
 use crate::gtfs::*;
-use crate::gtfs::gtfstime::{Period};
+use crate::gtfs::time::{Period};
 
 #[derive(Debug)]
 pub enum SearchError {

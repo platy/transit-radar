@@ -1,7 +1,6 @@
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::cmp::Ordering;
 use std::fmt;
-use crate::gtfs::gtfstime::{Time, Period};
 use crate::gtfs::*;
 use crate::gtfs::db::GTFSData;
 use crate::arena::ArenaSliceIndex;

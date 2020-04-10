@@ -3,9 +3,9 @@ use std::fmt;
 use serde::{self, de, Deserialize, Deserializer};
 use std::convert::TryInto;
 
-pub mod gtfstime;
+mod time;
 pub mod db;
-use gtfstime::{Time, Duration};
+pub use time::{Time, Duration, Period};
 
 type AgencyId = u16;
 

@@ -38,6 +38,7 @@
 [x] Remove the cache
 [x] Allow connections to several trips of the same station and route (eg different directions), currently it is filtered to one
 [] Replace arena with a map of trips
+[] Station search more forgiving with umlauts etc. maybe find a canonicalisation library
 [] Reload GTFS data each day
 -
 [] read from zip
@@ -53,7 +54,7 @@
 [x] Remove duplication of trips read ~ 4%
 [x] Parse Time as byte array as checking the char boundaries is slow and unnecessary maybe 6%
 [] Parallelize stoptime deserialisation and reading, reading is 30% and deserialisation is 50%
-[] Buffer reads from the cache and writes to it
+[] See if csv reader can be sped up
 
 ## Code 
 [x] StopId should not be String, maybe &str / str?
@@ -82,6 +83,7 @@
 [x] Connect with curves
 [x] Trip start control point to reduce curve into the origin
 [x] Start bearing toward next stop to avoid curve into the origin
+[] Rewrite in rust/wasm
 [] Add text description to svg
 [] Save button
 [] Add key with emphasis highlighting
@@ -90,14 +92,19 @@
 # Both
 
 [x] Filters for buses, trams, etc
-[] Search up to an hour
 [] Shareable Uris
 [] Start from coords
+[] Incoming radar
+[] Show only important stations to reduce the number shown
+[] Average times
+[] London
 [] Switch to times from seconds
+[] Choose times other than now
 [] Smooth animation
   [] hack - how long is first departure from origin - load that much extra data and then just rerender until that departure and then reload data
   [] hack+ - on reload do a complete search in the backend but just send a diff. We may add some new stations and change the earliest arrival time at some other stations. Some trips are removed and added, and some stops on trips which were not shown will be shown. Calculate placement of transfers in frontend
   [] lower the backend calculations by re searching over the existing tree rather than from scratch after a missed departure. This will massively complicate the algorithm and structure and i can't really justify it now.
+[] Search up to an hour
 
 # Intermediate data format
 
