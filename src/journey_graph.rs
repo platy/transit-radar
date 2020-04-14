@@ -25,7 +25,7 @@ impl <'r> JourneyGraphPlotter<'r> {
   pub fn new(day: Day, period: Period, data: &'r GTFSData) -> JourneyGraphPlotter<'r> {
     JourneyGraphPlotter {
       period: period,
-      services: data.services_of_day(day).clone(),
+      services: data.services_of_day(day),
       queue: BinaryHeap::new(),
       catch_up: VecDeque::new(),
       enqueued_trips: HashSet::new(),
@@ -499,7 +499,7 @@ impl <'node, 'r> JourneyGraphPlotter<'r> {
     departures.iter().filter(move |&stop_ref: &&TripStopRef| {
       // this is a slow lookup in a critical code section, if departure_time was part of the Ref this wouldn't be necessary
       let stop_time = self.data.stop_time(stop_ref);
-      period.contains(stop_time.departure_time) && self.services.contains(&self.data.trips_by_id.get(&stop_time.trip_id).unwrap().service_id)
+      period.contains(stop_time.departure_time) && self.services.contains(&self.data.get_trip(&stop_time.trip_id).unwrap().service_id)
     })
   }
 

@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -7,23 +6,11 @@ use urlencoding::decode;
 use chrono::prelude::*;
 
 use transit_radar::journey_graph;
-use transit_radar::gtfs::{self, *};
-use transit_radar::gtfs::db::{self, Suggester, GTFSSource, DayFilter};
+use transit_radar::gtfs::*;
+use transit_radar::gtfs::db;
+use transit_radar::Suggester;
 
 use geo::algorithm::bearing::Bearing;
-
-fn load_data(gtfs_dir: &Path, day_filter: DayFilter, time_period: Option<Period>) -> Result<db::GTFSData, Box<dyn Error>> {
-    let source = &GTFSSource::new(gtfs_dir);
-
-    let mut data = gtfs::db::GTFSData::new();
-    data.load_calendar(source)?;
-    data.load_transfers_of_stop(source)?;
-    data.load_stops_by_id(source)?;
-    data.load_trips_by_id(source, day_filter)?;
-    data.load_routes_by_id(source)?;
-    data.departure_lookup(time_period, &source)?;
-    Ok(data)
-}
 
 fn lookup<'r>(data: &'r db::GTFSData, station_name: String, options: RadarOptions, day: Day, period: Period) -> Result<FEData<'r>, db::SearchError> {
     let station = data.get_station_by_name(&station_name)?;
@@ -304,9 +291,9 @@ async fn main() {
     let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
 
-    let data = Arc::new(load_data(
+    let data = Arc::new(db::GTFSData::load_data(
         &gtfs_dir,
-        DayFilter::All, 
+        db::DayFilter::All, 
         None,
     ).unwrap());
     let station_name_index = Arc::new(data.build_station_word_index());
