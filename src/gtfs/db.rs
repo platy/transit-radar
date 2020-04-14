@@ -149,13 +149,19 @@ impl <'r> GTFSData {
         self.stops_by_id.get(id)
     }
 
-    pub fn get_trip(&self, id: &TripId) -> Option<&Trip> {
-        self.trips_by_id.get(id)
+    /// finds all trips leaving a stop within a time period, using the provided services, includes the stop time for that stop and all following stops
+    pub fn trips_from(&self, stop: StopId, services: &HashSet<ServiceId>, period: Period) -> Vec<&[StopTime]> {
+      let departures = self.get_departures_from(stop);
+      departures.iter().filter(move |&stop_ref: &&TripStopRef| {
+        // this is a slow lookup in a critical code section, if departure_time was part of the Ref this wouldn't be necessary
+        let stop_time = self.stop_time(stop_ref);
+        period.contains(stop_time.departure_time) && services.contains(&self.trips_by_id.get(&stop_time.trip_id).unwrap().service_id)
+      }).map(|stop_ref| self.stop_times(&stop_ref)).collect()
     }
 
     /// Get all the transfers from a stop
-    pub fn get_transfers(&self, stop_id: &StopId) -> Option<&Vec<Transfer>> {
-      self.transfers.get(stop_id)
+    pub fn transfers_from(&self, stop_id: &StopId) -> &[Transfer] {
+        self.transfers.get(stop_id).map(|vec| &vec[..]).unwrap_or_default()
     }
 
     /// Get a station by exact name
@@ -191,17 +197,17 @@ impl <'r> GTFSData {
     }
 
     /// Get all the ref for all departing trip stops from a stop
-    pub fn get_departures_from(&self, stop_id: StopId) -> &[TripStopRef] {
+    fn get_departures_from(&self, stop_id: StopId) -> &[TripStopRef] {
         &self.stop_departures.get(&stop_id).map(|v| &v[..]).unwrap_or_default()
     }
 
     /// Get all stops of the trip folling the departure referenced
-    pub fn stop_times(&self, &(trip_id, idx): &TripStopRef) -> &[StopTime] {
+    fn stop_times(&self, &(trip_id, idx): &TripStopRef) -> &[StopTime] {
         &self.trip_stop_times.get(&trip_id).map(|stop_times| &stop_times[idx..]).unwrap_or_default()
     }
 
     /// get the initial stop time of the trip departure referenced
-    pub fn stop_time(&self, &(trip_id, idx): &TripStopRef) -> &StopTime {
+    fn stop_time(&self, &(trip_id, idx): &TripStopRef) -> &StopTime {
         &self.trip_stop_times.get(&trip_id).map(|stop_times| &stop_times[idx]).expect("Stop with this Ref")
     }
 

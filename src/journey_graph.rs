@@ -2,12 +2,16 @@ use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::cmp::Ordering;
 use std::fmt;
 use crate::gtfs::*;
-use crate::gtfs::db::{GTFSData, TripStopRef};
+use crate::gtfs::db::GTFSData;
 
 
+/// Runs an algoritm to build a tree of all fastest journeys from a start point
 pub struct JourneyGraphPlotter<'r> {
   period: Period, // Search of journeys is within this period
+  route_types: HashSet<RouteType>,
+  data: &'r GTFSData,
   services: HashSet<ServiceId>, // these services are searched
+
   queue: BinaryHeap<QueueItem<'r>>,
   /// items which were skipped earlier as it didn't seem they would be part of any minimum span but now are, these have already been processed and ordered and are iterated before any more processing from the queue takes place
   catch_up: VecDeque<Item<'r>>, 
@@ -17,148 +21,9 @@ pub struct JourneyGraphPlotter<'r> {
   // stops that have been arrived at and the earliest time they are arrived at
   stops: HashMap<StopId, Time>, 
   emitted_stations: HashSet<StopId>,
-  data: &'r GTFSData,
-  route_types: HashSet<RouteType>,
 }
 
-impl <'r> JourneyGraphPlotter<'r> {
-  pub fn new(day: Day, period: Period, data: &'r GTFSData) -> JourneyGraphPlotter<'r> {
-    JourneyGraphPlotter {
-      period: period,
-      services: data.services_of_day(day),
-      queue: BinaryHeap::new(),
-      catch_up: VecDeque::new(),
-      enqueued_trips: HashSet::new(),
-      slow_trips: HashMap::new(),
-      stops: HashMap::new(),
-      emitted_stations: HashSet::new(),
-      data: data,
-      route_types: HashSet::new(),
-    }
-  }
-}
-
-struct QueueItem<'r> {
-  arrival_time: Time,
-  to_stop: &'r Stop,
-  variant: QueueItemVariant<'r>,
-}
-
-impl<'r> fmt::Debug for QueueItem<'r> {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.debug_struct("QueueItem")
-     .field("to_stop", &format!("{} ({:?}{})", self.to_stop.stop_name, self.to_stop.stop_id, if self.to_stop.parent_station.is_none() { "*" } else { "" }))
-     .field("arrival_time", &self.arrival_time)
-     .field("variant", &self.variant)
-     .finish()
-  }
-}
-
-/// The ordering on the queue items puts those with the earliest arrival times as the greatest,
-/// so that they will be highest priority in the BinaryHeap, then all the other fields need to be
-/// taken into account for a full ordering
-impl <'node, 'r> Ord for QueueItem<'r> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.arrival_time.cmp(&other.arrival_time).reverse().then_with(||
-          self.to_stop.stop_id.cmp(&other.to_stop.stop_id).then(
-            self.variant.cmp(&other.variant)))
-    }
-}
-
-impl <'node, 'r> PartialOrd for QueueItem<'r> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl <'node, 'r> PartialEq for QueueItem<'r> {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Ordering::Equal
-    }
-}
-
-impl <'node, 'r> Eq for QueueItem<'r> {}
-
-#[derive(Debug)]
-pub enum Item<'r> {
-  JourneySegment {
-    departure_time: Time,
-    arrival_time: Time,
-    from_stop: &'r Stop,
-    to_stop: &'r Stop,
-  },
-  ConnectionToTrip {
-    departure_time: Time,
-    arrival_time: Time,
-    from_stop: &'r Stop,
-    to_stop: &'r Stop,
-    route_name: &'r str,
-    route_type: RouteType,
-  },
-  SegmentOfTrip {
-    departure_time: Time,
-    arrival_time: Time,
-    from_stop: &'r Stop,
-    to_stop: &'r Stop,
-    trip_id: TripId,
-    route_name: &'r str,
-    route_type: RouteType,
-  },
-  Station {
-    stop: &'r Stop,
-    earliest_arrival: Time,
-  }
-}
-
-#[derive(Debug, Ord, PartialOrd, PartialEq, Eq)]
-enum QueueItemVariant<'r> {
-  StopOnTrip { 
-    departure_time: Time,
-    from_stop: &'r Stop,
-    trip_id: TripId, 
-    route: &'r Route,
-    previous_arrival_time: Time, // arrival at the from stop
-    next_departure_time: Time, // departure from the to stop
-  },
-  Connection { 
-    departure_time: Time,
-    from_stop: &'r Stop,
-    trip_id: TripId, 
-    route: &'r Route 
-  },
-  Transfer {
-    departure_time: Time,
-    from_stop: &'r Stop,
-  },
-  OriginStation,
-}
-
-impl<'r> QueueItemVariant<'r> {
-  fn get_from_stop(&self) -> Option<&'r Stop> {
-    match self {
-      QueueItemVariant::Connection { 
-        departure_time: _,
-        from_stop,
-        trip_id: _, 
-        route: _ 
-      } => Some(from_stop),
-      QueueItemVariant::StopOnTrip { 
-        departure_time: _,
-        from_stop,
-        trip_id: _, 
-        route: _,
-        previous_arrival_time: _,
-        next_departure_time: _,
-      } => Some(from_stop),
-      QueueItemVariant::Transfer {
-        departure_time: _,
-        from_stop,
-      } => Some(from_stop),
-      QueueItemVariant::OriginStation => None,
-    }
-  }
-}
-
+/// Output of the algorithm, Items are produced in order of arrival time
 impl<'r> Iterator for JourneyGraphPlotter<'r> {
   type Item = Item<'r>;
 
@@ -176,8 +41,37 @@ impl<'r> Iterator for JourneyGraphPlotter<'r> {
   }
 }
 
-impl <'node, 'r> JourneyGraphPlotter<'r> {
-  // returns the next items to be emitted in order, or empty if there are no more
+impl <'r> JourneyGraphPlotter<'r> {
+  pub fn new(day: Day, period: Period, data: &'r GTFSData) -> JourneyGraphPlotter<'r> {
+    JourneyGraphPlotter {
+      period: period,
+      services: data.services_of_day(day),
+      queue: BinaryHeap::new(),
+      catch_up: VecDeque::new(),
+      enqueued_trips: HashSet::new(),
+      slow_trips: HashMap::new(),
+      stops: HashMap::new(),
+      emitted_stations: HashSet::new(),
+      data: data,
+      route_types: HashSet::new(),
+    }
+  }
+
+  /// Add an origin station to start the search from
+  pub fn add_origin_station(&mut self, origin: &'r Stop) {
+    self.queue.push(QueueItem {
+      arrival_time: self.period.start(),
+      to_stop: origin,
+      variant: QueueItemVariant::OriginStation,
+    });
+  }
+
+  /// Add a route type to be searched
+  pub fn add_route_type(&mut self, route_type: RouteType) {
+    self.route_types.insert(route_type);
+  }
+
+  /// returns the next items to be emitted in order, or empty if there are no more and the process halts
   fn next_block(&mut self) -> Vec<Item<'r>> {
     while let Some(item) = self.queue.pop() {
       if !self.period.contains(item.arrival_time) {
@@ -205,6 +99,7 @@ impl <'node, 'r> JourneyGraphPlotter<'r> {
     vec![]
   }
 
+  /// Produces an output item for a queue item
   fn convert_item(&self, QueueItem {
       to_stop,
       mut arrival_time,
@@ -266,21 +161,9 @@ impl <'node, 'r> JourneyGraphPlotter<'r> {
       }
   }
 
-  pub fn add_origin_station(&mut self, origin: &'r Stop) {
-    self.queue.push(QueueItem {
-      arrival_time: self.period.start(),
-      to_stop: origin,
-      variant: QueueItemVariant::OriginStation,
-    });
-  }
-
-  pub fn add_route_type(&mut self, route_type: RouteType) {
-    self.route_types.insert(route_type);
-  }
-
   fn enqueue_transfers_from_stop(&mut self, stop: &'r Stop, departure_time: Time) {
     let mut to_add = vec![];
-    for transfer in self.transfers_from(stop.stop_id) {
+    for transfer in self.data.transfers_from(&stop.stop_id) {
       if !self.stops.contains_key(&transfer.to_stop_id) {
         to_add.push(QueueItem {
           to_stop: self.data.get_stop(&transfer.to_stop_id).unwrap(),
@@ -297,7 +180,7 @@ impl <'node, 'r> JourneyGraphPlotter<'r> {
 
   fn enqueue_transfers_from_station(&mut self, station: &'r Stop, departure_time: Time) {
     let mut to_add = vec![];
-    for transfer in self.transfers_from(station.station_id()) {
+    for transfer in self.data.transfers_from(&station.station_id()) {
       // parent stations transfer to parents, so transfer to the children instead
       for to_stop_id in self.data.stops_by_parent_id(&transfer.to_stop_id) {
         if !self.stops.contains_key(&transfer.to_stop_id) {
@@ -334,13 +217,12 @@ impl <'node, 'r> JourneyGraphPlotter<'r> {
 
   fn enqueue_connections_and_trips(&mut self, item: &QueueItem<'r>, from_stop: &'r Stop, departure_time: Time) -> bool {
     let mut to_add = vec![];
-    for stop_ref in self.trips_from(item.to_stop.stop_id, self.period.with_start(item.arrival_time)) {
-      let stops = self.data.stop_times(&stop_ref);
+    for stops in self.data.trips_from(item.to_stop.stop_id, &self.services, self.period.with_start(item.arrival_time)) {
       let trip_id = stops[0].trip_id;
       let mut trip_to_add = vec![];
       // check that route type is allowed
-      if self.route_types.contains(&self.data.get_route_for_trip(&trip_id).route_type) {
-        let route = self.data.get_route_for_trip(&trip_id);
+      let route = self.data.get_route_for_trip(&trip_id);
+      if self.route_types.contains(&route.route_type) {
         // enqueue connection (transfer + wait)
         trip_to_add.push(QueueItem{
           to_stop: item.to_stop,
@@ -410,6 +292,7 @@ impl <'node, 'r> JourneyGraphPlotter<'r> {
     }
   }
 
+  /// Processes the item, enqueuing any following segments and possibly returning the processed items to be converted and emitted
   fn process_queue_item(&mut self, item: QueueItem<'r>) -> Vec<QueueItem<'r>> {
     if self.set_arrival_time(item.to_stop.stop_id, item.arrival_time) { // if this changes the earliest arrival time for this stop, we possibly have new connections / trips
       match item.variant {
@@ -492,19 +375,125 @@ impl <'node, 'r> JourneyGraphPlotter<'r> {
       vec![] // the item will not be emitted
     }
   }
+}
 
-  /// finds all trips leaving a stop within a time period, includes the stop time for that stop and all following stops
-  fn trips_from(&self, stop: StopId, period: Period) -> impl Iterator<Item = &TripStopRef> {
-    let departures = self.data.get_departures_from(stop);
-    departures.iter().filter(move |&stop_ref: &&TripStopRef| {
-      // this is a slow lookup in a critical code section, if departure_time was part of the Ref this wouldn't be necessary
-      let stop_time = self.data.stop_time(stop_ref);
-      period.contains(stop_time.departure_time) && self.services.contains(&self.data.get_trip(&stop_time.trip_id).unwrap().service_id)
-    })
+struct QueueItem<'r> {
+  arrival_time: Time,
+  to_stop: &'r Stop,
+  variant: QueueItemVariant<'r>,
+}
+
+impl<'r> fmt::Debug for QueueItem<'r> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("QueueItem")
+     .field("to_stop", &format!("{} ({:?}{})", self.to_stop.stop_name, self.to_stop.stop_id, if self.to_stop.parent_station.is_none() { "*" } else { "" }))
+     .field("arrival_time", &self.arrival_time)
+     .field("variant", &self.variant)
+     .finish()
   }
+}
 
-  /// finds all connections from a stop
-  fn transfers_from(&self, stop: StopId) -> impl Iterator<Item = &Transfer> {
-    self.data.get_transfers(&stop).map(|vec| vec.iter()).unwrap_or([].iter())
+/// The ordering on the queue items puts those with the earliest arrival times as the greatest,
+/// so that they will be highest priority in the BinaryHeap, then all the other fields need to be
+/// taken into account for a full ordering
+impl <'r> Ord for QueueItem<'r> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.arrival_time.cmp(&other.arrival_time).reverse().then_with(||
+          self.to_stop.stop_id.cmp(&other.to_stop.stop_id).then(
+            self.variant.cmp(&other.variant)))
+    }
+}
+
+impl <'r> PartialOrd for QueueItem<'r> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl <'r> PartialEq for QueueItem<'r> {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl <'r> Eq for QueueItem<'r> {}
+
+#[derive(Debug, Ord, PartialOrd, PartialEq, Eq)]
+enum QueueItemVariant<'r> {
+  StopOnTrip { 
+    departure_time: Time,
+    from_stop: &'r Stop,
+    trip_id: TripId, 
+    route: &'r Route,
+    previous_arrival_time: Time, // arrival at the from stop
+    next_departure_time: Time, // departure from the to stop
+  },
+  Connection { 
+    departure_time: Time,
+    from_stop: &'r Stop,
+    trip_id: TripId, 
+    route: &'r Route 
+  },
+  Transfer {
+    departure_time: Time,
+    from_stop: &'r Stop,
+  },
+  OriginStation,
+}
+
+impl<'r> QueueItemVariant<'r> {
+  fn get_from_stop(&self) -> Option<&'r Stop> {
+    match self {
+      QueueItemVariant::Connection { 
+        departure_time: _,
+        from_stop,
+        trip_id: _, 
+        route: _ 
+      } => Some(from_stop),
+      QueueItemVariant::StopOnTrip { 
+        departure_time: _,
+        from_stop,
+        trip_id: _, 
+        route: _,
+        previous_arrival_time: _,
+        next_departure_time: _,
+      } => Some(from_stop),
+      QueueItemVariant::Transfer {
+        departure_time: _,
+        from_stop,
+      } => Some(from_stop),
+      QueueItemVariant::OriginStation => None,
+    }
+  }
+}
+
+#[derive(Debug)]
+pub enum Item<'r> {
+  JourneySegment {
+    departure_time: Time,
+    arrival_time: Time,
+    from_stop: &'r Stop,
+    to_stop: &'r Stop,
+  },
+  ConnectionToTrip {
+    departure_time: Time,
+    arrival_time: Time,
+    from_stop: &'r Stop,
+    to_stop: &'r Stop,
+    route_name: &'r str,
+    route_type: RouteType,
+  },
+  SegmentOfTrip {
+    departure_time: Time,
+    arrival_time: Time,
+    from_stop: &'r Stop,
+    to_stop: &'r Stop,
+    trip_id: TripId,
+    route_name: &'r str,
+    route_type: RouteType,
+  },
+  Station {
+    stop: &'r Stop,
+    earliest_arrival: Time,
   }
 }
