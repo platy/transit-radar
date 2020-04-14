@@ -37,8 +37,8 @@
 [x] Filter GTFS data for development so that cache is not needed
 [x] Remove the cache
 [x] Allow connections to several trips of the same station and route (eg different directions), currently it is filtered to one
-[] Replace arena with a map of trips
-[] Station search more forgiving with umlauts etc. maybe find a canonicalisation library
+[x] Replace arena with a map of trips
+[] Station search more forgiving with umlauts etc. maybe find crate to build a linguistic index / search map
 [] Reload GTFS data each day
 -
 [] read from zip

@@ -3,7 +3,7 @@ use std::fmt;
 use std::collections::{HashSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::ops::Deref;
-use tst::TSTMap;
+use crate::suggester::Suggester;
 
 use crate::gtfs::*;
 use crate::gtfs::time::{Period};
@@ -323,42 +323,5 @@ impl <'r> GTFSData {
         
         eprintln!("built station name index of {} words", suggester.num_words());
         suggester
-    }
-}
-
-pub struct Suggester<T> {
-    map: TSTMap<HashSet<T>>,
-}
-
-impl<T: std::hash::Hash + Eq + Copy> Suggester<T> {
-    fn new() -> Suggester<T> {
-        Suggester {
-            map: TSTMap::new(),
-        }
-    }
-
-    fn insert(&mut self, key: &str, value: T) {
-        for word in key.split_whitespace() {
-            if word.len() > 3 {
-                let v = self.map.entry(&word.to_lowercase()).or_insert(HashSet::new());
-                v.insert(value);
-            }
-        }
-    }
-
-    fn num_words(&self) -> usize { self.map.len() }
-
-    pub fn prefix_iter(&self, prefix: &str) -> impl Iterator<Item = (String, &HashSet<T>)> {
-        self.map.prefix_iter(&prefix.to_lowercase())
-    }
-
-    pub fn search(&self, query: &str) -> impl IntoIterator<Item = T> {
-        let query: Vec<_> = query.split_whitespace().collect();
-        let mut results: HashSet<_> = self.prefix_iter(query[0]).map(|(_, s)| s).flatten().map(|i| *i).collect();
-        for part in &query[1..] {
-            let previous_results = results;
-            results = self.prefix_iter(&part).map(|(_, s)| s).flatten().map(|i| *i).filter(|val| previous_results.contains(val)).collect();
-        }
-        results
     }
 }
