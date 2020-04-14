@@ -100,13 +100,12 @@ impl GTFSSource {
     Ok(rdr.into_deserialize())
   }
 
-  pub fn get_trips(&self, route_id: Option<RouteId>, service_ids: Option<HashSet<ServiceId>>, direction: Option<DirectionId>) -> Result<impl Iterator<Item = Result<Trip, csv::Error>>, csv::Error> {
+  pub fn get_trips(&self, route_id: Option<RouteId>, service_ids: Option<HashSet<ServiceId>>) -> Result<impl Iterator<Item = Result<Trip, csv::Error>>, csv::Error> {
     let rdr = self.open_csv("trips.txt")?;
     let iter = rdr.into_deserialize().filter(move |result: &Result<Trip, csv::Error>| {
         if let Ok(trip) = result {
             route_id.map(|route_id| route_id == trip.route_id).unwrap_or(true)
                 && service_ids.as_ref().map(|service_ids| service_ids.contains(&trip.service_id)).unwrap_or(true)
-                && direction.map(|direction| direction == trip.direction_id).unwrap_or(true)
         } else {
             false
         }
@@ -124,7 +123,6 @@ pub struct GTFSData {
     services_by_day: HashMap<Day, HashSet<ServiceId>>,
     pub trips_by_id: HashMap<TripId, Trip>,
     routes_by_id: HashMap<RouteId, Route>,
-    fake_stop: Stop,
     timetable_start_date: String,
 }
 
@@ -155,7 +153,6 @@ impl <'r> GTFSData {
             services_by_day: HashMap::new(),
             trips_by_id: HashMap::new(),
             routes_by_id: HashMap::new(),
-            fake_stop: Stop::fake(),
             timetable_start_date: "".to_string(),
         }
     }
@@ -198,7 +195,7 @@ impl <'r> GTFSData {
             DayFilter::All => None,
             DayFilter::Single(day) => Some(self.services_by_day.get(&day).unwrap().clone()),
         };
-        for result in source.get_trips(None, services, None)? {
+        for result in source.get_trips(None, services)? {
             let trip: Trip = result?;
             self.trips_by_id.insert(trip.trip_id.clone(), trip);
         }
@@ -305,10 +302,6 @@ impl <'r> GTFSData {
 
     pub fn stop(&self, id: ArenaIndex<StopTime>) -> &StopTime {
         &self.stop_times_arena[id]
-    }
-
-    pub fn fake_stop(&self) -> &Stop {
-        &self.fake_stop
     }
 
     pub fn build_station_word_index<'t>(&self) -> Suggester<StopId> {
