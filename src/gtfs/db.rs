@@ -2,7 +2,6 @@ use std::error::Error;
 use std::fmt;
 use std::collections::{HashSet, HashMap};
 use std::path::{Path, PathBuf};
-use crate::arena::{Arena, ArenaIndex, ArenaSliceIndex};
 use std::ops::Deref;
 use tst::TSTMap;
 
@@ -114,9 +113,11 @@ impl GTFSSource {
   }
 }
 
+pub type TripStopRef = (TripId, usize); // usize refers to the index of the stop in the trip, should probably instead use stop sequence
+
 pub struct GTFSData {
-    stop_times_arena: Arena<StopTime>,
-    stop_departures: HashMap<StopId, Vec<ArenaSliceIndex<StopTime>>>,
+    trip_stop_times: HashMap<TripId, Vec<StopTime>>,
+    stop_departures: HashMap<StopId, Vec<TripStopRef>>,
     transfers: HashMap<StopId, Vec<Transfer>>,
     stops_by_id: HashMap<StopId, Stop>,
     stops_by_parent_id: HashMap<StopId, Vec<StopId>>,
@@ -145,7 +146,7 @@ impl std::fmt::Display for DayFilter {
 impl <'r> GTFSData {
     pub fn new() -> GTFSData {
         GTFSData {
-            stop_times_arena: Arena::with_capacity(40000), // there are a lot and I don't want to risk keeping copying them
+            trip_stop_times: HashMap::new(),
             stop_departures: HashMap::new(),
             transfers: HashMap::new(),
             stops_by_id: HashMap::new(),
@@ -163,10 +164,6 @@ impl <'r> GTFSData {
 
     pub fn get_route_for_trip(&self, trip_id: &TripId) -> &Route {
         self.trips_by_id.get(trip_id).and_then(|trip| self.routes_by_id.get(&trip.route_id)).expect("To have route entry for trip")
-    }
-
-    pub fn borrow_stop_departures(&self) -> &HashMap<StopId, Vec<ArenaSliceIndex<StopTime>>> {
-      &self.stop_departures
     }
 
     pub fn load_stops_by_id(&mut self, source: &GTFSSource) -> Result<(), Box<dyn Error>> {
@@ -255,29 +252,29 @@ impl <'r> GTFSData {
             records: rdr.deserialize().peekable(),
             trip_id: None,
         };
-        let mut count = 0;
+        let mut departure_count = 0;
         while let Some(result) = iter.next() {
             let (trip_id, stops) = result?;
             if self.trips_by_id.contains_key(&trip_id) {
-                let stops = stops.skip_while(|result| 
+                let stops: Result<Vec<StopTime>, _> = stops.skip_while(|result| 
                     if let (Ok(stop), Some(period)) = (result, period) {
                         !period.contains(stop.departure_time)
                     } else {
                         false
                     }
-                );
-                let stops = self.stop_times_arena.alloc_extend_result(stops)?;
+                ).collect();
+                let stops = stops?;
+                departure_count += stops.len();
                 if stops.len() > 0 {
-                    count += 1;
-                }
-                for (i, start_idx) in stops.iter().enumerate() {
-                    let departures_from_stop = self.stop_departures.entry(self.stop_times_arena[start_idx].stop_id).or_default();
-                    departures_from_stop.push(stops.sub(i..));
+                    for (i, stop_time) in stops.iter().enumerate() {
+                        let departures_from_stop = self.stop_departures.entry(stop_time.stop_id).or_default();
+                        departures_from_stop.push((trip_id, i));
+                    }
+                    self.trip_stop_times.insert(trip_id, stops);
                 }
             }
         }
-        eprintln!("{} trips", count);
-        eprintln!("{} departures allocated, leaving from {} stops", self.stop_times_arena.len(), self.stop_departures.len());
+        eprintln!("{} departures of {} trips allocated, leaving from {} stops", departure_count, self.trip_stop_times.len(), self.stop_departures.len());
 
         Ok(())
     }
@@ -296,12 +293,16 @@ impl <'r> GTFSData {
         self.stops_by_parent_id.get(parent).cloned().unwrap_or_default()
     }
 
-    pub fn stops(&self, idx: ArenaSliceIndex<StopTime>) -> &[StopTime] {
-        &self.stop_times_arena[idx]
+    pub fn get_departures_from(&self, stop_id: StopId) -> &[TripStopRef] {
+        &self.stop_departures.get(&stop_id).map(|v| &v[..]).unwrap_or_default()
     }
 
-    pub fn stop(&self, id: ArenaIndex<StopTime>) -> &StopTime {
-        &self.stop_times_arena[id]
+    pub fn stop_times(&self, &(trip_id, idx): &TripStopRef) -> &[StopTime] {
+        &self.trip_stop_times.get(&trip_id).map(|stop_times| &stop_times[idx..]).unwrap_or_default()
+    }
+
+    pub fn stop_time(&self, &(trip_id, idx): &TripStopRef) -> &StopTime {
+        &self.trip_stop_times.get(&trip_id).map(|stop_times| &stop_times[idx]).expect("Stop with this Ref")
     }
 
     pub fn build_station_word_index<'t>(&self) -> Suggester<StopId> {
