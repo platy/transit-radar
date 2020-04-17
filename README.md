@@ -40,6 +40,7 @@
 [x] Replace arena with a map of trips
 [] Station search more forgiving with umlauts etc. maybe find crate to build a linguistic index / search map
 [] Reload GTFS data each day
+[] Read service exceptions in calendar_dates.txt
 -
 [] read from zip
 [] CLI tool to lookup departures for debugging
@@ -106,34 +107,33 @@
   [] lower the backend calculations by re searching over the existing tree rather than from scratch after a missed departure. This will massively complicate the algorithm and structure and i can't really justify it now.
 [] Search up to an hour
 
-# Intermediate data format
+# Models
 
-```
-{
-  locations[locationId]: {
-    name: string,
-    bearing: number,
-  },
-  connections[]: {
-    from: StopID | "origin", // origin refers to locationId 0
-    to: StopID | Location,
-    walkingTime,
-  },
-  routes[routeID]: {
-    name: string,
-    colour,
-    type: string / enum,
-    stops[stopNumber]: {
-      locationID,
-      timeFromHome,
-      isClosest: boolean
-    }
-  }
-}
-type StopId = {
-  routeId,
-  stopNumber,
-}
+1. GTFS data
+2. Indexed data for searching
+3. Search algorithm temporary
+4. Search output
+5. Frontend model transferred to client
+6. SVG model
+
+## New frontend
+
+To redesign the frontend for lower bandwidth, smooth animation, lower cpu usage, the potential for backend performance improvements and interactivity on the frontend.
+
+5. Filtered model of just what the frontend needs transferred to client.
+  This would have a reduced amount of duplicated data, possibly by have a stateful session so the backend knows what the client already has, or better if the client could represent it's existing state to the backend (it's better for scaling but it probably wont manage the performance).
+  Taking lessons from graphql, the client should be in charge of what info it needs
+6. Frontend data model (possibly also stored on backend to diff against) the model may be the same as the backend search data, just filtered to what is relevant
+7. Do we then run the search again on the frontend data that has been synced? Can it use the same implementation?
+8. Search result to display
+9. Display model which can be updated interactively and animate transitions without searching again. This model should be fast to draw and run on the render thread (60fps hopefully)
+
+Changes to do for this:
+[] Make the search model and algorithm able to be used on the frontend as well - not depending on GTFS stuff, serializable, extracted to it's own crate etc.
+[] Use search algorithm on backend to produce filtered search data to be used by the same algorithm.
+[] Use search algorithm on frontend
+[] Build a 2 stage renderer 1 converts the search result into a sort of DOM and accepts display parameters (and can be switched) and another that renders the DOM to canvas, and implements transitions
+[] Diff filtered data on backend and sync to frontend
 
 # Deploying
 

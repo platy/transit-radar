@@ -293,6 +293,11 @@ impl Period {
   }
 }
 
+impl std::ops::RangeBounds<Time> for Period {
+  fn start_bound(&self) -> std::ops::Bound<&Time> { std::ops::Bound::Included(&self.start) }
+  fn end_bound(&self) -> std::ops::Bound<&Time> { std::ops::Bound::Excluded(&self.end) }
+}
+
 impl fmt::Display for Period {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
       write!(f, "{}-{}", self.start, self.end)

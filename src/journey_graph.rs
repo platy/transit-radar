@@ -1,8 +1,7 @@
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::cmp::Ordering;
 use std::fmt;
-use crate::gtfs::*;
-use crate::gtfs::db::GTFSData;
+use crate::search_data::*;
 
 
 /// Runs an algoritm to build a tree of all fastest journeys from a start point
@@ -163,7 +162,7 @@ impl <'r> JourneyGraphPlotter<'r> {
 
   fn enqueue_transfers_from_stop(&mut self, stop: &'r Stop, departure_time: Time) {
     let mut to_add = vec![];
-    for transfer in self.data.transfers_from(&stop.stop_id) {
+    for transfer in &stop.transfers {
       if !self.stops.contains_key(&transfer.to_stop_id) {
         to_add.push(QueueItem {
           to_stop: self.data.get_stop(&transfer.to_stop_id).unwrap(),
@@ -180,9 +179,11 @@ impl <'r> JourneyGraphPlotter<'r> {
 
   fn enqueue_transfers_from_station(&mut self, station: &'r Stop, departure_time: Time) {
     let mut to_add = vec![];
-    for transfer in self.data.transfers_from(&station.station_id()) {
+    for transfer in &station.transfers {
       // parent stations transfer to parents, so transfer to the children instead
-      for to_stop_id in self.data.stops_by_parent_id(&transfer.to_stop_id) {
+      // we will remove this expectation if we want to show partial results in the front end
+      let to_stop = self.data.get_stop(&transfer.to_stop_id).expect("Stop transferred to to exist");
+      for to_stop_id in Some(&to_stop.stop_id).into_iter().chain(to_stop.children()) {
         if !self.stops.contains_key(&transfer.to_stop_id) {
           to_add.push(QueueItem {
             to_stop: self.data.get_stop(&to_stop_id).unwrap(),
@@ -199,8 +200,9 @@ impl <'r> JourneyGraphPlotter<'r> {
   }
 
   fn enqueue_immediate_transfers_to_children_of(&mut self, stop: &'r Stop, arrival_time: Time) {
-    let origin_stops = self.data.stops_by_parent_id(&stop.stop_id);
-    let to_add: Vec<QueueItem> = origin_stops.into_iter().map(|stop_id| {
+    let to_stop = self.data.get_stop(&stop.stop_id).expect("Origin stop to exist");
+    let origin_stops = Some(&to_stop.stop_id).into_iter().chain(to_stop.children());
+    let to_add: Vec<QueueItem> = origin_stops.map(|stop_id| {
       let child_stop = self.data.get_stop(&stop_id).unwrap();
       // immediately transfer to all the stops of this origin station
       QueueItem {
@@ -217,11 +219,11 @@ impl <'r> JourneyGraphPlotter<'r> {
 
   fn enqueue_connections_and_trips(&mut self, item: &QueueItem<'r>, from_stop: &'r Stop, departure_time: Time) -> bool {
     let mut to_add = vec![];
-    for stops in self.data.trips_from(item.to_stop.stop_id, &self.services, self.period.with_start(item.arrival_time)) {
-      let trip_id = stops[0].trip_id;
+    for (trip, stops) in self.data.trips_from(item.to_stop, &self.services, self.period.with_start(item.arrival_time)) {
+      let trip_id = trip.trip_id;
       let mut trip_to_add = vec![];
       // check that route type is allowed
-      let route = self.data.get_route_for_trip(&trip_id);
+      let route = &trip.route;
       if self.route_types.contains(&route.route_type) {
         // enqueue connection (transfer + wait)
         trip_to_add.push(QueueItem{
@@ -335,7 +337,7 @@ impl <'r> JourneyGraphPlotter<'r> {
         } => {
           let extended = self.enqueue_connections_and_trips(&item, &from_stop, departure_time);
           // we don't emit transfers unless they are to a new station which accesses other trips
-          if !extended || from_stop.parent_station == item.to_stop.parent_station {
+          if !extended || from_stop.station_id() == item.to_stop.station_id() {
             vec![]
           } else {
             vec![item]
@@ -385,11 +387,43 @@ struct QueueItem<'r> {
 
 impl<'r> fmt::Debug for QueueItem<'r> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.debug_struct("QueueItem")
-     .field("to_stop", &format!("{} ({:?}{})", self.to_stop.stop_name, self.to_stop.stop_id, if self.to_stop.parent_station.is_none() { "*" } else { "" }))
-     .field("arrival_time", &self.arrival_time)
-     .field("variant", &self.variant)
-     .finish()
+    match self.variant {
+      QueueItemVariant::OriginStation => 
+        f.debug_struct("Origin")
+        .field("stop", self.to_stop)
+        .field("time", &self.arrival_time)
+        .finish(),
+      QueueItemVariant::Transfer {
+        from_stop,
+        departure_time,
+      } => 
+        f.debug_struct("Transfer").field("from", &from_stop).field("departing", &departure_time)
+        .field("to_stop", self.to_stop)
+        .field("arrival_time", &self.arrival_time)
+        .finish(),
+      QueueItemVariant::Connection{
+        trip_id, 
+        route,
+        from_stop,
+        departure_time,
+      } => 
+        f.debug_struct("Connection").field("to_route", &route).field("trip_id", &trip_id).field("from", from_stop).field("departing", &departure_time)
+        .field("to_stop", self.to_stop)
+        .field("arrival_time", &self.arrival_time)
+        .finish(),
+      QueueItemVariant::StopOnTrip {
+        trip_id, 
+        route, 
+        previous_arrival_time, 
+        next_departure_time,
+        from_stop,
+        departure_time,
+      } => 
+        f.debug_struct("StopOnTrip").field("route", &route).field("trip_id", &trip_id).field("from", from_stop).field("departing", &departure_time)
+        .field("to_stop", self.to_stop)
+        .field("arrival_time", &self.arrival_time)
+        .finish(),
+    }
   }
 }
 

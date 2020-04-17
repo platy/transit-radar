@@ -4,9 +4,9 @@
 use std::cmp::Ord;
 use serde::{self, de, Deserialize, Deserializer};
 pub use super::time::{Time, Duration, Period};
-mod id;
+pub mod id;
 pub use id::*;
-mod enums;
+pub mod enums;
 pub use enums::*;
 
 /// YYYMMDD
@@ -111,14 +111,14 @@ pub struct Stop { // "stop_id","stop_code","stop_name","stop_desc","stop_lat","s
     /// Conditionally Required:
     /// • Required for locations which are stops (location_type=0), stations (location_type=1) or entrances/exits (location_type=2).
     /// • Optional for locations which are generic nodes (location_type=3) or boarding areas (location_type=4).
-    stop_lat: f64,
+    pub stop_lat: f64,
     /// Longitude of the location.
     /// Conditionally Required:
     /// • Required for locations which are stops (location_type=0), stations (location_type=1) or entrances/exits (location_type=2).
     /// • Optional for locations which are generic nodes (location_type=3) or boarding areas (location_type=4).
-    stop_lon: f64,
+    pub stop_lon: f64,
     /// Type of the location
-    location_type: LocationType,
+    pub location_type: LocationType,
     /// Defines hierarchy between the different locations defined in stops.txt. It contains the ID of the parent location, as followed:
     /// • Stop/platform (location_type=0): the parent_station field contains the ID of a station.
     /// • Station (location_type=1): this field must be empty.
@@ -129,7 +129,7 @@ pub struct Stop { // "stop_id","stop_code","stop_name","stop_desc","stop_lat","s
     /// • Optional for stops/platforms (location_type=0).
     /// • Forbidden for stations (location_type=1).
     pub parent_station: Option<StopId>,
-    wheelchair_boarding: Option<u8>,
+    // wheelchair_boarding: Option<u8>,
     // platform_code: Option<String>,
     // zone_id: Option<ZoneId>,
 }

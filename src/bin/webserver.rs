@@ -6,20 +6,21 @@ use urlencoding::decode;
 use chrono::prelude::*;
 
 use transit_radar::journey_graph;
+use transit_radar::GTFSData;
 use transit_radar::gtfs::*;
 use transit_radar::gtfs::db;
 use transit_radar::Suggester;
 
 use geo::algorithm::bearing::Bearing;
 
-fn lookup<'r>(data: &'r db::GTFSData, station_name: String, options: RadarOptions, day: Day, period: Period) -> Result<FEData<'r>, db::SearchError> {
-    let station = data.get_station_by_name(&station_name)?;
+fn lookup<'r>(data: &'r GTFSData, station_name: String, options: RadarOptions, day: Day, period: Period) -> Result<FEData<'r>, db::SearchError> {
+    let station = db::get_station_by_name(data, &station_name)?;
     let output = produce_tree_json(&data, station.stop_id, day, period, &options);
     println!("Search for '{}' {:?} produced {} stations, {} trips and {} connections", station.stop_name, options, output.stops.len(), output.trips.len(), output.connections.len());
     Ok(output)
 }
 
-fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, day: Day, period: Period, options: &RadarOptions) -> FEData<'r> {
+fn produce_tree_json<'r>(data: &'r GTFSData, station: StopId, day: Day, period: Period, options: &RadarOptions) -> FEData<'r> {
     let mut plotter = journey_graph::JourneyGraphPlotter::new(day, period, data);
     let origin = data.get_stop(&station).unwrap();
     plotter.add_origin_station(origin);
@@ -43,7 +44,7 @@ fn produce_tree_json<'r>(data: &'r db::GTFSData, station: StopId, day: Day, peri
             } => {
                 stop_id_to_idx.insert(stop.station_id(), fe_stops.len());
                 fe_stops.push(FEStop {
-                    bearing: origin.position().bearing(stop.position()),
+                    bearing: origin.location.bearing(stop.location),
                     name: stop.stop_name.replace(" (Berlin)", ""),
                     seconds: earliest_arrival - period.start(),
                 });
@@ -197,7 +198,7 @@ fn with_data<D: Sync + Send>(db: Arc<D>) -> impl Filter<Extract = (Arc<D>,), Err
     warp::any().map(move || db.clone())
 }
 
-async fn json_tree_handler(name: String, options: RadarOptions, data: Arc<db::GTFSData>) -> Result<impl warp::Reply, warp::Rejection> {
+async fn json_tree_handler(name: String, options: RadarOptions, data: Arc<GTFSData>) -> Result<impl warp::Reply, warp::Rejection> {
     let date_time = chrono::Utc::now().with_timezone(&chrono_tz::Europe::Berlin);
     let now = Time::from_hms(date_time.hour(), date_time.minute(), date_time.second());
     let day = match date_time.weekday() {
@@ -230,7 +231,7 @@ struct FEStationLookup<'s> {
     name: &'s str,
 }
 
-async fn station_search_handler(query: String, data: Arc<db::GTFSData>, station_search: Arc<Suggester<StopId>>) -> Result<impl warp::Reply, warp::Rejection> {
+async fn station_search_handler(query: String, data: Arc<GTFSData>, station_search: Arc<Suggester<StopId>>) -> Result<impl warp::Reply, warp::Rejection> {
     match decode(&query) {
         Ok(query) => {
             let mut result = Vec::new();
@@ -241,7 +242,7 @@ async fn station_search_handler(query: String, data: Arc<db::GTFSData>, station_
                 }
                 let stop = data.get_stop(&stop_id).expect("to find stop referenced by search");
                 result.push(FEStationLookup {
-                    stop_id: stop_id.into_inner(),
+                    stop_id,
                     name: &stop.stop_name,
                 });
                 count += 1;
@@ -264,7 +265,7 @@ pub struct RadarOptions {
     pub tram: bool,
 }
 
-fn json_tree_route(data: Arc<db::GTFSData>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn json_tree_route(data: Arc<GTFSData>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let cors = warp::cors()
         .allow_any_origin();
     warp::path!("from" / String)
@@ -274,7 +275,7 @@ fn json_tree_route(data: Arc<db::GTFSData>) -> impl Filter<Extract = impl warp::
         .with(cors)
 }
 
-fn station_name_search_route(data: Arc<db::GTFSData>, station_search: Arc<Suggester<StopId>>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn station_name_search_route(data: Arc<GTFSData>, station_search: Arc<Suggester<StopId>>) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let cors = warp::cors()
         .allow_any_origin();
     warp::path!("searchStation" / String)
@@ -291,12 +292,11 @@ async fn main() {
     let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
 
-    let data = Arc::new(db::GTFSData::load_data(
+    let data = Arc::new(db::load_data(
         &gtfs_dir,
         db::DayFilter::All, 
-        None,
     ).unwrap());
-    let station_name_index = Arc::new(data.build_station_word_index());
+    let station_name_index = Arc::new(db::build_station_word_index(&*data));
 
     eprintln!("Starting web server on port {}", port);
     warp::serve(warp::fs::dir(static_dir)
