@@ -1,19 +1,14 @@
-use std::path::Path;
 use chrono::prelude::*;
+use std::path::Path;
 
+use radar_search::{search_data::*, time::*};
 use transit_radar::gtfs::db;
-use radar_search::{time::*, search_data::*};
-
 
 fn main() {
     let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
 
-    let data = db::load_data(
-        &gtfs_dir,
-        db::DayFilter::All, 
-    ).unwrap();
-
+    let data = db::load_data(&gtfs_dir, db::DayFilter::All).unwrap();
 
     let date_time = chrono::Utc::now().with_timezone(&chrono_tz::Europe::Berlin);
     let now = Time::from_hms(date_time.hour(), date_time.minute(), date_time.second());
@@ -31,16 +26,26 @@ fn main() {
     let services = data.services_of_day(day);
     eprintln!("{} services", services.len());
 
-    let mut trips: Vec<_> = data.trips().filter(|trip| 
-        if trip.route.route_short_name == "U8" && services.contains(&trip.service_id) {
-            true
-        } else {
-            false
-        }).collect();
+    let mut trips: Vec<_> = data
+        .trips()
+        .filter(|trip| {
+            if trip.route.route_short_name == "U8" && services.contains(&trip.service_id) {
+                true
+            } else {
+                false
+            }
+        })
+        .collect();
     trips.sort_unstable_by_key(|trip| trip.stop_times[0].departure_time);
     trips.sort_by_key(|trip| trip.service_id);
     for trip in trips.iter() {
-        eprintln!("Service {}, Trip {}. {} - {}", trip.service_id, trip.trip_id, trip.stop_times[0].departure_time, trip.stop_times[trip.stop_times.len() - 1].arrival_time);
+        eprintln!(
+            "Service {}, Trip {}. {} - {}",
+            trip.service_id,
+            trip.trip_id,
+            trip.stop_times[0].departure_time,
+            trip.stop_times[trip.stop_times.len() - 1].arrival_time
+        );
     }
     eprintln!("trips : {:?}", trips.len());
 }

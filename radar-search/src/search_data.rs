@@ -1,9 +1,8 @@
-use std::collections::{HashSet, HashMap, BTreeMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;
 use std::fmt;
 
 use crate::time::*;
-
 
 pub type AgencyId = u16;
 pub type RouteId = u32;
@@ -44,13 +43,13 @@ impl std::fmt::Display for Day {
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Clone, Copy)]
 pub enum RouteType {
-    Rail, //2
-    Bus, //3
-    RailwayService, // 100
-    SuburbanRailway, // 109
-    UrbanRailway, // 400
-    BusService, // 700
-    TramService, // 900
+    Rail,                  // 2
+    Bus,                   // 3
+    RailwayService,        // 100
+    SuburbanRailway,       // 109
+    UrbanRailway,          // 400
+    BusService,            // 700
+    TramService,           // 900
     WaterTransportService, // 1000
 }
 
@@ -60,12 +59,12 @@ pub enum RouteType {
 /// * can be serialised to transfer to client
 /// * can be diffed to sync differences to client
 /// * diffs only contain additions which can be refferrd by id's in each of the maps
-/// 
+///
 /// Routes: has all
 /// Trips: can have just those relevent to the performed searches
 /// Stops: can have just those visited on the searched trips + transfers
 /// Departures are stored on the stops and reference the stops within the trips that are present, they are not synced but rather are cross references added when the trips are added, they are present when their trip is present
-/// 
+///
 /// This could still be a lot of data, a friedrichstrasse search for 30 mins with all modes could include 213 trips and more than 1000 stops. But it still doesn't sound like more than a meg. And prioritisng the sync so that something useful shows fast could be very interesting
 pub struct GTFSData {
     stops: HashMap<StopId, Stop>,
@@ -77,8 +76,11 @@ pub struct GTFSData {
     timetable_start_date: String,
 }
 
-impl <'r> GTFSData {
-    pub fn builder(services_by_day: HashMap<Day, HashSet<ServiceId>>, timetable_start_date: String) -> Builder {
+impl<'r> GTFSData {
+    pub fn builder(
+        services_by_day: HashMap<Day, HashSet<ServiceId>>,
+        timetable_start_date: String,
+    ) -> Builder {
         Builder {
             data: GTFSData {
                 services_by_day,
@@ -97,30 +99,43 @@ impl <'r> GTFSData {
         &self.timetable_start_date
     }
 
-
     /// Get the route that the specified trip is a part of
     pub fn get_route_for_trip(&self, trip_id: &TripId) -> &Route {
-        self.trips.get(trip_id).map(|trip| &trip.route).expect("To have referenced trip")
+        self.trips
+            .get(trip_id)
+            .map(|trip| &trip.route)
+            .expect("To have referenced trip")
     }
 
     /// Get all the services which run on a particular day of the week
     pub fn services_of_day(&self, day: Day) -> HashSet<ServiceId> {
-        self.services_by_day.get(&day).cloned().unwrap_or(HashSet::new())
+        self.services_by_day
+            .get(&day)
+            .cloned()
+            .unwrap_or(HashSet::new())
     }
 
     /// finds all trips leaving a stop within a time period, using the provided services, includes the stop time for that stop and all following stops
-    pub fn trips_from(&self, stop: &Stop, services: &HashSet<ServiceId>, period: Period) -> Vec<(&Trip, &[StopTime])> {
-      let departures = stop.departures(period);
-      departures.into_iter().filter_map(move |stop_ref: &TripStopRef| {
-        let &(trip_id, sequence) = stop_ref;
-        let trip = self.trips.get(&trip_id).unwrap();
-        // eprintln!("{:?} departure on trip {} service {}, route {:?}, service running : {} : {:?}", &stop, trip_id, trip.service_id, trip.route, services.contains(&trip.service_id), self.stop_times(stop_ref)[0]);
-        if services.contains(&trip.service_id) {
-            Some((trip, self.stop_times(stop_ref)))
-        } else {
-            None
-        }
-      }).collect()
+    pub fn trips_from(
+        &self,
+        stop: &Stop,
+        services: &HashSet<ServiceId>,
+        period: Period,
+    ) -> Vec<(&Trip, &[StopTime])> {
+        let departures = stop.departures(period);
+        departures
+            .into_iter()
+            .filter_map(move |stop_ref: &TripStopRef| {
+                let &(trip_id, sequence) = stop_ref;
+                let trip = self.trips.get(&trip_id).unwrap();
+                // eprintln!("{:?} departure on trip {} service {}, route {:?}, service running : {} : {:?}", &stop, trip_id, trip.service_id, trip.route, services.contains(&trip.service_id), self.stop_times(stop_ref)[0]);
+                if services.contains(&trip.service_id) {
+                    Some((trip, self.stop_times(stop_ref)))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     pub fn get_stop(&self, id: &StopId) -> Option<&Stop> {
@@ -129,7 +144,11 @@ impl <'r> GTFSData {
 
     /// Get all stops of the trip folling the departure referenced
     fn stop_times(&self, &(trip_id, idx): &TripStopRef) -> &[StopTime] {
-        &self.trips.get(&trip_id).map(|trip| &trip.stop_times[idx..]).unwrap_or_default()
+        &self
+            .trips
+            .get(&trip_id)
+            .map(|trip| &trip.stop_times[idx..])
+            .unwrap_or_default()
     }
 
     pub fn stops(&self) -> impl Iterator<Item = &Stop> {
@@ -144,9 +163,16 @@ impl <'r> GTFSData {
 #[derive(Debug)]
 pub enum StopStereoType {
     // station is actually optional for stop or platform, but i think it is always present in vbbland
-    StopOrPlatform { station: Option<StopId>, departures: BTreeMap<Time, Vec<TripStopRef>> },
-    Station { stops_or_platforms: Vec<StopId> },
-    EntranceExit { station: StopId },
+    StopOrPlatform {
+        station: Option<StopId>,
+        departures: BTreeMap<Time, Vec<TripStopRef>>,
+    },
+    Station {
+        stops_or_platforms: Vec<StopId>,
+    },
+    EntranceExit {
+        station: StopId,
+    },
     // BoardingArea { stopOrPlatform: StopId },
 }
 
@@ -161,7 +187,13 @@ pub struct Stop {
 
 impl fmt::Debug for Stop {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} [{:?}{}]", self.stop_name, self.stop_id, if self.is_station() { "*" } else { "" })
+        write!(
+            f,
+            "{} [{:?}{}]",
+            self.stop_name,
+            self.stop_id,
+            if self.is_station() { "*" } else { "" }
+        )
     }
 }
 
@@ -189,17 +221,31 @@ impl Stop {
     /// finds all trips leaving the stop within a time period, using the provided services, includes the stop time for that stop and all following stops
     pub fn departures(&self, period: Period) -> Vec<&TripStopRef> {
         match self.stereotype {
-          StopStereoType::StopOrPlatform { station: _, ref departures } => departures.range(period).map(|(_time, trip_stop_refs)| trip_stop_refs).flatten().collect(),
-          StopStereoType::Station { stops_or_platforms: _ } => vec![],
-          StopStereoType::EntranceExit { station: _ } => vec![],
+            StopStereoType::StopOrPlatform {
+                station: _,
+                ref departures,
+            } => departures
+                .range(period)
+                .map(|(_time, trip_stop_refs)| trip_stop_refs)
+                .flatten()
+                .collect(),
+            StopStereoType::Station {
+                stops_or_platforms: _,
+            } => vec![],
+            StopStereoType::EntranceExit { station: _ } => vec![],
         }
     }
 
     /// Id of the parent station or own ID if this is a station
     pub fn station_id(&self) -> StopId {
         match self.stereotype {
-            StopStereoType::StopOrPlatform { station, departures: _ } => station.unwrap_or(self.stop_id),
-            StopStereoType::Station { stops_or_platforms: _ } => self.stop_id,
+            StopStereoType::StopOrPlatform {
+                station,
+                departures: _,
+            } => station.unwrap_or(self.stop_id),
+            StopStereoType::Station {
+                stops_or_platforms: _,
+            } => self.stop_id,
             StopStereoType::EntranceExit { station } => station,
         }
     }
@@ -207,16 +253,26 @@ impl Stop {
     /// Id of the parent station or None if this is a station
     pub fn parent_station(&self) -> Option<StopId> {
         match self.stereotype {
-            StopStereoType::StopOrPlatform { station, departures: _ } => station,
-            StopStereoType::Station { stops_or_platforms: _ } => None,
+            StopStereoType::StopOrPlatform {
+                station,
+                departures: _,
+            } => station,
+            StopStereoType::Station {
+                stops_or_platforms: _,
+            } => None,
             StopStereoType::EntranceExit { station } => Some(station),
         }
     }
 
     pub fn children(&self) -> impl Iterator<Item = &StopId> {
         match self.stereotype {
-            StopStereoType::StopOrPlatform { station: _, departures: _ } => [].iter(),
-            StopStereoType::Station { ref stops_or_platforms } => stops_or_platforms.iter(),
+            StopStereoType::StopOrPlatform {
+                station: _,
+                departures: _,
+            } => [].iter(),
+            StopStereoType::Station {
+                ref stops_or_platforms,
+            } => stops_or_platforms.iter(),
             StopStereoType::EntranceExit { station: _ } => [].iter(),
         }
     }
@@ -224,8 +280,13 @@ impl Stop {
     /// a top level stop
     pub fn is_station(&self) -> bool {
         match self.stereotype {
-            StopStereoType::StopOrPlatform { station, departures: _ } => station.is_none(),
-            StopStereoType::Station { stops_or_platforms: _ } => true,
+            StopStereoType::StopOrPlatform {
+                station,
+                departures: _,
+            } => station.is_none(),
+            StopStereoType::Station {
+                stops_or_platforms: _,
+            } => true,
             StopStereoType::EntranceExit { station: _ } => false,
         }
     }
@@ -301,95 +362,183 @@ pub struct Builder {
 
 impl Builder {
     pub fn add_station(&mut self, stop_id: StopId, stop_name: String, location: geo::Point<f64>) {
-        self.data.stops.insert(stop_id, Stop {
+        self.data.stops.insert(
             stop_id,
-            stop_name,
-            location,
-            stereotype: StopStereoType::Station { stops_or_platforms: Default::default() },
-            transfers: Default::default(),
-        });
+            Stop {
+                stop_id,
+                stop_name,
+                location,
+                stereotype: StopStereoType::Station {
+                    stops_or_platforms: Default::default(),
+                },
+                transfers: Default::default(),
+            },
+        );
     }
 
-    pub fn add_stop_or_platform(&mut self, stop_id: StopId, stop_name: String, location: geo::Point<f64>, station: Option<StopId>) {
-        self.data.stops.insert(stop_id, Stop {
+    pub fn add_stop_or_platform(
+        &mut self,
+        stop_id: StopId,
+        stop_name: String,
+        location: geo::Point<f64>,
+        station: Option<StopId>,
+    ) {
+        self.data.stops.insert(
             stop_id,
-            stop_name,
-            location,
-            stereotype: StopStereoType::StopOrPlatform { station, departures: Default::default() },
-            transfers: Default::default(),
-        });
+            Stop {
+                stop_id,
+                stop_name,
+                location,
+                stereotype: StopStereoType::StopOrPlatform {
+                    station,
+                    departures: Default::default(),
+                },
+                transfers: Default::default(),
+            },
+        );
         if let Some(station) = station {
             self.stop_children.entry(station).or_default().push(stop_id);
         }
     }
 
-    pub fn add_entrance_or_exit(&mut self, stop_id: StopId, stop_name: String, location: geo::Point<f64>, station: StopId) {
-        self.data.stops.insert(stop_id, Stop {
+    pub fn add_entrance_or_exit(
+        &mut self,
+        stop_id: StopId,
+        stop_name: String,
+        location: geo::Point<f64>,
+        station: StopId,
+    ) {
+        self.data.stops.insert(
             stop_id,
-            stop_name,
-            location,
-            stereotype: StopStereoType::EntranceExit { station },
-            transfers: Default::default(),
-        });
+            Stop {
+                stop_id,
+                stop_name,
+                location,
+                stereotype: StopStereoType::EntranceExit { station },
+                transfers: Default::default(),
+            },
+        );
         self.stop_children.entry(station).or_default().push(stop_id);
     }
 
-    pub fn add_transfer(&mut self, from_stop_id: StopId, to_stop_id: StopId, min_transfer_time: Option<Duration>) {
-        let stop = self.data.stops.get_mut(&from_stop_id).expect("from_stop for transfer to be loaded");
+    pub fn add_transfer(
+        &mut self,
+        from_stop_id: StopId,
+        to_stop_id: StopId,
+        min_transfer_time: Option<Duration>,
+    ) {
+        let stop = self
+            .data
+            .stops
+            .get_mut(&from_stop_id)
+            .expect("from_stop for transfer to be loaded");
         stop.transfers.push(Transfer {
             to_stop_id,
             min_transfer_time,
         });
     }
 
-    pub fn add_route(&mut self, route_id: RouteId, route_short_name: String, route_type: RouteType) {
-        self.routes.insert(route_id, Route {
-            /// Identifies a route.
+    pub fn add_route(
+        &mut self,
+        route_id: RouteId,
+        route_short_name: String,
+        route_type: RouteType,
+    ) {
+        self.routes.insert(
             route_id,
-            route_short_name,
-            route_type,
-        });
+            Route {
+                /// Identifies a route.
+                route_id,
+                route_short_name,
+                route_type,
+            },
+        );
     }
 
     pub fn add_trip(&mut self, trip_id: TripId, route_id: RouteId, service_id: ServiceId) {
-        let route: &Route = self.routes.get(&route_id).expect("trip's route to have been added");
+        let route: &Route = self
+            .routes
+            .get(&route_id)
+            .expect("trip's route to have been added");
         let route: Route = (*route).clone();
-        self.data.trips.insert(trip_id, Trip {
+        self.data.trips.insert(
             trip_id,
-            route,
-            service_id,
-            stop_times: Default::default(),
-        });
+            Trip {
+                trip_id,
+                route,
+                service_id,
+                stop_times: Default::default(),
+            },
+        );
     }
 
-    pub fn add_trip_stop(&mut self, trip_id: TripId, arrival_time: Time, departure_time: Time, stop_id: StopId) {
-        let trip: &mut Trip = self.data.trips.get_mut(&trip_id).expect("stop time added to be of added trip");
+    pub fn add_trip_stop(
+        &mut self,
+        trip_id: TripId,
+        arrival_time: Time,
+        departure_time: Time,
+        stop_id: StopId,
+    ) {
+        let trip: &mut Trip = self
+            .data
+            .trips
+            .get_mut(&trip_id)
+            .expect("stop time added to be of added trip");
         let stop_ref = (trip_id, trip.stop_times.len());
         trip.stop_times.push(StopTime {
             arrival_time,
             departure_time,
             stop_id,
         });
-        let stop = self.data.stops.get_mut(&stop_id).expect("stop time to be referencing added stop");
+        let stop = self
+            .data
+            .stops
+            .get_mut(&stop_id)
+            .expect("stop time to be referencing added stop");
         match &mut stop.stereotype {
-            StopStereoType::Station { stops_or_platforms: _ } => panic!("trip stops at station"),
+            StopStereoType::Station {
+                stops_or_platforms: _,
+            } => panic!("trip stops at station"),
             StopStereoType::EntranceExit { station: _ } => panic!("trip stops at station entrance"),
-            StopStereoType::StopOrPlatform { station: _, ref mut departures } => departures.entry(departure_time).or_default().push(stop_ref),
+            StopStereoType::StopOrPlatform {
+                station: _,
+                ref mut departures,
+            } => departures.entry(departure_time).or_default().push(stop_ref),
         };
         self.departure_count += 1;
     }
 
     pub fn build(mut self) -> GTFSData {
         for (station_id, children) in self.stop_children {
-            let station = self.data.stops.get_mut(&station_id).expect("parent station to exist");
+            let station = self
+                .data
+                .stops
+                .get_mut(&station_id)
+                .expect("parent station to exist");
             match &mut station.stereotype {
-                StopStereoType::Station { ref mut stops_or_platforms } => *stops_or_platforms = children,
-                StopStereoType::StopOrPlatform { station: _, departures: _ } => panic!("stop or platform {:?} indicated as a parent station of {:?}", station, children),
-                StopStereoType::EntranceExit { station: _ } => panic!("entrance or exit {:?} indicated as a parent station of {:?}", station, children),
+                StopStereoType::Station {
+                    ref mut stops_or_platforms,
+                } => *stops_or_platforms = children,
+                StopStereoType::StopOrPlatform {
+                    station: _,
+                    departures: _,
+                } => panic!(
+                    "stop or platform {:?} indicated as a parent station of {:?}",
+                    station, children
+                ),
+                StopStereoType::EntranceExit { station: _ } => panic!(
+                    "entrance or exit {:?} indicated as a parent station of {:?}",
+                    station, children
+                ),
             }
         }
 
-        eprintln!("{} departures of {} trips, leaving from {} stops", self.departure_count, self.data.trips.len(), self.data.stops.len());
+        eprintln!(
+            "{} departures of {} trips, leaving from {} stops",
+            self.departure_count,
+            self.data.trips.len(),
+            self.data.stops.len()
+        );
 
         self.data
     }

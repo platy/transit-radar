@@ -1,60 +1,80 @@
-use std::path::Path;
 use chrono::prelude::*;
+use std::path::Path;
 
-use transit_radar::gtfs::db;
 use radar_search::journey_graph;
-use radar_search::{time::*, search_data::*};
+use radar_search::{search_data::*, time::*};
+use transit_radar::gtfs::db;
 
-fn lookup<'r>(data: &'r GTFSData, station_name: String, options: RadarOptions, day: Day, period: Period) -> Result<(), db::SearchError> {
+fn lookup<'r>(
+    data: &'r GTFSData,
+    station_name: String,
+    options: RadarOptions,
+    day: Day,
+    period: Period,
+) -> Result<(), db::SearchError> {
     let station = db::get_station_by_name(data, &station_name)?;
     produce_tree_json(&data, station.stop_id, day, period, &options);
     Ok(())
 }
 
-fn produce_tree_json<'r>(data: &'r GTFSData, station: StopId, day: Day, period: Period, options: &RadarOptions) {
+fn produce_tree_json<'r>(
+    data: &'r GTFSData,
+    station: StopId,
+    day: Day,
+    period: Period,
+    options: &RadarOptions,
+) {
     let mut plotter = journey_graph::JourneyGraphPlotter::new(day, period, data);
     let origin = data.get_stop(&station).unwrap();
     plotter.add_origin_station(origin);
-    if options.ubahn { plotter.add_route_type(RouteType::UrbanRailway); }
-    if options.sbahn { plotter.add_route_type(RouteType::SuburbanRailway); }
-    if options.bus { plotter.add_route_type(RouteType::BusService); }
-    if options.tram { plotter.add_route_type(RouteType::TramService); }
-    if options.regio { plotter.add_route_type(RouteType::RailwayService); }
-    if options.bus { plotter.add_route_type(RouteType::Bus); }
+    if options.ubahn {
+        plotter.add_route_type(RouteType::UrbanRailway);
+    }
+    if options.sbahn {
+        plotter.add_route_type(RouteType::SuburbanRailway);
+    }
+    if options.bus {
+        plotter.add_route_type(RouteType::BusService);
+    }
+    if options.tram {
+        plotter.add_route_type(RouteType::TramService);
+    }
+    if options.regio {
+        plotter.add_route_type(RouteType::RailwayService);
+    }
+    if options.bus {
+        plotter.add_route_type(RouteType::Bus);
+    }
 
     for item in plotter {
         match item {
             journey_graph::Item::Station {
                 stop,
                 earliest_arrival,
-            } => {
-            },
+            } => {}
             journey_graph::Item::JourneySegment {
-                departure_time, 
-                arrival_time, 
+                departure_time,
+                arrival_time,
                 from_stop,
                 to_stop,
-            } => {
-            },
+            } => {}
             journey_graph::Item::SegmentOfTrip {
-                departure_time, 
-                arrival_time, 
+                departure_time,
+                arrival_time,
                 from_stop,
                 to_stop,
                 trip_id,
                 route_name,
                 route_type,
-            } => {
-            },
+            } => {}
             journey_graph::Item::ConnectionToTrip {
-                departure_time, 
-                arrival_time, 
+                departure_time,
+                arrival_time,
                 from_stop,
                 to_stop,
                 route_name,
                 route_type,
-            } => {
-            },
+            } => {}
         }
     }
 }
@@ -89,10 +109,17 @@ fn main() {
     let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
 
-    let data = db::load_data(
-        &gtfs_dir,
-        db::DayFilter::All, 
-    ).unwrap();
+    let data = db::load_data(&gtfs_dir, db::DayFilter::All).unwrap();
 
-    search("U Voltastr. (Berlin)".to_owned(), RadarOptions { ubahn: true, sbahn: false, bus: false, regio: false, tram: false}, &data);
+    search(
+        "U Voltastr. (Berlin)".to_owned(),
+        RadarOptions {
+            ubahn: true,
+            sbahn: false,
+            bus: false,
+            regio: false,
+            tram: false,
+        },
+        &data,
+    );
 }

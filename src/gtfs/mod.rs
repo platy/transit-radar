@@ -1,4 +1,4 @@
-pub mod time;
-mod model;
 pub mod db;
+mod model;
+pub mod time;
 pub use model::*;

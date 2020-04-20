@@ -1,18 +1,14 @@
-use std::path::Path;
 use chrono::prelude::*;
+use std::path::Path;
 
+use radar_search::{search_data::*, time::*};
 use transit_radar::gtfs::db;
-use radar_search::{time::*, search_data::*};
 
 fn main() {
     let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
 
-    let data = db::load_data(
-        &gtfs_dir,
-        db::DayFilter::All, 
-    ).unwrap();
-
+    let data = db::load_data(&gtfs_dir, db::DayFilter::All).unwrap();
 
     let date_time = chrono::Utc::now().with_timezone(&chrono_tz::Europe::Berlin);
     let now = Time::from_hms(date_time.hour(), date_time.minute(), date_time.second());
@@ -31,7 +27,6 @@ fn main() {
     let services = data.services_of_day(day);
     eprintln!("{} services", services.len());
 
-
     let trips = data.trips_from(station, &services, period);
     eprintln!("{:?}", trips);
     for child in station.children() {
@@ -39,7 +34,10 @@ fn main() {
         let trips = data.trips_from(&stop, &services, period);
         eprintln!("child {:?}", stop);
         for (trip, stops) in trips {
-            eprintln!("trip {} ({} {}), {:?}", trip.route.route_short_name, trip.trip_id, trip.service_id, stops);
+            eprintln!(
+                "trip {} ({} {}), {:?}",
+                trip.route.route_short_name, trip.trip_id, trip.service_id, stops
+            );
         }
     }
 }

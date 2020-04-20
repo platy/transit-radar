@@ -1,9 +1,9 @@
 //! Models of data contained in static GTFS files, as defined at [https://developers.google.com/transit/gtfs/reference]
 //! Documentation on this module uses excepts from that reference.
 
-use std::cmp::Ord;
+pub use radar_search::time::{Duration, Period, Time};
 use serde::{self, Deserialize};
-pub use radar_search::time::{Time, Duration, Period};
+use std::cmp::Ord;
 pub mod id;
 pub use id::*;
 pub mod enums;
@@ -16,7 +16,8 @@ type Date = String;
 /// [https://developers.google.com/transit/gtfs/reference#calendartxt]
 /// Uniquely identifies a set of dates when service is available for one or more routes.
 #[derive(Debug, Deserialize)]
-pub struct Calendar { // "service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
+pub struct Calendar {
+    // "service_id","monday","tuesday","wednesday","thursday","friday","saturday","sunday","start_date","end_date"
     /// Each service_id value can appear at most once in a calendar.txt file.
     pub service_id: ServiceId,
     /// Indicates whether the service operates on all Mondays in the date range specified by the start_date and end_date fields. Note that exceptions for particular dates may be listed in calendar_dates.txt. Valid options are:
@@ -36,7 +37,8 @@ pub struct Calendar { // "service_id","monday","tuesday","wednesday","thursday",
 /// GTFS record
 /// [https://developers.google.com/transit/gtfs/reference#routestxt]
 #[derive(Debug, Deserialize, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Route { //"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
+pub struct Route {
+    //"route_id","agency_id","route_short_name","route_long_name","route_type","route_color","route_text_color","route_desc"
     /// Identifies a route.
     pub route_id: RouteId,
     /// Agency for the specified route. This field is required when the dataset provides data for routes from more than one agency in agency.txt, otherwise it is optional.
@@ -45,7 +47,7 @@ pub struct Route { //"route_id","agency_id","route_short_name","route_long_name"
     pub route_short_name: String,
     // / Full name of a route. This name is generally more descriptive than the route_short_name and often includes the route's destination or stop. Either route_short_name or route_long_name must be specified, or potentially both if appropriate.
     // route_long_name: Option<String>,
-    // / Description of a route that provides useful, quality information. Do not simply duplicate the name of the route. 
+    // / Description of a route that provides useful, quality information. Do not simply duplicate the name of the route.
     // route_desc: Option<String>,
     /// Indicates the type of transportation used on a route.
     #[serde(with = "route_type_format")]
@@ -57,7 +59,8 @@ pub struct Route { //"route_id","agency_id","route_short_name","route_long_name"
 /// GTFS Record
 /// [https://developers.google.com/transit/gtfs/reference#tripstxt]
 #[derive(Debug, Deserialize)]
-pub struct Trip { // "route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
+pub struct Trip {
+    // "route_id","service_id","trip_id","trip_headsign","trip_short_name","direction_id","block_id","shape_id","wheelchair_accessible","bikes_allowed"
     /// Identifies a route.
     pub route_id: RouteId,
     /// Identifies a set of dates when service is available for one or more routes.
@@ -74,7 +77,8 @@ pub struct Trip { // "route_id","service_id","trip_id","trip_headsign","trip_sho
 }
 
 #[derive(Debug, Deserialize)]
-pub struct StopTime { // "trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
+pub struct StopTime {
+    // "trip_id","arrival_time","departure_time","stop_id","stop_sequence","pickup_type","drop_off_type","stop_headsign"
     /// Identifies a trip.
     pub trip_id: TripId,
     /// Arrival time at a specific stop for a specific trip on a route. If there are not separate times for arrival and departure at a stop, enter the same value for arrival_time and departure_time. For times occurring after midnight on the service day, enter the time as a value greater than 24:00:00 in HH:MM:SS local time for the day on which the trip schedule begins.
@@ -96,9 +100,10 @@ pub struct StopTime { // "trip_id","arrival_time","departure_time","stop_id","st
 
 /// GTFS Record
 /// [https://developers.google.com/transit/gtfs/reference#stopstxt]
-/// 
+///
 #[derive(Debug, Deserialize, Clone)]
-pub struct Stop { // "stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","zone_id"
+pub struct Stop {
+    // "stop_id","stop_code","stop_name","stop_desc","stop_lat","stop_lon","location_type","parent_station","wheelchair_boarding","platform_code","zone_id"
     /// Identifies a stop, station, or station entrance.
     /// The term "station entrance" refers to both station entrances and station exits. Stops, stations or station entrances are collectively referred to as locations. Multiple routes may use the same stop.
     pub stop_id: StopId,
@@ -141,7 +146,8 @@ pub struct Stop { // "stop_id","stop_code","stop_name","stop_desc","stop_lat","s
 /// [https://developers.google.com/transit/gtfs/reference#transferstxt]
 /// When calculating an itinerary, GTFS-consuming applications interpolate transfers based on allowable time and stop proximity. Transfers.txt specifies additional rules and overrides for selected transfers.
 #[derive(Debug, Deserialize)]
-pub struct Transfer { // "from_stop_id","to_stop_id","transfer_type","min_transfer_time","from_route_id","to_route_id","from_trip_id","to_trip_id"
+pub struct Transfer {
+    // "from_stop_id","to_stop_id","transfer_type","min_transfer_time","from_route_id","to_route_id","from_trip_id","to_trip_id"
     /// Identifies a stop or station where a connection between routes begins. If this field refers to a station, the transfer rule applies to all its child stops.
     pub from_stop_id: StopId,
     /// Identifies a stop or station where a connection between routes ends. If this field refers to a station, the transfer rule applies to all child stops.
