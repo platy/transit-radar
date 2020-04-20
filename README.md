@@ -40,7 +40,12 @@
 [x] Replace arena with a map of trips
 [] Station search more forgiving with umlauts etc. maybe find crate to build a linguistic index / search map
 [] Reload GTFS data each day
-[] Read service exceptions in calendar_dates.txt
+[] Count + number clients based on IP address + log anonymised when a new client connects
+[] Sub count clients by hash of user agent
+[] Record logging session per client and log statistical info every minute, every hour and every day + immediate info if enabled by env var
+[] Identify regions for the clients by IP address
+[] Use exceptions in calendar_dates.txt
+[] Handle day overlap
 -
 [] read from zip
 [] CLI tool to lookup departures for debugging

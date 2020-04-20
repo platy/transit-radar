@@ -5,11 +5,10 @@ use warp::Filter;
 use urlencoding::decode;
 use chrono::prelude::*;
 
-use transit_radar::journey_graph;
-use transit_radar::GTFSData;
-use transit_radar::gtfs::*;
 use transit_radar::gtfs::db;
 use transit_radar::Suggester;
+use radar_search::journey_graph;
+use radar_search::{time::*, search_data::*};
 
 use geo::algorithm::bearing::Bearing;
 
@@ -46,7 +45,7 @@ fn produce_tree_json<'r>(data: &'r GTFSData, station: StopId, day: Day, period: 
                 fe_stops.push(FEStop {
                     bearing: origin.location.bearing(stop.location),
                     name: stop.stop_name.replace(" (Berlin)", ""),
-                    seconds: earliest_arrival - period.start(),
+                    seconds: (earliest_arrival - period.start()).to_secs(),
                 });
             },
             journey_graph::Item::JourneySegment {
@@ -63,8 +62,8 @@ fn produce_tree_json<'r>(data: &'r GTFSData, station: StopId, day: Day, period: 
                     to,
                     route_name: None,
                     kind: None,
-                    from_seconds: departure_time - period.start(),
-                    to_seconds: arrival_time - period.start(),
+                    from_seconds: (departure_time - period.start()).to_secs(),
+                    to_seconds: (arrival_time - period.start()).to_secs(),
                 })
             },
             journey_graph::Item::SegmentOfTrip {
@@ -84,8 +83,8 @@ fn produce_tree_json<'r>(data: &'r GTFSData, station: StopId, day: Day, period: 
                 trip.segments.push(FESegment {
                     from,
                     to,
-                    from_seconds: departure_time - period.start(),
-                    to_seconds: arrival_time - period.start(),
+                    from_seconds: (departure_time - period.start()).to_secs(),
+                    to_seconds: (arrival_time - period.start()).to_secs(),
                 });
             },
             journey_graph::Item::ConnectionToTrip {
@@ -104,8 +103,8 @@ fn produce_tree_json<'r>(data: &'r GTFSData, station: StopId, day: Day, period: 
                     to,
                     route_name: Some(route_name),
                     kind: Some(FEConnectionType::from(route_type)),
-                    from_seconds: departure_time - period.start(),
-                    to_seconds: arrival_time - period.start(),
+                    from_seconds: (departure_time - period.start()).to_secs(),
+                    to_seconds: (arrival_time - period.start()).to_secs(),
                 })
             },
         }
@@ -116,7 +115,7 @@ fn produce_tree_json<'r>(data: &'r GTFSData, station: StopId, day: Day, period: 
         trips: fe_trips.into_iter().map(|(_k, v)| v).collect(),
         timetable_date: data.timetable_start_date().to_string(),
         departure_day: day.to_string(),
-        departure_time: period.start(),
+        departure_time: period.start().to_string(),
         duration_minutes: period.duration().to_mins(),
     }
 }
@@ -130,7 +129,7 @@ struct FEData<'s> {
     trips: Vec<FERoute<'s>>,
     timetable_date: String,
     departure_day: String,
-    departure_time: Time,
+    departure_time: String,
     duration_minutes: i32,
 }
 
@@ -138,7 +137,7 @@ struct FEData<'s> {
 struct FEStop {
     bearing: f64,
     name: String,
-    seconds: Duration,
+    seconds: i32,
 }
 
 #[derive(Serialize)]
@@ -150,16 +149,16 @@ struct FERoute<'s> {
 
 #[derive(Serialize)]
 struct FESegment {
-    from_seconds: Duration,
-    to_seconds: Duration,
+    from_seconds: i32,
+    to_seconds: i32,
     from: usize,
     to: usize,
 }
 
 #[derive(Serialize)]
 struct FEConnection<'s> {
-    from_seconds: Duration,
-    to_seconds: Duration,
+    from_seconds: i32,
+    to_seconds: i32,
     from: usize,
     to: usize,
     route_name: Option<&'s str>,

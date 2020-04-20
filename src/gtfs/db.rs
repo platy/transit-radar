@@ -5,12 +5,26 @@ use std::path::{Path, PathBuf};
 use std::ops::Deref;
 use crate::suggester::Suggester;
 
-use crate::search_data::*;
+use radar_search::time::*;
+use radar_search::search_data::*;
 use crate::gtfs;
 
 /// Refers to a specific stop of a specific trip (an arrival / departure)
 pub type TripStopRef = (TripId, usize); // usize refers to the index of the stop in the trip, should probably instead use stop sequence
 
+impl gtfs::Calendar {
+    /// A Vec of all the days that this servcice runs on between start and end dates
+    pub fn days(&self) -> Vec<Day> {
+        let mut days = vec![];
+        for (day, val) in [Day::Monday, Day::Tuesday, Day::Wednesday, Day::Thursday, Day::Friday, Day::Saturday, Day::Sunday].iter()
+                     .zip([self.monday, self.tuesday, self.wednesday, self.thursday, self.friday, self.saturday, self.sunday].iter()) {
+            if *val > 0 {
+                days.push(*day);
+            }
+        }
+        days
+    }
+}
 
 pub fn load_data(gtfs_dir: &Path, day_filter: DayFilter) -> Result<GTFSData, Box<dyn Error>> {
     let source = &GTFSSource::new(gtfs_dir);
@@ -57,7 +71,7 @@ pub fn load_data(gtfs_dir: &Path, day_filter: DayFilter) -> Result<GTFSData, Box
     for result in source.open_csv("transfers.txt")?.deserialize::<gtfs::Transfer>() {
         match result {
             Ok(transfer) =>
-                builder.add_transfer(transfer.from_stop_id, transfer.to_stop_id, transfer.min_transfer_time),
+                builder.add_transfer(transfer.from_stop_id, transfer.to_stop_id, transfer.min_transfer_time.map(|d| Duration::seconds(d.to_secs()))),
             Err(err) => 
                 eprintln!("Error parsing transfer : {}", err),
         }
@@ -66,7 +80,7 @@ pub fn load_data(gtfs_dir: &Path, day_filter: DayFilter) -> Result<GTFSData, Box
     let mut rdr = source.open_csv("routes.txt")?;
     for result in rdr.deserialize() {
         let route: gtfs::Route = result?;
-        builder.add_route(route.route_id, route.route_short_name, route.route_type);
+        builder.add_route(route.route_id.into_inner(), route.route_short_name, route.route_type.into());
     }
     
     let services = match day_filter {
@@ -76,7 +90,7 @@ pub fn load_data(gtfs_dir: &Path, day_filter: DayFilter) -> Result<GTFSData, Box
     let mut added_trips = HashSet::new();
     for result in source.get_trips(None, services)? {
         let trip: gtfs::Trip = result?;
-        builder.add_trip(trip.trip_id, trip.route_id, trip.service_id);
+        builder.add_trip(trip.trip_id, trip.route_id.into_inner(), trip.service_id);
         added_trips.insert(trip.trip_id);
     }
     
@@ -183,7 +197,7 @@ impl GTFSSource {
     let rdr = self.open_csv("trips.txt")?;
     let iter = rdr.into_deserialize().filter(move |result: &Result<gtfs::Trip, csv::Error>| {
         if let Ok(trip) = result {
-            route_id.map(|route_id| route_id == trip.route_id).unwrap_or(true)
+            route_id.map(|route_id| route_id == trip.route_id.into_inner()).unwrap_or(true)
                 && service_ids.as_ref().map(|service_ids| service_ids.contains(&trip.service_id)).unwrap_or(true)
         } else {
             false

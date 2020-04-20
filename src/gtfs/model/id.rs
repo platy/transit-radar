@@ -13,9 +13,15 @@ pub type ServiceId = u16;
 
 
 impl From<u32> for RouteId {
-  fn from(num: u32) -> RouteId {
-    RouteId(num)
-  }
+    fn from(num: u32) -> RouteId {
+        RouteId(num)
+    }
+}
+
+impl RouteId {
+    pub fn into_inner(self) -> u32 {
+        self.0
+    }
 }
 
 

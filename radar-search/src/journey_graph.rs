@@ -1,7 +1,9 @@
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::cmp::Ordering;
 use std::fmt;
+
 use crate::search_data::*;
+use crate::time::*;
 
 
 /// Runs an algoritm to build a tree of all fastest journeys from a start point
@@ -414,8 +416,8 @@ impl<'r> fmt::Debug for QueueItem<'r> {
       QueueItemVariant::StopOnTrip {
         trip_id, 
         route, 
-        previous_arrival_time, 
-        next_departure_time,
+        previous_arrival_time: _, 
+        next_departure_time: _,
         from_stop,
         departure_time,
       } => 

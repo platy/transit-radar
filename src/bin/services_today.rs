@@ -1,9 +1,8 @@
-use std::collections::HashMap;
 use std::path::Path;
 use chrono::prelude::*;
 
-use transit_radar::gtfs::*;
 use transit_radar::gtfs::db;
+use radar_search::{time::*, search_data::*};
 
 
 fn main() {
@@ -27,7 +26,6 @@ fn main() {
         Weekday::Sat => Day::Saturday,
         Weekday::Sun => Day::Sunday,
     };
-    let period = Period::between(now, now + Duration::minutes(30));
     // let station = db::get_station_by_name(&data, &station_name).unwrap();
 
     let services = data.services_of_day(day);

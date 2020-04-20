@@ -11,6 +11,7 @@ default-run = "webserver"
 name = "transit_radar"
 
 [dependencies]
+radar-search = { path = "./radar-search" }
 csv = "1.1"
 serde = { version = "1", features = ["derive"] }
 rmp-serde = "0.14.3"

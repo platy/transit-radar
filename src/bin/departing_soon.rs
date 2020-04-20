@@ -1,9 +1,8 @@
 use std::path::Path;
 use chrono::prelude::*;
 
-use transit_radar::gtfs::*;
 use transit_radar::gtfs::db;
-
+use radar_search::{time::*, search_data::*};
 
 fn main() {
     let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());

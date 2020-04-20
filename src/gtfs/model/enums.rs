@@ -1,4 +1,4 @@
-use std::fmt;
+pub use radar_search::search_data::RouteType;
 
 /// • 0 (or blank): Stop (or Platform). A location where passengers board or disembark from a transit vehicle. Is called a platform when defined within a parent_station.
 /// • 1: Station. A physical structure or area that contains one or more platform.
@@ -17,39 +17,25 @@ pub type ServiceAvailable = u8;
 
 /// Indicates the type of transportation used on a route.
 /// More options: [https://developers.google.com/transit/gtfs/reference#routestxt] and [https://developers.google.com/transit/gtfs/reference/extended-route-types]
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Clone, Copy)]
-pub enum RouteType {
-    Rail, //2
-    Bus, //3
-    RailwayService, // 100
-    SuburbanRailway, // 109
-    UrbanRailway, // 400
-    BusService, // 700
-    TramService, // 900
-    WaterTransportService, // 1000
-}
+pub mod route_type_format {
+    use super::RouteType;
+    use serde::{self, de, Deserialize, Deserializer};
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
-pub enum Day {
-    Monday,
-    Tuesday,
-    Wednesday,
-    Thursday,
-    Friday,
-    Saturday,
-    Sunday,
-}
-
-impl std::fmt::Display for Day {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Day::Monday => "mon",
-            Day::Tuesday => "tue",
-            Day::Wednesday => "wed",
-            Day::Thursday => "thu",
-            Day::Friday => "fri",
-            Day::Saturday => "sat",
-            Day::Sunday => "sun",
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<RouteType, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use RouteType::*;
+        u16::deserialize(deserializer).and_then(|ordinal| match ordinal {
+            2 => Ok(Rail),
+            3 => Ok(Bus),
+            100 => Ok(RailwayService),
+            109 => Ok(SuburbanRailway),
+            400 => Ok(UrbanRailway),
+            700 => Ok(BusService),
+            900 => Ok(TramService),
+            1000 => Ok(WaterTransportService),
+            num => Err(de::Error::custom(format!("Unknown route type : {}", num))),
         })
     }
 }

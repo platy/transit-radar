@@ -778,6 +778,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "radar-search"
+version = "0.1.0"
+dependencies = [
+ "geo",
+]
+
+[[package]]
 name = "rand"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1209,6 +1216,7 @@ dependencies = [
  "chrono-tz",
  "csv",
  "geo",
+ "radar-search",
  "rmp-serde",
  "serde",
  "serde_json",

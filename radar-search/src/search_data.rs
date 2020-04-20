@@ -2,10 +2,57 @@ use std::collections::{HashSet, HashMap, BTreeMap};
 use std::default::Default;
 use std::fmt;
 
-pub use crate::gtfs::{id::*, enums::*, time::*};
+use crate::time::*;
+
+
+pub type AgencyId = u16;
+pub type RouteId = u32;
+pub type TripId = u64;
+pub type StopId = u64;
+pub type ShapeId = u16;
+// type BlockId = String;
+pub type ServiceId = u16;
+// type ZoneId = String;
 
 /// Refers to a specific stop of a specific trip (an arrival / departure)
 pub type TripStopRef = (TripId, usize); // usize refers to the index of the stop in the trip, should probably instead use stop sequence
+
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Clone, Copy)]
+pub enum Day {
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Saturday,
+    Sunday,
+}
+
+impl std::fmt::Display for Day {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Day::Monday => "mon",
+            Day::Tuesday => "tue",
+            Day::Wednesday => "wed",
+            Day::Thursday => "thu",
+            Day::Friday => "fri",
+            Day::Saturday => "sat",
+            Day::Sunday => "sun",
+        })
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Clone, Copy)]
+pub enum RouteType {
+    Rail, //2
+    Bus, //3
+    RailwayService, // 100
+    SuburbanRailway, // 109
+    UrbanRailway, // 400
+    BusService, // 700
+    TramService, // 900
+    WaterTransportService, // 1000
+}
 
 /// Parsed and indexed GTFS data
 /// * efficient lookups for searching
