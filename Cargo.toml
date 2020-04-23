@@ -6,6 +6,7 @@ edition = "2018"
 default-run = "webserver"
 
 [workspace]
+exclude = ["./seed-quickstart"]
 
 [lib]
 name = "transit_radar"

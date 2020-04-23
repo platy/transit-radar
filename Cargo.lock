@@ -307,6 +307,7 @@ dependencies = [
  "geo-types",
  "num-traits",
  "rstar",
+ "serde",
 ]
 
 [[package]]
@@ -317,6 +318,7 @@ checksum = "e0ff051e4c51366601441053c37acf84958a795d350fdc02a53a31717f9bae2d"
 dependencies = [
  "num-traits",
  "rstar",
+ "serde",
 ]
 
 [[package]]
@@ -782,6 +784,7 @@ name = "radar-search"
 version = "0.1.0"
 dependencies = [
  "geo",
+ "serde",
 ]
 
 [[package]]

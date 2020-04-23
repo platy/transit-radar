@@ -1,0 +1,36 @@
+[package]
+name = "appname"
+version = "0.1.0"
+authors = ["Your Name <email@address.com>"]
+edition = "2018"
+
+
+[lib]
+crate-type = ["cdylib"]
+
+
+[dependencies]
+seed = { path = "../../seed" }
+wasm-bindgen = "^0.2.50"
+serde = { version = "^1.0.85", features = ['derive'] }
+futures = "^0.3.4"
+radar-search = { path = "../radar-search" }
+geo = "0.13.0"
+js-sys = "0.3.37"
+rmp-serde = "0.14.3"
+
+[dependencies.web-sys]
+version = "0.3.32"
+features = [
+    "CanvasRenderingContext2d",
+    "HtmlCanvasElement",
+]
+
+
+[dev-dependencies]
+wasm-bindgen-test = "0.2.50" # NOTE: keep in sync with wasm-bindgen version
+
+
+[profile.release]  # Attempts to minimize file size
+lto = true
+opt-level = 'z'

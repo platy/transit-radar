@@ -2,13 +2,15 @@ use std::convert::TryInto;
 use std::fmt;
 use std::ops::{Add, AddAssign, Div, Sub};
 
+use serde::{de, ser, Serialize, Deserialize};
+
 /// Duration in seconds as represented in GTFS data, used for transfers.txt
 /// # Examples
 /// ```rust
 /// use radar_search::time::Duration;
 /// assert_eq!(Duration::seconds(60), Duration::minutes(1));
 /// ```
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct Duration {
     seconds: i32,
 }
@@ -87,6 +89,26 @@ impl Time {
     /// get the seconds within the minute
     fn second(self) -> u8 {
         (self.seconds_since_midnight % 60).try_into().unwrap()
+    }
+}
+
+impl ser::Serialize for Time {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: ser::Serializer,
+    {
+        self.seconds_since_midnight.serialize(serializer)
+    }
+}
+
+impl<'de> de::Deserialize<'de> for Time {
+    fn deserialize<D>(deserializer: D) -> Result<Time, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        de::Deserialize::deserialize(deserializer).map(|seconds_since_midnight| Time {
+            seconds_since_midnight,
+        })
     }
 }
 

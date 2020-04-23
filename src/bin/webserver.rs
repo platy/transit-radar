@@ -234,12 +234,8 @@ fn with_data<D: Sync + Send>(
     warp::any().map(move || db.clone())
 }
 
-async fn json_tree_handler(
-    name: String,
-    options: RadarOptions,
-    data: Arc<GTFSData>,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let date_time = chrono::Utc::now().with_timezone(&chrono_tz::Europe::Berlin);
+fn day_time(time: chrono::DateTime) -> (Day, Time) {
+    time = time.with_timezone(&chrono_tz::Europe::Berlin);
     let now = Time::from_hms(date_time.hour(), date_time.minute(), date_time.second());
     let day = match date_time.weekday() {
         Weekday::Mon => Day::Monday,
@@ -250,6 +246,15 @@ async fn json_tree_handler(
         Weekday::Sat => Day::Saturday,
         Weekday::Sun => Day::Sunday,
     };
+    (day, now)
+}
+
+async fn json_tree_handler(
+    name: String,
+    options: RadarOptions,
+    data: Arc<GTFSData>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let (day, now) = day_time(chrono::Utc::now());
     let period = Period::between(now, now + Duration::minutes(30));
 
     match decode(&name) {
