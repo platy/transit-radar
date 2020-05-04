@@ -14,6 +14,14 @@ struct Model {
     pub data: Option<GTFSData>,
     canvas: ElRef<HtmlCanvasElement>,
     radar: Option<Radar>,
+
+    show_stations: bool,
+    animate: bool,
+    show_sbahn: bool,
+    show_ubahn: bool,
+    show_bus: bool,
+    show_tram: bool,
+    show_regional: bool,
 }
 
 struct Radar {
@@ -63,6 +71,13 @@ enum Msg {
     DataFetched(Result<GTFSData, Box<dyn std::error::Error>>),
     FetchData,
     Rendered,
+    SetShowStations(String),
+    SetAnimate(String),
+    SetShowSBahn(String),
+    SetShowUBahn(String),
+    SetShowBus(String),
+    SetShowTram(String),
+    SetShowRegional(String),
 }
 
 async fn fetch_data() -> Result<GTFSData, Box<dyn std::error::Error>> {
@@ -88,7 +103,6 @@ fn day_time(date_time: js_sys::Date) -> (Day, Time) {
 }
 
 fn search(data: &GTFSData) -> Radar {
-    log!("searching");
     // TODO don't use client time, instead start with the server time and increment using client clock, also this is local time
     let (day, start_time) = day_time(js_sys::Date::new_0());
     let max_duration = Duration::minutes(30);
@@ -182,7 +196,6 @@ fn search(data: &GTFSData) -> Radar {
         geometry,
         trips: trips.into_iter().map(|(_k,v)| v).collect(),
     };
-    log!("search finished");
     radar
 }
 
@@ -212,7 +225,18 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             // We want to call `.skip` to prevent infinite loop.
             // (Infinite loops are useful for animations.)
             orders.after_next_render(|_| Msg::Rendered);
+            if !model.animate {
+                orders.skip();
+            }
         }
+
+        Msg::SetShowStations(value) => model.show_stations = ! model.show_stations,
+        Msg::SetAnimate(value) => model.animate = ! model.animate,
+        Msg::SetShowSBahn(value) => model.show_sbahn = ! model.show_sbahn,
+        Msg::SetShowUBahn(value) => model.show_ubahn = ! model.show_ubahn,
+        Msg::SetShowBus(value) => model.show_bus = ! model.show_bus,
+        Msg::SetShowTram(value) => model.show_tram = ! model.show_tram,
+        Msg::SetShowRegional(value) => model.show_regional = ! model.show_regional,
     }
 }
 
@@ -237,10 +261,32 @@ fn draw(canvas: &ElRef<HtmlCanvasElement>, model: &Model) {
     }
 }
 
+fn checkbox<M>(name: &'static str, label: &'static str, value: bool, event: &'static M) -> [Node<Msg>; 2] 
+    where M: FnOnce(String) -> Msg + Copy {
+    [
+        input![ attrs!{
+            At::Type => "checkbox",
+            At::Checked => value.as_at_value(),
+            At::Name => name,
+        }, input_ev(Ev::Input, *event)],
+        label![ attrs!{
+            At::For => name
+        }, label],
+    ]
+}
+
 fn view(model: &Model) -> Node<Msg> {
     if let Some(data) = &model.data {
         div![
-            style! {St::Display => "flex"},
+            h2!["U Voltastrasse"],
+            checkbox("show-stations", "Show Stations", model.show_stations, &Msg::SetShowStations),
+            checkbox("animate", "Animate", model.animate, &Msg::SetAnimate),
+            checkbox("show-sbahn", "Show SBahn", model.show_sbahn, &Msg::SetShowSBahn),
+            checkbox("show-ubahn", "Show UBahn", model.show_ubahn, &Msg::SetShowUBahn),
+            checkbox("show-bus", "Show Bus", model.show_bus, &Msg::SetShowBus),
+            checkbox("show-tram", "Show Tram", model.show_tram, &Msg::SetShowTram),
+            checkbox("show-regional", "Show Regional", model.show_tram, &Msg::SetShowRegional),
+            
             canvas![
                 el_ref(&model.canvas),
                 attrs![

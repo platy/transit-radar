@@ -112,6 +112,26 @@
   [] lower the backend calculations by re searching over the existing tree rather than from scratch after a missed departure. This will massively complicate the algorithm and structure and i can't really justify it now.
 [] Search up to an hour
 
+# Rust/canvas frontend
+
+[x] Load data in browser
+[x] Draw routes
+[x] Add frontend controls
+[] Draw grid
+[] Draw connections
+[] Colour routes
+[] Don't freeze display thread while deserialising
+[] Don't freeze display thread while searching
+[] Limit max cpu usage of searching
+[] Redraw without search until a train departs
+[] Get data from backend
+[] Pre-search data filtering in backend
+[] Style routes
+[] Route curves
+[] Station names
+[] Get time initially from backend
+[] Add station search
+
 # Models
 
 1. GTFS data
