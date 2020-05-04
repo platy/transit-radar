@@ -338,8 +338,10 @@ impl<'r> JourneyGraphPlotter<'r> {
                     from_stop: _,
                     departure_time: _,
                 } => {
-                    self.enqueue_transfers_from_stop(item.to_stop, item.arrival_time);
-                    self.enqueue_transfers_from_station(item.to_stop, item.arrival_time);
+                    if !item.to_stop.is_station() { 
+                        self.enqueue_transfers_from_stop(item.to_stop, item.arrival_time);
+                    }
+                    self.enqueue_transfers_from_station(self.data.get_stop(&item.to_stop.station_id()).unwrap(), item.arrival_time);
                     // only emit if we got to a new station
                     if !self.emitted_stations.contains(&item.to_stop.station_id()) {
                         // if this now made some slow stops on the trip relevant, they should be emitted as well

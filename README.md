@@ -133,6 +133,8 @@
 [] Get time initially from backend
 [] Add station search
 [] Don't freeze display thread while deserialising
+[] Reduce size of wasm
+[] Fast load with first image from backend
 
 # Models
 
