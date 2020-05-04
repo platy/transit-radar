@@ -124,9 +124,9 @@
 [x] Colour routes
 [x] Style routes
 [x] Redraw without search until a train departs
+[x] Route curves
 [] Get data from backend
 [] Pre-search data filtering in backend
-[] Route curves
 [] Stations
 [] Colour properly
 [] Draw in proper order

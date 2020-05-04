@@ -78,6 +78,44 @@ impl RadarGeometry {
         let (x2, y2) = self.coords(end_point, end_time);
         (x1, y1, x2, y2)
     }
+
+    fn initial_control_point(&self, (x1, y1): (f64, f64), (x2, y2): (f64, f64)) -> (f64, f64) {
+        let (xo, yo) = self.cartesian_origin;
+        let angle_to_origin = (yo - y1).atan2(xo - x1);
+        let angle_to_next = (y2 - y1).atan2(x2 - x1);
+        // things to adjust and improve
+        let mut angle_between = angle_to_origin - angle_to_next;
+        if angle_between < 0. { angle_between = 2. * PI + angle_between; }
+        if angle_between < PI / 2. {
+            let cpangle = angle_to_origin - PI / 2.;
+            let cpmag = 0.5 * ((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2)).sqrt();
+            (x1 + cpmag * cpangle.cos(), y1 + cpmag * cpangle.sin())
+        } else if angle_between > 3. * PI / 2. {
+            let cpangle = angle_to_origin + PI / 2.;
+            let cpmag = 0.5 * ((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2)).sqrt();
+            (x1 + cpmag * cpangle.cos(), y1 + cpmag * cpangle.sin())
+        } else {
+            (x1, y1)
+        }
+    }
+
+    fn control_points(&self, (x1, y1): (f64, f64), (x2, y2): (f64, f64), (x3, y3): (f64, f64)) -> ((f64, f64), (f64, f64)) {
+        let cpfrac = 0.3;
+        let angle_to_prev = (y2 - y1).atan2(x2 - x1);
+        let angle_to_next = (y2 - y3).atan2(x2 - x3);
+        // things to adjust and improve
+        let angle_to_tangent = (PI + angle_to_next + angle_to_prev) / 2.;
+        let cp2mag = -cpfrac * ((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)).sqrt();
+        let cp3mag = cpfrac * ((x2 - x3) * (x2 - x3) + (y2 - y3) * (y2 - y3)).sqrt();
+        // ^^ improve these
+        let mut dx = angle_to_tangent.cos();
+        let mut dy = angle_to_tangent.sin();
+        if angle_to_prev < angle_to_next {
+          dy = -dy;
+          dx = -dx;
+        }
+        ((x2 + (dx * cp2mag), y2 + (dy * cp2mag)), (x2 + (dx * cp3mag), y2 + (dy * cp3mag)))
+    }
 }
 
 
@@ -295,21 +333,23 @@ fn draw(model: &mut Model) -> Result<(), JsValue> { // todo , error type to enca
         let data = model.data.as_ref().unwrap();
 
         for RadarTrip { connection, route_name: _, route_type, route_color, segments } in trips {
-            let TripSegment { from, to, departure_time, arrival_time } = connection;
-            ctx.begin_path();
-            ctx.set_line_width(1.);
-            ctx.set_line_dash(&js_sys::Array::of2(&2f64.into(), &4f64.into()).into())?;
-            ctx.set_stroke_style(&JsValue::from_str(route_color));
-            let start_point = data.get_stop(from).unwrap().location;
-            let mut end_point = data.get_stop(to).unwrap().location;
-            if end_point == geometry.geographic_origin {
-                // connection is from origin meaning no natural bearing for it, we use the bearing to the next stop
-                end_point = data.get_stop(&segments.first().expect("at least one segment in a trip").to).unwrap().location;
+            {
+                let TripSegment { from, to, departure_time, arrival_time } = connection;
+                ctx.begin_path();
+                ctx.set_line_width(1.);
+                ctx.set_line_dash(&js_sys::Array::of2(&2f64.into(), &4f64.into()).into())?;
+                ctx.set_stroke_style(&JsValue::from_str(route_color));
+                let start_point = data.get_stop(from).unwrap().location;
+                let mut end_point = data.get_stop(to).unwrap().location;
+                if end_point == geometry.geographic_origin {
+                    // connection is from origin meaning no natural bearing for it, we use the bearing to the next stop
+                    end_point = data.get_stop(&segments.first().expect("at least one segment in a trip").to).unwrap().location;
+                } 
+                let (from_x, from_y, to_x, to_y) = geometry.line_coords(start_point, *departure_time, end_point, *arrival_time);
+                ctx.move_to(to_x, to_y);
+                ctx.line_to(from_x, from_y);
+                ctx.stroke();
             }
-            let (from_x, from_y, to_x, to_y) = geometry.line_coords(start_point, *departure_time, end_point, *arrival_time);
-            ctx.move_to(to_x, to_y);
-            ctx.line_to(from_x, from_y);
-            ctx.stroke();
 
             ctx.begin_path();
             use RouteType::*;
@@ -320,7 +360,54 @@ fn draw(model: &mut Model) -> Result<(), JsValue> { // todo , error type to enca
             }
             ctx.set_line_dash(&js_sys::Array::new())?;
             ctx.set_stroke_style(&JsValue::from_str(route_color));
-            for segment in segments {
+            if segments.len() > 1 {
+                let mut next_control_point = { // first segment
+                    let segment = &segments[0];
+                    let (from_x, from_y, to_x, to_y) = geometry.line_coords(data.get_stop(&segment.from).unwrap().location, segment.departure_time, data.get_stop(&segment.to).unwrap().location, segment.arrival_time);
+                    ctx.move_to(from_x, from_y);
+                    let (cp1x, cp1y) = geometry.initial_control_point((from_x, from_y), (to_x, to_y));
+                    let (post_id, post_time) = if segments[1].from != segment.to {
+                        (segments[1].from, segments[1].departure_time)
+                    } else {
+                        (segments[1].to, segments[1].arrival_time)
+                    };
+                    let post_xy = geometry.coords(data.get_stop(&post_id).unwrap().location, post_time);
+                    let ((cp2x, cp2y), next_control_point) = geometry.control_points((from_x, from_y), (to_x, to_y), post_xy);
+                    ctx.bezier_curve_to(cp1x, cp1y, cp2x, cp2y, to_x, to_y);
+                    next_control_point
+                };
+                // all the connecting segments
+                for window in segments.windows(3) {
+                    if let &[pre, segment, post] = &window {
+                        let (from_x, from_y, to_x, to_y) = geometry.line_coords(data.get_stop(&segment.from).unwrap().location, segment.departure_time, data.get_stop(&segment.to).unwrap().location, segment.arrival_time);
+                        let (pre_x, pre_y) = geometry.coords(data.get_stop(&pre.to).unwrap().location, pre.arrival_time);
+                        if pre_x != from_x && pre_y != from_y {
+                            // there is a gap in the route and so we move
+                            ctx.move_to(from_x, from_y);
+                        }
+                        let (post_id, post_time) = if post.from != segment.to {
+                            (post.from, post.departure_time)
+                        } else {
+                            (post.to, post.arrival_time)
+                        };
+                        let post_xy = geometry.coords(data.get_stop(&post_id).unwrap().location, post_time);
+                        let (cp1x, cp1y) = next_control_point;
+                        let ((cp2x, cp2y), next_control_point_tmp) = geometry.control_points((from_x, from_y), (to_x, to_y), post_xy);
+                        ctx.bezier_curve_to(cp1x, cp1y, cp2x, cp2y, to_x, to_y);
+                        next_control_point = next_control_point_tmp;
+                    } else {
+                        panic!("unusual window");
+                    }
+                }
+                {
+                    // draw the last curve
+                    let end = segments.last().unwrap();
+                    let (to_x, to_y) = geometry.coords(data.get_stop(&end.from).unwrap().location, end.departure_time);
+                    let (cp1x, cp1y) = next_control_point;
+                    ctx.bezier_curve_to(cp1x, cp1y, to_x, to_y, to_x, to_y);
+                }
+            } else {
+                let segment = &segments[0];
                 let (from_x, from_y, to_x, to_y) = geometry.line_coords(data.get_stop(&segment.from).unwrap().location, segment.departure_time, data.get_stop(&segment.to).unwrap().location, segment.arrival_time);
                 ctx.move_to(from_x, from_y);
                 ctx.line_to(to_x, to_y);
