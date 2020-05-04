@@ -30,7 +30,7 @@ struct Radar {
     trips: Vec<RadarTrip>,
     connections: Vec<RadarConnection>,
     day: Day,
-    start_time: Time,
+    expires_time: Time,
 }
 
 struct RadarTrip {
@@ -67,7 +67,7 @@ struct RadarGeometry {
 impl RadarGeometry {
     fn coords(&self, point: geo::Point<f64>, time: Time) -> (f64, f64) {
         let duration = time - self.start_time;
-        if duration.to_secs() == 0 {
+        if duration.to_secs() < 0 {
             self.cartesian_origin
         } else {
             let bearing = self.geographic_origin.bearing(point);
@@ -83,7 +83,7 @@ impl RadarGeometry {
 enum Msg {
     DataFetched(Result<GTFSData, Box<dyn std::error::Error>>),
     FetchData,
-    Rendered,
+    Draw,
     SetShowStations(String),
     SetAnimate(String),
     SetShowSBahn(String),
@@ -123,6 +123,7 @@ fn search(data: &GTFSData) -> Radar {
     let origin = data.get_stop(&900000007103).unwrap();
     plotter.add_origin_station(origin);
     plotter.add_route_type(RouteType::UrbanRailway);
+    let mut expires_time = start_time + max_duration;
     let mut trips: HashMap<TripId, RadarTrip> = HashMap::new();
     let mut connections = vec![];
     for item in plotter {
@@ -165,6 +166,7 @@ fn search(data: &GTFSData) -> Radar {
                 route_type,
                 route_color,
             } => {
+                expires_time = expires_time.min(departure_time);
                 let trip = trips.entry(trip_id).or_insert(RadarTrip {
                     route_name: route_name.to_string(),
                     route_type,
@@ -207,7 +209,7 @@ fn search(data: &GTFSData) -> Radar {
     };
     let radar = Radar {
         day,
-        start_time,
+        expires_time,
         geometry,
         trips: trips.into_iter().map(|(_k,v)| v).collect(),
         connections,
@@ -224,7 +226,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 
         Msg::DataFetched(Ok(data)) => {
             model.data = Some(data);
-            orders.after_next_render(|_| Msg::Rendered);
+            orders.after_next_render(|_| Msg::Draw);
         },
 
         Msg::DataFetched(Err(fail_reason)) => {
@@ -235,24 +237,33 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             orders.skip();
         },
 
-        Msg::Rendered => {
-            model.radar = Some(search(model.data.as_ref().unwrap()));
+        Msg::Draw => {
+            // TODO don't use client time, instead start with the server time and increment using client clock, also this is local time
+            let (_day, time) = day_time(js_sys::Date::new_0());
+            if let &mut Some(ref mut radar) = &mut model.radar {
+                if time <= radar.expires_time {
+                    radar.geometry.start_time = time;
+                } else {
+                    model.radar = Some(search(model.data.as_ref().unwrap()));
+                }
+            } else {
+                model.radar = Some(search(model.data.as_ref().unwrap()));
+            }
             draw(model).unwrap();
-            // We want to call `.skip` to prevent infinite loop.
-            // (Infinite loops are useful for animations.)
-            orders.after_next_render(|_| Msg::Rendered);
+            // The next time a render is triggered we will draw again
+            orders.after_next_render(|_| Msg::Draw);
             if !model.animate {
                 orders.skip();
             }
         }
 
-        Msg::SetShowStations(value) => model.show_stations = ! model.show_stations,
-        Msg::SetAnimate(value) => model.animate = ! model.animate,
-        Msg::SetShowSBahn(value) => model.show_sbahn = ! model.show_sbahn,
-        Msg::SetShowUBahn(value) => model.show_ubahn = ! model.show_ubahn,
-        Msg::SetShowBus(value) => model.show_bus = ! model.show_bus,
-        Msg::SetShowTram(value) => model.show_tram = ! model.show_tram,
-        Msg::SetShowRegional(value) => model.show_regional = ! model.show_regional,
+        Msg::SetShowStations(_value) => model.show_stations = ! model.show_stations,
+        Msg::SetAnimate(_value) => model.animate = ! model.animate,
+        Msg::SetShowSBahn(_value) => model.show_sbahn = ! model.show_sbahn,
+        Msg::SetShowUBahn(_value) => model.show_ubahn = ! model.show_ubahn,
+        Msg::SetShowBus(_value) => model.show_bus = ! model.show_bus,
+        Msg::SetShowTram(_value) => model.show_tram = ! model.show_tram,
+        Msg::SetShowRegional(_value) => model.show_regional = ! model.show_regional,
     }
 }
 
@@ -268,7 +279,7 @@ fn draw(model: &mut Model) -> Result<(), JsValue> { // todo , error type to enca
         model.canvas_scaled = Some(scale);
     }
 
-    if let Some(Radar { day: _, start_time: _, geometry, trips, connections }) = &model.radar {
+    if let Some(Radar { day: _, expires_time: _, geometry, trips, connections }) = &model.radar {
         let (origin_x, origin_y) = geometry.cartesian_origin;
         ctx.set_line_dash(&js_sys::Array::of2(&10f64.into(), &10f64.into()).into())?;
         ctx.set_stroke_style(&"lightgray".into());
@@ -303,15 +314,15 @@ fn draw(model: &mut Model) -> Result<(), JsValue> { // todo , error type to enca
             ctx.stroke();
         }
 
-        for RadarConnection { route_name, route_type, route_color, from, to, departure_time, arrival_time } in connections {
+        for RadarConnection { route_name: _, route_type: _, route_color, from, to, departure_time, arrival_time } in connections {
             ctx.begin_path();
             ctx.set_line_width(1.);
             ctx.set_line_dash(&js_sys::Array::of2(&2f64.into(), &4f64.into()).into())?;
             ctx.set_stroke_style(&JsValue::from_str(route_color));
             let (from_x, from_y) = geometry.coords(data.get_stop(from).unwrap().location, *departure_time);
             let (to_x, to_y) = geometry.coords(data.get_stop(to).unwrap().location, *arrival_time);
-            ctx.move_to(from_x, from_y);
-            ctx.line_to(to_x, to_y);
+            ctx.move_to(to_x, to_y);
+            ctx.line_to(from_x, from_y);
             ctx.stroke();
         }
     }
@@ -357,7 +368,7 @@ fn view(model: &Model) -> Node<Msg> {
                 ],
             ],
             if let Some(radar) = &model.radar {
-                format!("data processed for {}, {}. {} trips", radar.day, radar.start_time, radar.trips.len())
+                format!("data processed for {}, {}. {} trips", radar.day, radar.geometry.start_time, radar.trips.len())
             } else {
                 format!("data received, {} stops", data.stops().count())
             }

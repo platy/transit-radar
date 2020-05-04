@@ -122,17 +122,17 @@
 [x] Support 2x scaling for retina
 [x] Draw connections
 [x] Colour routes
-[] Don't freeze display thread while deserialising
-[] Redraw without search until a train departs
+[x] Style routes
+[x] Redraw without search until a train departs
 [] Get data from backend
 [] Pre-search data filtering in backend
-[] Style routes
 [] Route curves
-[] Station names
+[] Stations
 [] Colour properly
 [] Draw in proper order
 [] Get time initially from backend
 [] Add station search
+[] Don't freeze display thread while deserialising
 
 # Models
 
