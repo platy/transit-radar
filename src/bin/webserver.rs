@@ -130,6 +130,7 @@ fn produce_tree_json<'r>(
                 to_stop,
                 route_name,
                 route_type,
+                route_color: &str,
             } => {
                 let to = *stop_id_to_idx.get(&to_stop.station_id()).unwrap();
                 let from_stop_or_station_id = from_stop.station_id();

@@ -28,7 +28,6 @@ struct Model {
 struct Radar {
     geometry: RadarGeometry,
     trips: Vec<RadarTrip>,
-    connections: Vec<RadarConnection>,
     day: Day,
     expires_time: Time,
 }
@@ -37,17 +36,8 @@ struct RadarTrip {
     route_name: String,
     route_type: RouteType,
     route_color: String,
+    connection: TripSegment,
     segments: Vec<TripSegment>,
-}
-
-struct RadarConnection {
-    route_name: String,
-    route_type: RouteType,
-    route_color: String,
-    from: StopId,
-    to: StopId,
-    departure_time: Time,
-    arrival_time: Time,
 }
 
 struct TripSegment {
@@ -76,6 +66,17 @@ impl RadarGeometry {
             let y = h * (bearing * PI / 180.).sin();
             ((x+1.) * self.cartesian_origin.0, (-y+1.) * self.cartesian_origin.1)
         }
+    }
+
+    fn line_coords(&self, start_point: geo::Point<f64>, start_time: Time, end_point: geo::Point<f64>, end_time: Time) -> (f64, f64, f64, f64) {
+        let (x1, y1) = if start_point == self.geographic_origin {
+            // no bearing to the start point, so use the bearing of the end point
+            self.coords(end_point, start_time)
+        } else {
+            self.coords(start_point, start_time)
+        };
+        let (x2, y2) = self.coords(end_point, end_time);
+        (x1, y1, x2, y2)
     }
 }
 
@@ -125,7 +126,6 @@ fn search(data: &GTFSData) -> Radar {
     plotter.add_route_type(RouteType::UrbanRailway);
     let mut expires_time = start_time + max_duration;
     let mut trips: HashMap<TripId, RadarTrip> = HashMap::new();
-    let mut connections = vec![];
     for item in plotter {
         match item {
             journey_graph::Item::Station {
@@ -167,12 +167,7 @@ fn search(data: &GTFSData) -> Radar {
                 route_color,
             } => {
                 expires_time = expires_time.min(departure_time);
-                let trip = trips.entry(trip_id).or_insert(RadarTrip {
-                    route_name: route_name.to_string(),
-                    route_type,
-                    segments: vec![],
-                    route_color: route_color.to_owned(),
-                });
+                let trip = trips.get_mut(&trip_id).expect("trip to have been connected to");
                 trip.segments.push(TripSegment {
                     from: from_stop.station_id(),
                     to: to_stop.station_id(),
@@ -185,19 +180,23 @@ fn search(data: &GTFSData) -> Radar {
                 arrival_time,
                 from_stop,
                 to_stop,
+                trip_id,
                 route_name,
                 route_type,
                 route_color,
             } => {
-                connections.push(RadarConnection {
+                trips.insert(trip_id, RadarTrip {
                     route_name: route_name.to_string(),
                     route_type,
                     route_color: route_color.to_owned(),
-                    from: from_stop.station_id(),
-                    to: to_stop.station_id(),
-                    departure_time,
-                    arrival_time,
-                })
+                    connection: TripSegment {
+                        from: from_stop.station_id(),
+                        to: to_stop.station_id(),
+                        departure_time,
+                        arrival_time,
+                    },
+                    segments: vec![],
+                });
             }
         }
     }
@@ -212,7 +211,6 @@ fn search(data: &GTFSData) -> Radar {
         expires_time,
         geometry,
         trips: trips.into_iter().map(|(_k,v)| v).collect(),
-        connections,
     };
     radar
 }
@@ -279,7 +277,7 @@ fn draw(model: &mut Model) -> Result<(), JsValue> { // todo , error type to enca
         model.canvas_scaled = Some(scale);
     }
 
-    if let Some(Radar { day: _, expires_time: _, geometry, trips, connections }) = &model.radar {
+    if let Some(Radar { day: _, expires_time: _, geometry, trips, }) = &model.radar {
         let (origin_x, origin_y) = geometry.cartesian_origin;
         ctx.set_line_dash(&js_sys::Array::of2(&10f64.into(), &10f64.into()).into())?;
         ctx.set_stroke_style(&"lightgray".into());
@@ -296,7 +294,23 @@ fn draw(model: &mut Model) -> Result<(), JsValue> { // todo , error type to enca
         ctx.set_line_dash(&js_sys::Array::new().into())?;
         let data = model.data.as_ref().unwrap();
 
-        for RadarTrip { route_name, route_type, route_color, segments } in trips {
+        for RadarTrip { connection, route_name: _, route_type, route_color, segments } in trips {
+            let TripSegment { from, to, departure_time, arrival_time } = connection;
+            ctx.begin_path();
+            ctx.set_line_width(1.);
+            ctx.set_line_dash(&js_sys::Array::of2(&2f64.into(), &4f64.into()).into())?;
+            ctx.set_stroke_style(&JsValue::from_str(route_color));
+            let start_point = data.get_stop(from).unwrap().location;
+            let mut end_point = data.get_stop(to).unwrap().location;
+            if end_point == geometry.geographic_origin {
+                // connection is from origin meaning no natural bearing for it, we use the bearing to the next stop
+                end_point = data.get_stop(&segments.first().expect("at least one segment in a trip").to).unwrap().location;
+            }
+            let (from_x, from_y, to_x, to_y) = geometry.line_coords(start_point, *departure_time, end_point, *arrival_time);
+            ctx.move_to(to_x, to_y);
+            ctx.line_to(from_x, from_y);
+            ctx.stroke();
+
             ctx.begin_path();
             use RouteType::*;
             if [Rail, RailwayService, SuburbanRailway, UrbanRailway, WaterTransportService].contains(route_type) {
@@ -304,25 +318,13 @@ fn draw(model: &mut Model) -> Result<(), JsValue> { // todo , error type to enca
             } else { // Bus, BusService, TramService,
                 ctx.set_line_width(1.);
             }
+            ctx.set_line_dash(&js_sys::Array::new())?;
             ctx.set_stroke_style(&JsValue::from_str(route_color));
             for segment in segments {
-                let (from_x, from_y) = geometry.coords(data.get_stop(&segment.from).unwrap().location, segment.departure_time);
-                let (to_x, to_y) = geometry.coords(data.get_stop(&segment.to).unwrap().location, segment.arrival_time);
+                let (from_x, from_y, to_x, to_y) = geometry.line_coords(data.get_stop(&segment.from).unwrap().location, segment.departure_time, data.get_stop(&segment.to).unwrap().location, segment.arrival_time);
                 ctx.move_to(from_x, from_y);
                 ctx.line_to(to_x, to_y);
             }
-            ctx.stroke();
-        }
-
-        for RadarConnection { route_name: _, route_type: _, route_color, from, to, departure_time, arrival_time } in connections {
-            ctx.begin_path();
-            ctx.set_line_width(1.);
-            ctx.set_line_dash(&js_sys::Array::of2(&2f64.into(), &4f64.into()).into())?;
-            ctx.set_stroke_style(&JsValue::from_str(route_color));
-            let (from_x, from_y) = geometry.coords(data.get_stop(from).unwrap().location, *departure_time);
-            let (to_x, to_y) = geometry.coords(data.get_stop(to).unwrap().location, *arrival_time);
-            ctx.move_to(to_x, to_y);
-            ctx.line_to(from_x, from_y);
             ctx.stroke();
         }
     }

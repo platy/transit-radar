@@ -124,7 +124,7 @@ impl<'r> JourneyGraphPlotter<'r> {
                 arrival_time,
             }),
             QueueItemVariant::Connection {
-                trip_id: _,
+                trip_id,
                 route,
                 from_stop,
                 departure_time,
@@ -136,6 +136,7 @@ impl<'r> JourneyGraphPlotter<'r> {
                 route_name: &route.route_short_name,
                 route_type: route.route_type,
                 route_color: &route.route_color,
+                trip_id,
             }),
             QueueItemVariant::StopOnTrip {
                 trip_id,
@@ -568,6 +569,7 @@ pub enum Item<'r> {
         route_name: &'r str,
         route_type: RouteType,
         route_color: &'r str,
+        trip_id: TripId,
     },
     SegmentOfTrip {
         departure_time: Time,
