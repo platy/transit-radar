@@ -301,6 +301,7 @@ pub struct Route {
     pub route_id: RouteId,
     pub route_short_name: String,
     pub route_type: RouteType,
+    pub route_color: String,
 }
 
 impl PartialEq for Route {
@@ -446,6 +447,7 @@ impl Builder {
         route_id: RouteId,
         route_short_name: String,
         route_type: RouteType,
+        route_color: String,
     ) {
         self.routes.insert(
             route_id,
@@ -454,6 +456,7 @@ impl Builder {
                 route_id,
                 route_short_name,
                 route_type,
+                route_color: route_color.to_owned(),
             },
         );
     }

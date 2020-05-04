@@ -46,7 +46,20 @@ impl gtfs::Calendar {
     }
 }
 
-pub fn load_data(gtfs_dir: &Path, day_filter: DayFilter) -> Result<GTFSData, Box<dyn Error>> {
+fn color_for_type(route_type: RouteType) -> &'static str {
+    match route_type {
+        RouteType::SuburbanRailway => "lightgray",
+        RouteType::UrbanRailway => "lightgray",
+        RouteType::TramService => "lightgray",
+        RouteType::Rail => "#e2001a",
+        RouteType::RailwayService => "#e2001a",
+        RouteType::Bus => "#a01c7d", // not sure if this is bus
+        RouteType::BusService => "#a01c7d",
+        RouteType::WaterTransportService => "#0099d6",
+    }
+}
+
+pub fn load_data(gtfs_dir: &Path, day_filter: DayFilter, route_colors: HashMap<String, String>) -> Result<GTFSData, Box<dyn Error>> {
     let source = &GTFSSource::new(gtfs_dir);
 
     let mut services_by_day: HashMap<_, HashSet<_>> = HashMap::new();
@@ -115,13 +128,18 @@ pub fn load_data(gtfs_dir: &Path, day_filter: DayFilter) -> Result<GTFSData, Box
         }
     }
 
+    use std::borrow::Cow;
     let mut rdr = source.open_csv("routes.txt")?;
     for result in rdr.deserialize() {
         let route: gtfs::Route = result?;
+        let route_color: Cow<str> = route.route_color.as_ref().map(|s| Cow::Owned(format!("#{}", s)))
+            .or(route_colors.get(&route.route_short_name).map(Into::into))
+            .unwrap_or(color_for_type(route.route_type).into());
         builder.add_route(
             route.route_id.into_inner(),
             route.route_short_name,
             route.route_type.into(),
+            route_color.into_owned(),
         );
     }
 
@@ -227,6 +245,18 @@ impl fmt::Display for SearchError {
             ),
         }
     }
+}
+
+pub fn load_colors(path: &Path) -> Result<HashMap<String, String>, csv::Error> {
+    let mut colors = HashMap::new();
+    let reader = csv::ReaderBuilder::new()
+        .delimiter(b';')
+        .from_path(path)?;
+    for result in reader.into_byte_records() {
+        let br = result?;
+        colors.insert(String::from_utf8_lossy(br.get(0).unwrap()).into_owned(), String::from_utf8_lossy(br.get(10).unwrap()).into_owned());
+    }
+    Ok(colors)
 }
 
 pub struct GTFSSource {

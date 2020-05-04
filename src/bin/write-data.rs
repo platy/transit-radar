@@ -9,7 +9,9 @@ fn main() {
     let gtfs_dir = Path::new(&gtfs_dir);
 
     let now = Instant::now();
-    let data = db::load_data(&gtfs_dir, db::DayFilter::All).unwrap();
+    let colors = db::load_colors(Path::new("./Linienfarben.csv")).unwrap();
+    eprintln!("{:?}", colors);
+    let data = db::load_data(&gtfs_dir, db::DayFilter::All, colors).unwrap();
     println!("Reading from GTFS took {}s", now.elapsed().as_secs());
 
     // serde_json::to_writer_pretty(std::io::stdout(), &data);

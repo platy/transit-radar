@@ -60,6 +60,7 @@
 [x] Remove duplication of trips read ~ 4%
 [x] Parse Time as byte array as checking the char boundaries is slow and unnecessary maybe 6%
 [] Parallelize stoptime deserialisation and reading, reading is 30% and deserialisation is 50%
+[] Csv reader might be faster with ByteRecord enabling read of borrowed data [https://docs.rs/csv/1.1.3/csv/struct.ByteRecord.html]
 [] See if csv reader can be sped up
 
 ## Code 
@@ -119,17 +120,17 @@
 [x] Add frontend controls
 [x] Draw grid
 [x] Support 2x scaling for retina
-[] Draw connections
-[] Colour routes
+[x] Draw connections
+[x] Colour routes
 [] Don't freeze display thread while deserialising
-[] Don't freeze display thread while searching
-[] Limit max cpu usage of searching
 [] Redraw without search until a train departs
 [] Get data from backend
 [] Pre-search data filtering in backend
 [] Style routes
 [] Route curves
 [] Station names
+[] Colour properly
+[] Draw in proper order
 [] Get time initially from backend
 [] Add station search
 

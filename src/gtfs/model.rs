@@ -52,7 +52,7 @@ pub struct Route {
     /// Indicates the type of transportation used on a route.
     #[serde(with = "route_type_format")]
     pub route_type: RouteType,
-    // route_color: Option<String>,
+    pub route_color: Option<String>,
     // route_text_color: Option<String>,
 }
 

@@ -105,6 +105,7 @@ fn produce_tree_json<'r>(
                 trip_id,
                 route_name,
                 route_type,
+                route_color,
             } => {
                 let to = *stop_id_to_idx.get(&to_stop.station_id()).unwrap();
                 let from_stop_or_station_id = from_stop.station_id();
@@ -234,8 +235,8 @@ fn with_data<D: Sync + Send>(
     warp::any().map(move || db.clone())
 }
 
-fn day_time(time: chrono::DateTime) -> (Day, Time) {
-    time = time.with_timezone(&chrono_tz::Europe::Berlin);
+fn day_time(date_time: chrono::DateTime<Utc>) -> (Day, Time) {
+    let date_time = date_time.with_timezone(&chrono_tz::Europe::Berlin);
     let now = Time::from_hms(date_time.hour(), date_time.minute(), date_time.second());
     let day = match date_time.weekday() {
         Weekday::Mon => Day::Monday,
