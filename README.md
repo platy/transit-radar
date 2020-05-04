@@ -117,7 +117,8 @@
 [x] Load data in browser
 [x] Draw routes
 [x] Add frontend controls
-[] Draw grid
+[x] Draw grid
+[x] Support 2x scaling for retina
 [] Draw connections
 [] Colour routes
 [] Don't freeze display thread while deserialising

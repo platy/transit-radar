@@ -13,6 +13,7 @@ use js_sys;
 struct Model {
     pub data: Option<GTFSData>,
     canvas: ElRef<HtmlCanvasElement>,
+    canvas_scaled: Option<f64>,
     radar: Option<Radar>,
 
     show_stations: bool,
@@ -61,7 +62,7 @@ impl RadarGeometry {
             let h = duration.to_secs() as f64 / self.max_duration.to_secs() as f64;
             let x = h * (bearing * PI / 180.).cos();
             let y = h * (bearing * PI / 180.).sin();
-            ((x+1.) * self.cartesian_origin.0, (y+1.) * self.cartesian_origin.1)
+            ((x+1.) * self.cartesian_origin.0, (-y+1.) * self.cartesian_origin.1)
         }
     }
 }
@@ -221,7 +222,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 
         Msg::Rendered => {
             model.radar = Some(search(model.data.as_ref().unwrap()));
-            draw(&model.canvas, &model);
+            draw(model).unwrap();
             // We want to call `.skip` to prevent infinite loop.
             // (Infinite loops are useful for animations.)
             orders.after_next_render(|_| Msg::Rendered);
@@ -240,16 +241,42 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     }
 }
 
-fn draw(canvas: &ElRef<HtmlCanvasElement>, model: &Model) {
-    let canvas = canvas.get().expect("get canvas element");
+fn draw(model: &mut Model) -> Result<(), JsValue> { // todo , error type to encapsulate all the kinds of error in draw
+    let canvas = model.canvas.get().expect("get canvas element");
     let ctx = seed::canvas_context_2d(&canvas);
     ctx.set_global_composite_operation("source-over").unwrap()  ;
     ctx.clear_rect(0., 0., 1200., 1000.);
 
-    if let Some(Radar { day, start_time, geometry, trips }) = &model.radar {
+    if model.canvas_scaled.is_none() {
+        let scale = 2.; // epects scaling of 2, should be fine if the scaling is 1 also
+        ctx.scale(scale, scale)?;
+        model.canvas_scaled = Some(scale);
+    }
+
+    if let Some(Radar { day: _, start_time: _, geometry, trips }) = &model.radar {
+        let (origin_x, origin_y) = geometry.cartesian_origin;
+        ctx.set_line_dash(&js_sys::Array::of2(&10f64.into(), &10f64.into()).into())?;
+        ctx.set_stroke_style(&"lightgray".into());
+        ctx.set_line_width(1.);
+        ctx.begin_path();
+        ctx.arc(origin_x, origin_y, 500. / 3., 0., 2. * std::f64::consts::PI)?;
+        ctx.stroke();
+        ctx.begin_path();
+        ctx.arc(origin_x, origin_y, 500. * 2. / 3., 0., 2. * std::f64::consts::PI)?;
+        ctx.stroke();
+        ctx.begin_path();
+        ctx.arc(origin_x, origin_y, 500., 0., 2. * std::f64::consts::PI)?;
+        ctx.stroke();
+        ctx.set_line_dash(&js_sys::Array::new().into())?;
         let data = model.data.as_ref().unwrap();
         for RadarTrip { route_name, route_type, segments } in trips {
             ctx.begin_path();
+            use RouteType::*;
+            if [Rail, RailwayService, SuburbanRailway, UrbanRailway, WaterTransportService].contains(route_type) {
+                ctx.set_line_width(2.);
+            } else { // Bus, BusService, TramService,
+                ctx.set_line_width(1.);
+            }
             for segment in segments {
                 let (from_x, from_y) = geometry.coords(data.get_stop(&segment.from).unwrap().location, segment.departure_time);
                 let (to_x, to_y) = geometry.coords(data.get_stop(&segment.to).unwrap().location, segment.arrival_time);
@@ -259,6 +286,7 @@ fn draw(canvas: &ElRef<HtmlCanvasElement>, model: &Model) {
             ctx.stroke();
         }
     }
+    Ok(())
 }
 
 fn checkbox<M>(name: &'static str, label: &'static str, value: bool, event: &'static M) -> [Node<Msg>; 2] 
@@ -290,11 +318,13 @@ fn view(model: &Model) -> Node<Msg> {
             canvas![
                 el_ref(&model.canvas),
                 attrs![
-                    At::Width => px(1200),
-                    At::Height => px(1000),
+                    At::Width => px(2400),
+                    At::Height => px(2000),
                 ],
                 style![
                     St::Border => "1px solid black",
+                    St::Width => px(1200),
+                    St::Height => px(1000),
                 ],
             ],
             if let Some(radar) = &model.radar {
