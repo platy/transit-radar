@@ -281,8 +281,8 @@ impl<'r> JourneyGraphPlotter<'r> {
                         panic!("Bad window");
                     }
                 }
+                to_add.push((trip_id, trip_to_add));
             }
-            to_add.push((trip_id, trip_to_add));
         }
         let mut extended = false;
         for (trip_id, to_add) in to_add {
@@ -301,14 +301,47 @@ impl<'r> JourneyGraphPlotter<'r> {
 
     fn filter_slow_trip(&mut self, slow_trip: Vec<QueueItem<'r>>) -> Vec<QueueItem<'r>> {
         // this trip became useful but it might be that we don't board at the first stop where we encountered it, we should board at the stop we can get to the earliest, not the earliest we can board this trip
-        let boarding_idx = slow_trip.iter()
-      .enumerate()
-      .filter_map(|(i, item)|
-        // Each item must only be a StopOnTrip or a Connection
-        self.earliest_arrival_at(item.variant.get_from_stop().expect("A slow trip must only contain connections and stops, no transfers or origins").stop_id)
-        .map(|time| (i, time))
-      ).min_by_key(|(_i, first_arrival)| *first_arrival).map(|(i, _t)| i).unwrap_or(0);
-        slow_trip.into_iter().skip(boarding_idx).collect()
+        let boarding_opportunities = slow_trip.iter()
+        .enumerate()
+        .filter_map(|(i, item)| {
+            // Each item must only be a StopOnTrip or a Connection
+            let from_stop = item.variant.get_from_stop().expect("A slow trip must only contain connections and stops, no transfers or origins");
+            self.earliest_arrival_at(from_stop.stop_id)
+                .map(|time| (i, time, item))
+        });
+        // index of the stop on this trip that we arrive at first
+        if let Some((boarding_idx, first_arrival, item)) = boarding_opportunities.min_by_key(|(_i, first_arrival, _item)| *first_arrival) {
+            if boarding_idx > 0 {
+                if let QueueItemVariant::StopOnTrip {
+                    from_stop,
+                    departure_time,
+                    trip_id,
+                    route,
+                    previous_arrival_time: _,
+                    next_departure_time: _,
+                } = item.variant {
+                    // we board later and so need a new connection for that
+                    let connection = QueueItem {
+                        arrival_time: departure_time,
+                        to_stop: from_stop,
+                        variant: QueueItemVariant::Connection {
+                            from_stop,
+                            departure_time: first_arrival,
+                            trip_id,
+                            route,
+                        }
+                    };
+                    Some(connection).into_iter().chain(slow_trip.into_iter().skip(boarding_idx)).collect()
+                } else {
+                    panic!("expected {:?} to be a StopOnTrip", item);
+                }
+            } else {
+                slow_trip
+            }
+        } else {
+            slow_trip
+        }
+
     }
 
     fn set_arrival_time(&mut self, stop_id: StopId, new_arrival_time: Time) -> bool {

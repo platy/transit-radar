@@ -151,7 +151,7 @@ impl From<rmp_serde::decode::Error> for LoadError {
 }
 
 async fn fetch_data() -> Result<GTFSData, LoadError> {
-    let url = "/search-data.messagepack";
+    let url = "/data";
     let response = fetch(url).await?;
     let body = response.bytes().await?;
     Ok(rmp_serde::from_read_ref(&body)?)
@@ -179,7 +179,9 @@ fn search(data: &GTFSData) -> Radar {
     let mut plotter = journey_graph::JourneyGraphPlotter::new(day, Period::between(start_time, start_time + max_duration), &data);
     let origin = data.get_stop(&900000007103).unwrap();
     plotter.add_origin_station(origin);
+    plotter.add_route_type(RouteType::SuburbanRailway);
     plotter.add_route_type(RouteType::UrbanRailway);
+    plotter.add_route_type(RouteType::TramService);
     let mut expires_time = start_time + max_duration;
     let mut trips: HashMap<TripId, RadarTrip> = HashMap::new();
     for item in plotter {

@@ -125,9 +125,15 @@
 [x] Style routes
 [x] Redraw without search until a train departs
 [x] Route curves
-[] Get data from backend
+[x] Get data from backend
 [] Pre-search data filtering in backend
+[] Data diffing using session; or
+[] Data diffing using last search (stateless)
+[] Search an extra amount (maximum will be the time to first departure) and then set expiry to that and filter when drawing
+[] Make sure it doesn't animate when not visible to save cpu
+[] Search from known data while waiting for backend
 [] Stations
+[] Smooth animation by using millisecond precision for start time; or only animate when the second changes and save cpu (checkbox?)
 [] Colour properly
 [] Draw in proper order
 [] Get time initially from backend
@@ -135,6 +141,8 @@
 [] Don't freeze display thread while deserialising
 [] Reduce size of wasm
 [] Fast load with first image from backend
+[] Animate search change
+[] Geometry parameters and animation
 
 # Models
 
