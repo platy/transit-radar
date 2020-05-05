@@ -151,7 +151,7 @@ impl From<rmp_serde::decode::Error> for LoadError {
 }
 
 async fn fetch_data() -> Result<GTFSData, LoadError> {
-    let url = "/data";
+    let url = "/data/U%20Voltastr.%20(Berlin)?ubahn=true&sbahn=true&bus=false&tram=false&regio=false";
     let response = fetch(url).await?;
     let body = response.bytes().await?;
     Ok(rmp_serde::from_read_ref(&body)?)
@@ -227,8 +227,8 @@ fn search(data: &GTFSData) -> Radar {
                 expires_time = expires_time.min(departure_time);
                 let trip = trips.get_mut(&trip_id).expect("trip to have been connected to");
                 trip.segments.push(TripSegment {
-                    from: from_stop.station_id(),
-                    to: to_stop.station_id(),
+                    from: from_stop.stop_id,
+                    to: to_stop.stop_id,
                     departure_time,
                     arrival_time,
                 });
@@ -248,8 +248,8 @@ fn search(data: &GTFSData) -> Radar {
                     route_type,
                     route_color: route_color.to_owned(),
                     connection: TripSegment {
-                        from: from_stop.station_id(),
-                        to: to_stop.station_id(),
+                        from: from_stop.stop_id,
+                        to: to_stop.stop_id,
                         departure_time,
                         arrival_time,
                     },
@@ -287,6 +287,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 
         Msg::DataFetched(Ok(data)) => {
             model.data = Some(data);
+            model.radar = Some(search(model.data.as_ref().unwrap()));
             orders.after_next_render(|_| Msg::Draw);
         },
 
@@ -306,6 +307,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                     radar.geometry.start_time = time;
                 } else {
                     model.radar = Some(search(model.data.as_ref().unwrap()));
+                    orders.after_next_render(|_| Msg::FetchData);
                 }
             } else {
                 model.radar = Some(search(model.data.as_ref().unwrap()));

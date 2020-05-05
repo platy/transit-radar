@@ -96,6 +96,18 @@ impl<'r> GTFSData {
         }
     }
 
+    pub fn build_from(&'r self) -> FilterBuilder<'r> {
+        FilterBuilder {
+            new_data: GTFSData {
+                services_by_day: self.services_by_day.clone(),
+                timetable_start_date: self.timetable_start_date.clone(),
+                stops: HashMap::new(),
+                trips: HashMap::new(),
+            },
+            existing_data: &self,
+        }
+    }
+
     /// Start date of the timetable based upon the calendar records
     pub fn timetable_start_date(&self) -> &str {
         &self.timetable_start_date
@@ -128,14 +140,13 @@ impl<'r> GTFSData {
         departures
             .into_iter()
             .filter_map(move |stop_ref: &TripStopRef| {
-                let &(trip_id, sequence) = stop_ref;
-                let trip = self.trips.get(&trip_id).unwrap();
-                // eprintln!("{:?} departure on trip {} service {}, route {:?}, service running : {} : {:?}", &stop, trip_id, trip.service_id, trip.route, services.contains(&trip.service_id), self.stop_times(stop_ref)[0]);
-                if services.contains(&trip.service_id) {
-                    Some((trip, self.stop_times(stop_ref)))
-                } else {
-                    None
+                let &(trip_id, _sequence) = stop_ref;
+                if let Some(trip) = self.trips.get(&trip_id) {
+                    if services.contains(&trip.service_id) {
+                        return Some((trip, self.stop_times(stop_ref)))
+                    }
                 }
+                None
             })
             .collect()
     }
@@ -162,7 +173,7 @@ impl<'r> GTFSData {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum StopStereoType {
     // station is actually optional for stop or platform, but i think it is always present in vbbland
     StopOrPlatform {
@@ -178,7 +189,7 @@ pub enum StopStereoType {
     // BoardingArea { stopOrPlatform: StopId },
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Stop {
     pub stop_id: StopId,
     pub stop_name: String,
@@ -324,7 +335,7 @@ impl Ord for Route {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Trip {
     /// Identifies a route.
     pub route: Route,
@@ -335,7 +346,7 @@ pub struct Trip {
     pub stop_times: Vec<StopTime>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StopTime {
     /// Arrival time at a specific stop for a specific trip on a route. If there are not separate times for arrival and departure at a stop, enter the same value for arrival_time and departure_time. For times occurring after midnight on the service day, enter the time as a value greater than 24:00:00 in HH:MM:SS local time for the day on which the trip schedule begins.
     /// Scheduled stops where the vehicle strictly adheres to the specified arrival and departure times are timepoints. If this stop is not a timepoint, it is recommended to provide an estimated or interpolated time. If this is not available, arrival_time can be left empty. Further, indicate that interpolated times are provided with timepoint=0. If interpolated times are indicated with timepoint=0, then time points must be indicated with timepoint=1. Provide arrival times for all stops that are time points. An arrival time must be specified for the first and the last stop in a trip.
@@ -347,7 +358,7 @@ pub struct StopTime {
     pub stop_id: StopId,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Transfer {
     /// Identifies a stop or station where a connection between routes ends. If this field refers to a station, the transfer rule applies to all child stops.
     pub to_stop_id: StopId,
@@ -355,6 +366,28 @@ pub struct Transfer {
     // transfer_type: TransferType,
     /// Amount of time, in seconds, that must be available to permit a transfer between routes at the specified stops. The min_transfer_time should be sufficient to permit a typical rider to move between the two stops, including buffer time to allow for schedule variance on each route.
     pub min_transfer_time: Option<Duration>,
+}
+
+pub struct FilterBuilder<'r> {
+    existing_data: &'r GTFSData,
+    new_data: GTFSData,
+}
+
+impl<'r> FilterBuilder<'r> {
+    pub fn keep_stop(&mut self, stop: &Stop) {
+        self.new_data.stops.entry(stop.stop_id).or_insert_with(|| stop.clone());
+    }
+
+    pub fn keep_trip(&mut self, trip_id: TripId) {
+        if !self.new_data.trips.contains_key(&trip_id) {
+            self.new_data.trips.insert(trip_id, self.existing_data.trips.get(&trip_id).expect("trip to be in existing data").clone());
+        }
+    }
+
+    pub fn build(self) -> GTFSData {
+        // self.new_data.stops = self.existing_data.stops.clone();
+        self.new_data
+    }
 }
 
 pub struct Builder {

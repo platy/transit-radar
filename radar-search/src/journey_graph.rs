@@ -71,30 +71,57 @@ impl<'r> JourneyGraphPlotter<'r> {
         self.route_types.insert(route_type);
     }
 
+    /// Performs the whole search, producing a filtered search data object with only the stops and trips needed for the search
+    pub fn filtered_data(mut self) -> GTFSData {
+        let mut builder = self.data.build_from();
+        loop {
+            let items = self.next_block_raw();
+            if items.is_empty() { 
+                break;
+            } else {
+                for QueueItem { arrival_time: _, to_stop, variant } in items {
+                    builder.keep_stop(to_stop);
+                    if let Some(from_stop) = variant.get_from_stop() {
+                        // I thought that all the from_stops would also be to_stops but apparently not and this is necessary
+                        builder.keep_stop(from_stop);
+                    }
+                    if let Some(trip_id) = variant.get_trip_id() {
+                        builder.keep_trip(trip_id);
+                    }
+                }
+            }
+        }
+        builder.build()
+    }
+
     /// returns the next items to be emitted in order, or empty if there are no more and the process halts
     fn next_block(&mut self) -> Vec<Item<'r>> {
+        self.next_block_raw()
+            .into_iter()
+            .flat_map(|item| {
+                let mut to_emit = vec![];
+                // if this arrives at a new station, emit that first
+                if self.emitted_stations.insert(item.to_stop.station_id()) {
+                    to_emit.push(Item::Station {
+                        stop: item.to_stop,
+                        earliest_arrival: item.arrival_time,
+                    });
+                }
+                if let Some(item) = self.convert_item(item) {
+                    to_emit.push(item);
+                }
+                to_emit // we found something that's worth drawing
+            })
+            .collect()
+    }
+
+    /// returns the next processed items in order, or empty if there are no more and the process halts
+    fn next_block_raw(&mut self) -> Vec<QueueItem<'r>> {
         while let Some(item) = self.queue.pop() {
             if !self.period.contains(item.arrival_time) {
                 return vec![]; // we ran out of the time period
             } else {
-                let processed: Vec<Item<'r>> = self
-                    .process_queue_item(item)
-                    .into_iter()
-                    .flat_map(|item| {
-                        let mut to_emit = vec![];
-                        // if this arrives at a new station, emit that first
-                        if self.emitted_stations.insert(item.to_stop.station_id()) {
-                            to_emit.push(Item::Station {
-                                stop: item.to_stop,
-                                earliest_arrival: item.arrival_time,
-                            });
-                        }
-                        if let Some(item) = self.convert_item(item) {
-                            to_emit.push(item);
-                        }
-                        to_emit // we found something that's worth drawing
-                    })
-                    .collect();
+                let processed: Vec<QueueItem<'r>> = self.process_queue_item(item);
                 if !processed.is_empty() {
                     return processed;
                 }
@@ -173,14 +200,16 @@ impl<'r> JourneyGraphPlotter<'r> {
         let mut to_add = vec![];
         for transfer in &stop.transfers {
             if !self.stops.contains_key(&transfer.to_stop_id) {
-                to_add.push(QueueItem {
-                    to_stop: self.data.get_stop(&transfer.to_stop_id).unwrap(),
-                    arrival_time: departure_time + transfer.min_transfer_time.unwrap_or_default(),
-                    variant: QueueItemVariant::Transfer {
-                        from_stop: stop,
-                        departure_time: departure_time,
-                    },
-                });
+                if let Some(to_stop) = self.data.get_stop(&transfer.to_stop_id) {
+                    to_add.push(QueueItem {
+                        to_stop,
+                        arrival_time: departure_time + transfer.min_transfer_time.unwrap_or_default(),
+                        variant: QueueItemVariant::Transfer {
+                            from_stop: stop,
+                            departure_time: departure_time,
+                        },
+                    });
+                }
             }
         }
         self.queue.extend(to_add);
@@ -190,22 +219,22 @@ impl<'r> JourneyGraphPlotter<'r> {
         let mut to_add = vec![];
         for transfer in &station.transfers {
             // parent stations transfer to parents, so transfer to the children instead
-            // we will remove this expectation if we want to show partial results in the front end
             let to_stop = self
                 .data
-                .get_stop(&transfer.to_stop_id)
-                .expect("Stop transferred to to exist");
-            for to_stop_id in Some(&to_stop.stop_id).into_iter().chain(to_stop.children()) {
-                if !self.stops.contains_key(&transfer.to_stop_id) {
-                    to_add.push(QueueItem {
-                        to_stop: self.data.get_stop(&to_stop_id).unwrap(),
-                        arrival_time: departure_time
-                            + transfer.min_transfer_time.unwrap_or_default(),
-                        variant: QueueItemVariant::Transfer {
-                            from_stop: station,
-                            departure_time: departure_time,
-                        },
-                    });
+                .get_stop(&transfer.to_stop_id);
+            if let Some(to_stop) = to_stop {
+                for to_stop_id in Some(&to_stop.stop_id).into_iter().chain(to_stop.children()) {
+                    if !self.stops.contains_key(&transfer.to_stop_id) {
+                        to_add.push(QueueItem {
+                            to_stop: self.data.get_stop(&to_stop_id).unwrap(),
+                            arrival_time: departure_time
+                                + transfer.min_transfer_time.unwrap_or_default(),
+                            variant: QueueItemVariant::Transfer {
+                                from_stop: station,
+                                departure_time: departure_time,
+                            },
+                        });
+                    }
                 }
             }
         }
@@ -219,18 +248,19 @@ impl<'r> JourneyGraphPlotter<'r> {
             .expect("Origin stop to exist");
         let origin_stops = Some(&to_stop.stop_id).into_iter().chain(to_stop.children());
         let to_add: Vec<QueueItem> = origin_stops
-            .map(|stop_id| {
-                let child_stop = self.data.get_stop(&stop_id).unwrap();
-                // immediately transfer to all the stops of this origin station
-                QueueItem {
-                    to_stop: child_stop,
-                    arrival_time: arrival_time,
-                    variant: QueueItemVariant::Transfer {
-                        from_stop: stop,
-                        departure_time: arrival_time,
-                    },
-                }
-            })
+            .filter_map(|stop_id|
+                self.data.get_stop(&stop_id).map(|child_stop|
+                    // immediately transfer to all the stops of this origin station
+                    QueueItem {
+                        to_stop: child_stop,
+                        arrival_time: arrival_time,
+                        variant: QueueItemVariant::Transfer {
+                            from_stop: stop,
+                            departure_time: arrival_time,
+                        },
+                    }
+                )
+            )
             .collect();
         self.queue.extend(to_add);
     }
@@ -265,18 +295,23 @@ impl<'r> JourneyGraphPlotter<'r> {
                 });
                 for window in stops.windows(2) {
                     if let [from_stop, to_stop] = window {
-                        trip_to_add.push(QueueItem {
-                            to_stop: self.data.get_stop(&to_stop.stop_id).unwrap(),
-                            arrival_time: to_stop.arrival_time,
-                            variant: QueueItemVariant::StopOnTrip {
-                                trip_id,
-                                route,
-                                previous_arrival_time: from_stop.arrival_time,
-                                next_departure_time: to_stop.departure_time,
-                                from_stop: self.data.get_stop(&from_stop.stop_id).unwrap(),
-                                departure_time: from_stop.departure_time,
-                            },
-                        });
+                        if self.period.contains(to_stop.arrival_time) {
+                            // these stops wont be there if this stoptime is going to be filtered out later anyway
+                            if let (Some(to_stop_stop), Some(from_stop_stop)) = (self.data.get_stop(&to_stop.stop_id), self.data.get_stop(&from_stop.stop_id)) {
+                                trip_to_add.push(QueueItem {
+                                    to_stop: to_stop_stop,
+                                    arrival_time: to_stop.arrival_time,
+                                    variant: QueueItemVariant::StopOnTrip {
+                                        trip_id,
+                                        route,
+                                        previous_arrival_time: from_stop.arrival_time,
+                                        next_departure_time: to_stop.departure_time,
+                                        from_stop: from_stop_stop,
+                                        departure_time: from_stop.departure_time,
+                                    },
+                                });
+                            }
+                        }
                     } else {
                         panic!("Bad window");
                     }
@@ -374,7 +409,9 @@ impl<'r> JourneyGraphPlotter<'r> {
                     if !item.to_stop.is_station() { 
                         self.enqueue_transfers_from_stop(item.to_stop, item.arrival_time);
                     }
-                    self.enqueue_transfers_from_station(self.data.get_stop(&item.to_stop.station_id()).unwrap(), item.arrival_time);
+                    if let Some(to_station) = self.data.get_stop(&item.to_stop.station_id()) {
+                        self.enqueue_transfers_from_station(to_station, item.arrival_time);
+                    }
                     // only emit if we got to a new station
                     if !self.emitted_stations.contains(&item.to_stop.station_id()) {
                         // if this now made some slow stops on the trip relevant, they should be emitted as well
@@ -583,6 +620,30 @@ impl<'r> QueueItemVariant<'r> {
                 departure_time: _,
                 from_stop,
             } => Some(from_stop),
+            QueueItemVariant::OriginStation => None,
+        }
+    }
+
+    fn get_trip_id(&self) -> Option<TripId> {
+        match self {
+            QueueItemVariant::Connection {
+                departure_time: _,
+                from_stop: _,
+                trip_id,
+                route: _,
+            } => Some(*trip_id),
+            QueueItemVariant::StopOnTrip {
+                departure_time: _,
+                from_stop: _,
+                trip_id,
+                route: _,
+                previous_arrival_time: _,
+                next_departure_time: _,
+            } => Some(*trip_id),
+            QueueItemVariant::Transfer {
+                departure_time: _,
+                from_stop: _,
+            } => None,
             QueueItemVariant::OriginStation => None,
         }
     }

@@ -30,7 +30,7 @@ fn main() {
     println!("Writing message pack took {}s", now.elapsed().as_secs());
 
     let now = Instant::now();
-    let data: radar_search::search_data::GTFSData = rmp_serde::from_read(
+    let _: radar_search::search_data::GTFSData = rmp_serde::from_read(
         std::fs::File::open("./search-data.messagepack").expect("file can be opened"),
     )
     .expect("Succesful deserialization");

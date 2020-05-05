@@ -126,9 +126,11 @@
 [x] Redraw without search until a train departs
 [x] Route curves
 [x] Get data from backend
-[] Pre-search data filtering in backend
+[x] Pre-search data filtering in backend
 [] Data diffing using session; or
 [] Data diffing using last search (stateless)
+[] Load data before its needed
+[] Decent time sync between front and back (backend responsible for macro time and frontend for micro - effectively just an offset form the frontend time)
 [] Search an extra amount (maximum will be the time to first departure) and then set expiry to that and filter when drawing
 [] Make sure it doesn't animate when not visible to save cpu
 [] Search from known data while waiting for backend
