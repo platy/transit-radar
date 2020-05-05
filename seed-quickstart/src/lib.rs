@@ -29,7 +29,7 @@ struct Radar {
     geometry: RadarGeometry,
     trips: Vec<RadarTrip>,
     day: Day,
-    expires_time: Time,
+    expires_timestamp: f64,
 }
 
 struct RadarTrip {
@@ -139,7 +139,7 @@ async fn fetch_data() -> Result<GTFSData, Box<dyn std::error::Error>> {
     Ok(rmp_serde::from_read_ref(&body)?)
 }
 
-fn day_time(date_time: js_sys::Date) -> (Day, Time) {
+fn day_time(date_time: &js_sys::Date) -> (Day, Time) {
     let now = Time::from_hms(date_time.get_hours(), date_time.get_minutes(), date_time.get_seconds());
     let day = match date_time.get_day() {
         1 => Day::Monday,
@@ -156,7 +156,7 @@ fn day_time(date_time: js_sys::Date) -> (Day, Time) {
 
 fn search(data: &GTFSData) -> Radar {
     // TODO don't use client time, instead start with the server time and increment using client clock, also this is local time
-    let (day, start_time) = day_time(js_sys::Date::new_0());
+    let (day, start_time) = day_time(&js_sys::Date::new_0());
     let max_duration = Duration::minutes(30);
     let mut plotter = journey_graph::JourneyGraphPlotter::new(day, Period::between(start_time, start_time + max_duration), &data);
     let origin = data.get_stop(&900000007103).unwrap();
@@ -238,6 +238,11 @@ fn search(data: &GTFSData) -> Radar {
             }
         }
     }
+    let expires_timestamp = js_sys::Date::new_0();
+    expires_timestamp.set_hours(expires_time.hour() as u32);
+    expires_timestamp.set_minutes(expires_time.minute() as u32);
+    expires_timestamp.set_seconds(expires_time.second() as u32 + 1); // expire once this second is over
+    expires_timestamp.set_milliseconds(0);
     let geometry = RadarGeometry {
         cartesian_origin: (500., 500.),
         geographic_origin: origin.location,
@@ -246,7 +251,7 @@ fn search(data: &GTFSData) -> Radar {
     };
     let radar = Radar {
         day,
-        expires_time,
+        expires_timestamp: expires_timestamp.value_of(),
         geometry,
         trips: trips.into_iter().map(|(_k,v)| v).collect(),
     };
@@ -274,10 +279,10 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         },
 
         Msg::Draw => {
-            // TODO don't use client time, instead start with the server time and increment using client clock, also this is local time
-            let (_day, time) = day_time(js_sys::Date::new_0());
             if let &mut Some(ref mut radar) = &mut model.radar {
-                if time <= radar.expires_time {
+                let date = js_sys::Date::new_0();
+                let (_day, time) = day_time(&date);
+                if date.value_of() <= radar.expires_timestamp {
                     radar.geometry.start_time = time;
                 } else {
                     model.radar = Some(search(model.data.as_ref().unwrap()));
@@ -315,7 +320,7 @@ fn draw(model: &mut Model) -> Result<(), JsValue> { // todo , error type to enca
         model.canvas_scaled = Some(scale);
     }
 
-    if let Some(Radar { day: _, expires_time: _, geometry, trips, }) = &model.radar {
+    if let Some(Radar { day: _, expires_timestamp: _, geometry, trips, }) = &model.radar {
         let (origin_x, origin_y) = geometry.cartesian_origin;
         ctx.set_line_dash(&js_sys::Array::of2(&10f64.into(), &10f64.into()).into())?;
         ctx.set_stroke_style(&"lightgray".into());

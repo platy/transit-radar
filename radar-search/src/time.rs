@@ -75,19 +75,19 @@ impl Time {
     }
 
     /// get the clock hour, it can be over 23
-    fn hour(self) -> u8 {
+    pub fn hour(self) -> u8 {
         (self.seconds_since_midnight / 60 / 60).try_into().unwrap()
     }
 
     /// get the minute of the hour
-    fn minute(self) -> u8 {
+    pub fn minute(self) -> u8 {
         ((self.seconds_since_midnight / 60) % 60)
             .try_into()
             .unwrap()
     }
 
     /// get the seconds within the minute
-    fn second(self) -> u8 {
+    pub fn second(self) -> u8 {
         (self.seconds_since_midnight % 60).try_into().unwrap()
     }
 }
