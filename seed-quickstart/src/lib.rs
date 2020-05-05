@@ -120,7 +120,7 @@ impl RadarGeometry {
 
 
 enum Msg {
-    DataFetched(Result<GTFSData, Box<dyn std::error::Error>>),
+    DataFetched(Result<GTFSData, LoadError>),
     FetchData,
     Draw,
     SetShowStations(String),
@@ -132,7 +132,25 @@ enum Msg {
     SetShowRegional(String),
 }
 
-async fn fetch_data() -> Result<GTFSData, Box<dyn std::error::Error>> {
+#[derive(Debug)]
+enum LoadError {
+    FetchError(fetch::FetchError),
+    RMPError(rmp_serde::decode::Error),
+}
+
+impl From<fetch::FetchError> for LoadError {
+    fn from(error: fetch::FetchError) -> LoadError {
+        Self::FetchError(error)
+    }
+}
+
+impl From<rmp_serde::decode::Error> for LoadError {
+    fn from(error: rmp_serde::decode::Error) -> LoadError {
+        Self::RMPError(error)
+    }
+}
+
+async fn fetch_data() -> Result<GTFSData, LoadError> {
     let url = "/search-data.messagepack";
     let response = fetch(url).await?;
     let body = response.bytes().await?;
