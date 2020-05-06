@@ -127,8 +127,9 @@
 [x] Route curves
 [x] Get data from backend
 [x] Pre-search data filtering in backend
-[] Data diffing using session; or
+[x] Data diffing using session; or
 [] Data diffing using last search (stateless)
+[] Cleanup - todos, extractions, refactor, hardcoded stuff, edge cases, names, docs, things below
 [] Load data before its needed
 [] Decent time sync between front and back (backend responsible for macro time and frontend for micro - effectively just an offset form the frontend time)
 [] Search an extra amount (maximum will be the time to first departure) and then set expiry to that and filter when drawing
@@ -145,6 +146,9 @@
 [] Fast load with first image from backend
 [] Animate search change
 [] Geometry parameters and animation
+[] Break up initial load into smaller parts to show something quicker
+[] Change time
+[] Click station to show from there (from arrival time or now?)
 
 # Models
 

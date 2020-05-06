@@ -1,12 +1,70 @@
 use chrono::prelude::*;
+use futures::future;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex,
+};
 use urlencoding::decode;
-use warp::Filter;
+use warp::{reject, Filter};
 
 use radar_search::{journey_graph, search_data::*, time::*};
 use transit_radar::gtfs::db;
+
+struct SessionContainer<S> {
+    map: Mutex<HashMap<u64, Arc<Mutex<S>>>>,
+    next_session_id: AtomicU64,
+}
+
+#[derive(serde::Deserialize)]
+struct SessionKey {
+    id: Option<u64>,
+    count: Option<u32>,
+}
+
+#[derive(Debug)]
+struct SessionOutOfSync;
+
+impl reject::Reject for SessionOutOfSync {}
+
+impl<S: From<u64>> SessionContainer<S> {
+    fn new() -> SessionContainer<S> {
+        SessionContainer {
+            map: Mutex::new(HashMap::new()),
+            next_session_id: AtomicU64::new(1000),
+        }
+    }
+
+    pub fn session_filter(
+        &self,
+        key: SessionKey,
+    ) -> Result<(String, Arc<Mutex<S>>), reject::Rejection> {
+        let mut map = self.map.lock().unwrap();
+        let session_id = key.id.unwrap_or_else(|| self.new_session_id());
+        let update_number = key.count.unwrap_or(0);
+        let session = map
+            .entry(session_id)
+            .or_insert_with(|| Arc::new(Mutex::new(From::from(session_id))));
+        // if (*session.lock().unwrap()).update_number == update_number {
+        Ok((session_id.to_string(), session.clone()))
+        // } else {
+        //     Err(reject::custom(SessionOutOfSync))
+        // }
+    }
+
+    fn new_session_id(&self) -> u64 {
+        self.next_session_id.fetch_add(1, Ordering::SeqCst)
+    }
+}
+
+fn with_session<S: Sync + Send + From<u64>>(
+) -> impl Filter<Extract = ((String, Arc<Mutex<S>>),), Error = reject::Rejection> + Clone {
+    let container = Arc::new(SessionContainer::new());
+    warp::query::<SessionKey>()
+        .and_then(move |header| future::ready(container.session_filter(header)))
+}
 
 fn with_data<D: Sync + Send>(
     db: Arc<D>,
@@ -65,6 +123,7 @@ async fn filtered_data_handler(
     name: String,
     options: RadarOptions,
     data: Arc<GTFSData>,
+    (session_id, session): (String, Arc<Mutex<GTFSDataSession>>),
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let (day, now) = day_time(chrono::Utc::now());
     let period = Period::between(now, now + Duration::minutes(30));
@@ -73,17 +132,27 @@ async fn filtered_data_handler(
         Ok(name) => {
             let data =
                 filter_data(&data, name, options, day, period).map_err(warp::reject::custom)?;
-            let mut buf = Vec::<u8>::new();
-            data.serialize(
-                &mut rmp_serde::Serializer::new(&mut buf)
-                    .with_struct_tuple()
-                    .with_integer_variants(),
-            )
-            .map_err(|err| {
-                eprintln!("failed to serialize data {:?}", err);
-                warp::reject::reject()
-            })?;
-            Ok(buf)
+            match session.lock() {
+                Ok(mut session) => {
+                    let mut buf = Vec::<u8>::new();
+                    let mut serializer = rmp_serde::Serializer::new(&mut buf)
+                        .with_struct_tuple()
+                        .with_integer_variants();
+
+                    (*session)
+                        .add_data(data)
+                        .serialize(&mut serializer)
+                        .map_err(|err| {
+                            eprintln!("failed to serialize data {:?}", err);
+                            warp::reject::reject()
+                        })?;
+                    Ok(buf)
+                }
+                Err(lock_error) => {
+                    eprintln!("session corrupted new session : {:?}", lock_error);
+                    Err(warp::reject::reject())
+                }
+            }
         }
         Err(err) => {
             eprintln!("failed to decode route={:?}: {:?}", name, err);
@@ -108,6 +177,7 @@ fn filtered_data_route(
     warp::path!("data" / String)
         .and(warp::query::<RadarOptions>())
         .and(with_data(data))
+        .and(with_session())
         .and_then(filtered_data_handler)
         .with(cors)
 }

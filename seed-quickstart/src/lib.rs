@@ -12,6 +12,7 @@ use js_sys;
 #[derive(Default)]
 struct Model {
     pub data: Option<GTFSData>,
+    session_id: Option<u64>, // todo should be together with data and update count
     canvas: ElRef<HtmlCanvasElement>,
     canvas_scaled: Option<f64>,
     radar: Option<Radar>,
@@ -120,7 +121,7 @@ impl RadarGeometry {
 
 
 enum Msg {
-    DataFetched(Result<GTFSData, LoadError>),
+    DataFetched(Result<GTFSDataSync, LoadError>),
     FetchData,
     Draw,
     SetShowStations(String),
@@ -150,8 +151,10 @@ impl From<rmp_serde::decode::Error> for LoadError {
     }
 }
 
-async fn fetch_data() -> Result<GTFSData, LoadError> {
-    let url = "/data/U%20Voltastr.%20(Berlin)?ubahn=true&sbahn=true&bus=false&tram=false&regio=false";
+async fn fetch_data(id: Option<u64>) -> Result<GTFSDataSync, LoadError> {
+    let session_part = id.map(|id| format!("&id={}&count=0", id)).unwrap_or_default();
+    // todo use serde query params
+    let url = format!("/data/U%20Voltastr.%20(Berlin)?ubahn=true&sbahn=true&bus=false&tram=false&regio=false{}", session_part);
     let response = fetch(url).await?;
     let body = response.bytes().await?;
     Ok(rmp_serde::from_read_ref(&body)?)
@@ -281,13 +284,14 @@ fn search(data: &GTFSData) -> Radar {
 fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
         Msg::FetchData => {
-            orders.perform_cmd(fetch_data().map(Msg::DataFetched));
+            orders.perform_cmd(fetch_data(model.session_id).map(Msg::DataFetched));
             orders.skip();
         }
 
         Msg::DataFetched(Ok(data)) => {
-            model.data = Some(data);
-            model.radar = Some(search(model.data.as_ref().unwrap()));
+            model.session_id = Some(data.session_id());
+            let data = data.merge_data(&mut model.data);
+            model.radar = Some(search(data));
             orders.after_next_render(|_| Msg::Draw);
         },
 
