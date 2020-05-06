@@ -59,7 +59,11 @@ fn color_for_type(route_type: RouteType) -> &'static str {
     }
 }
 
-pub fn load_data(gtfs_dir: &Path, day_filter: DayFilter, route_colors: HashMap<String, String>) -> Result<GTFSData, Box<dyn Error>> {
+pub fn load_data(
+    gtfs_dir: &Path,
+    day_filter: DayFilter,
+    route_colors: HashMap<String, String>,
+) -> Result<GTFSData, Box<dyn Error>> {
     let source = &GTFSSource::new(gtfs_dir);
 
     let mut services_by_day: HashMap<_, HashSet<_>> = HashMap::new();
@@ -132,7 +136,10 @@ pub fn load_data(gtfs_dir: &Path, day_filter: DayFilter, route_colors: HashMap<S
     let mut rdr = source.open_csv("routes.txt")?;
     for result in rdr.deserialize() {
         let route: gtfs::Route = result?;
-        let route_color: Cow<str> = route.route_color.as_ref().map(|s| Cow::Owned(format!("#{}", s)))
+        let route_color: Cow<str> = route
+            .route_color
+            .as_ref()
+            .map(|s| Cow::Owned(format!("#{}", s)))
             .or(route_colors.get(&route.route_short_name).map(Into::into))
             .unwrap_or(color_for_type(route.route_type).into());
         builder.add_route(
@@ -249,12 +256,13 @@ impl fmt::Display for SearchError {
 
 pub fn load_colors(path: &Path) -> Result<HashMap<String, String>, csv::Error> {
     let mut colors = HashMap::new();
-    let reader = csv::ReaderBuilder::new()
-        .delimiter(b';')
-        .from_path(path)?;
+    let reader = csv::ReaderBuilder::new().delimiter(b';').from_path(path)?;
     for result in reader.into_byte_records() {
         let br = result?;
-        colors.insert(String::from_utf8_lossy(br.get(0).unwrap()).into_owned(), String::from_utf8_lossy(br.get(10).unwrap()).into_owned());
+        colors.insert(
+            String::from_utf8_lossy(br.get(0).unwrap()).into_owned(),
+            String::from_utf8_lossy(br.get(10).unwrap()).into_owned(),
+        );
     }
     Ok(colors)
 }

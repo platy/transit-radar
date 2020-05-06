@@ -76,10 +76,15 @@ impl<'r> JourneyGraphPlotter<'r> {
         let mut builder = self.data.build_from();
         loop {
             let items = self.next_block_raw();
-            if items.is_empty() { 
+            if items.is_empty() {
                 break;
             } else {
-                for QueueItem { arrival_time: _, to_stop, variant } in items {
+                for QueueItem {
+                    arrival_time: _,
+                    to_stop,
+                    variant,
+                } in items
+                {
                     builder.keep_stop(to_stop);
                     if let Some(from_stop) = variant.get_from_stop() {
                         // I thought that all the from_stops would also be to_stops but apparently not and this is necessary
@@ -203,7 +208,8 @@ impl<'r> JourneyGraphPlotter<'r> {
                 if let Some(to_stop) = self.data.get_stop(&transfer.to_stop_id) {
                     to_add.push(QueueItem {
                         to_stop,
-                        arrival_time: departure_time + transfer.min_transfer_time.unwrap_or_default(),
+                        arrival_time: departure_time
+                            + transfer.min_transfer_time.unwrap_or_default(),
                         variant: QueueItemVariant::Transfer {
                             from_stop: stop,
                             departure_time: departure_time,
@@ -219,9 +225,7 @@ impl<'r> JourneyGraphPlotter<'r> {
         let mut to_add = vec![];
         for transfer in &station.transfers {
             // parent stations transfer to parents, so transfer to the children instead
-            let to_stop = self
-                .data
-                .get_stop(&transfer.to_stop_id);
+            let to_stop = self.data.get_stop(&transfer.to_stop_id);
             if let Some(to_stop) = to_stop {
                 for to_stop_id in Some(&to_stop.stop_id).into_iter().chain(to_stop.children()) {
                     if !self.stops.contains_key(&transfer.to_stop_id) {
@@ -248,7 +252,7 @@ impl<'r> JourneyGraphPlotter<'r> {
             .expect("Origin stop to exist");
         let origin_stops = Some(&to_stop.stop_id).into_iter().chain(to_stop.children());
         let to_add: Vec<QueueItem> = origin_stops
-            .filter_map(|stop_id|
+            .filter_map(|stop_id| {
                 self.data.get_stop(&stop_id).map(|child_stop|
                     // immediately transfer to all the stops of this origin station
                     QueueItem {
@@ -258,9 +262,8 @@ impl<'r> JourneyGraphPlotter<'r> {
                             from_stop: stop,
                             departure_time: arrival_time,
                         },
-                    }
-                )
-            )
+                    })
+            })
             .collect();
         self.queue.extend(to_add);
     }
@@ -297,7 +300,10 @@ impl<'r> JourneyGraphPlotter<'r> {
                     if let [from_stop, to_stop] = window {
                         if self.period.contains(to_stop.arrival_time) {
                             // these stops wont be there if this stoptime is going to be filtered out later anyway
-                            if let (Some(to_stop_stop), Some(from_stop_stop)) = (self.data.get_stop(&to_stop.stop_id), self.data.get_stop(&from_stop.stop_id)) {
+                            if let (Some(to_stop_stop), Some(from_stop_stop)) = (
+                                self.data.get_stop(&to_stop.stop_id),
+                                self.data.get_stop(&from_stop.stop_id),
+                            ) {
                                 trip_to_add.push(QueueItem {
                                     to_stop: to_stop_stop,
                                     arrival_time: to_stop.arrival_time,
@@ -336,16 +342,18 @@ impl<'r> JourneyGraphPlotter<'r> {
 
     fn filter_slow_trip(&mut self, slow_trip: Vec<QueueItem<'r>>) -> Vec<QueueItem<'r>> {
         // this trip became useful but it might be that we don't board at the first stop where we encountered it, we should board at the stop we can get to the earliest, not the earliest we can board this trip
-        let boarding_opportunities = slow_trip.iter()
-        .enumerate()
-        .filter_map(|(i, item)| {
+        let boarding_opportunities = slow_trip.iter().enumerate().filter_map(|(i, item)| {
             // Each item must only be a StopOnTrip or a Connection
-            let from_stop = item.variant.get_from_stop().expect("A slow trip must only contain connections and stops, no transfers or origins");
+            let from_stop = item.variant.get_from_stop().expect(
+                "A slow trip must only contain connections and stops, no transfers or origins",
+            );
             self.earliest_arrival_at(from_stop.stop_id)
                 .map(|time| (i, time, item))
         });
         // index of the stop on this trip that we arrive at first
-        if let Some((boarding_idx, first_arrival, item)) = boarding_opportunities.min_by_key(|(_i, first_arrival, _item)| *first_arrival) {
+        if let Some((boarding_idx, first_arrival, item)) =
+            boarding_opportunities.min_by_key(|(_i, first_arrival, _item)| *first_arrival)
+        {
             if boarding_idx > 0 {
                 if let QueueItemVariant::StopOnTrip {
                     from_stop,
@@ -354,7 +362,8 @@ impl<'r> JourneyGraphPlotter<'r> {
                     route,
                     previous_arrival_time: _,
                     next_departure_time: _,
-                } = item.variant {
+                } = item.variant
+                {
                     // we board later and so need a new connection for that
                     let connection = QueueItem {
                         arrival_time: departure_time,
@@ -364,9 +373,12 @@ impl<'r> JourneyGraphPlotter<'r> {
                             departure_time: first_arrival,
                             trip_id,
                             route,
-                        }
+                        },
                     };
-                    Some(connection).into_iter().chain(slow_trip.into_iter().skip(boarding_idx)).collect()
+                    Some(connection)
+                        .into_iter()
+                        .chain(slow_trip.into_iter().skip(boarding_idx))
+                        .collect()
                 } else {
                     panic!("expected {:?} to be a StopOnTrip", item);
                 }
@@ -376,7 +388,6 @@ impl<'r> JourneyGraphPlotter<'r> {
         } else {
             slow_trip
         }
-
     }
 
     fn set_arrival_time(&mut self, stop_id: StopId, new_arrival_time: Time) -> bool {
@@ -406,7 +417,7 @@ impl<'r> JourneyGraphPlotter<'r> {
                     from_stop: _,
                     departure_time: _,
                 } => {
-                    if !item.to_stop.is_station() { 
+                    if !item.to_stop.is_station() {
                         self.enqueue_transfers_from_stop(item.to_stop, item.arrival_time);
                     }
                     if let Some(to_station) = self.data.get_stop(&item.to_stop.station_id()) {

@@ -1,11 +1,11 @@
 use chrono::prelude::*;
+use serde::Serialize;
 use std::path::Path;
 use std::sync::Arc;
-use serde::Serialize;
-use warp::Filter;
 use urlencoding::decode;
+use warp::Filter;
 
-use radar_search::{search_data::*, time::*, journey_graph};
+use radar_search::{journey_graph, search_data::*, time::*};
 use transit_radar::gtfs::db;
 
 fn with_data<D: Sync + Send>(
@@ -71,18 +71,20 @@ async fn filtered_data_handler(
 
     match decode(&name) {
         Ok(name) => {
-            let data = filter_data(&data, name, options, day, period).map_err(warp::reject::custom)?;
+            let data =
+                filter_data(&data, name, options, day, period).map_err(warp::reject::custom)?;
             let mut buf = Vec::<u8>::new();
             data.serialize(
                 &mut rmp_serde::Serializer::new(&mut buf)
                     .with_struct_tuple()
                     .with_integer_variants(),
-            ).map_err(|err| {
+            )
+            .map_err(|err| {
                 eprintln!("failed to serialize data {:?}", err);
                 warp::reject::reject()
             })?;
             Ok(buf)
-        },
+        }
         Err(err) => {
             eprintln!("failed to decode route={:?}: {:?}", name, err);
             return Err(warp::reject::reject());
@@ -124,10 +126,7 @@ async fn main() {
     let data = Arc::new(db::load_data(&gtfs_dir, db::DayFilter::All, colors).unwrap());
 
     eprintln!("Starting web server on port {}", port);
-    warp::serve(
-        warp::fs::dir(static_dir)
-            .or(filtered_data_route(data.clone()))
-    )
-    .run(([127, 0, 0, 1], port))
-    .await;
+    warp::serve(warp::fs::dir(static_dir).or(filtered_data_route(data.clone())))
+        .run(([127, 0, 0, 1], port))
+        .await;
 }

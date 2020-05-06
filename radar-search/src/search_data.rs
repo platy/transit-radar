@@ -143,7 +143,7 @@ impl<'r> GTFSData {
                 let &(trip_id, _sequence) = stop_ref;
                 if let Some(trip) = self.trips.get(&trip_id) {
                     if services.contains(&trip.service_id) {
-                        return Some((trip, self.stop_times(stop_ref)))
+                        return Some((trip, self.stop_times(stop_ref)));
                     }
                 }
                 None
@@ -375,12 +375,22 @@ pub struct FilterBuilder<'r> {
 
 impl<'r> FilterBuilder<'r> {
     pub fn keep_stop(&mut self, stop: &Stop) {
-        self.new_data.stops.entry(stop.stop_id).or_insert_with(|| stop.clone());
+        self.new_data
+            .stops
+            .entry(stop.stop_id)
+            .or_insert_with(|| stop.clone());
     }
 
     pub fn keep_trip(&mut self, trip_id: TripId) {
         if !self.new_data.trips.contains_key(&trip_id) {
-            self.new_data.trips.insert(trip_id, self.existing_data.trips.get(&trip_id).expect("trip to be in existing data").clone());
+            self.new_data.trips.insert(
+                trip_id,
+                self.existing_data
+                    .trips
+                    .get(&trip_id)
+                    .expect("trip to be in existing data")
+                    .clone(),
+            );
         }
     }
 

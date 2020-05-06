@@ -2,7 +2,7 @@ use std::convert::TryInto;
 use std::fmt;
 use std::ops::{Add, AddAssign, Div, Sub};
 
-use serde::{de, ser, Serialize, Deserialize};
+use serde::{de, ser, Deserialize, Serialize};
 
 /// Duration in seconds as represented in GTFS data, used for transfers.txt
 /// # Examples
@@ -10,7 +10,9 @@ use serde::{de, ser, Serialize, Deserialize};
 /// use radar_search::time::Duration;
 /// assert_eq!(Duration::seconds(60), Duration::minutes(1));
 /// ```
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize,
+)]
 pub struct Duration {
     seconds: i32,
 }
