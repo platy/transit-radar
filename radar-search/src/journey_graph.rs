@@ -224,13 +224,20 @@ impl<'r> JourneyGraphPlotter<'r> {
     fn enqueue_transfers_from_station(&mut self, station: &'r Stop, departure_time: Time) {
         let mut to_add = vec![];
         for transfer in &station.transfers {
-            // parent stations transfer to parents, so transfer to the children instead
-            let to_stop = self.data.get_stop(&transfer.to_stop_id);
-            if let Some(to_stop) = to_stop {
-                for to_stop_id in Some(&to_stop.stop_id).into_iter().chain(to_stop.children()) {
-                    if !self.stops.contains_key(&transfer.to_stop_id) {
+            if !self.stops.contains_key(&transfer.to_stop_id) {
+                // parent stations transfer to parents, so transfer to the children as well (but aybe they hav entries in transfer to use without this implicit transfer?)
+                // we ignore any missing stops in case this is a partial data set
+                let to_stop = self.data.get_stop(&transfer.to_stop_id);
+                let iter = to_stop.iter()
+                    .map(|stop| &stop.stop_id)
+                    .chain(to_stop.iter()
+                        .map(|stop| stop.children())
+                        .flatten()
+                    );
+                for to_stop_id in iter {
+                    if let Some(to_stop) = self.data.get_stop(to_stop_id) {
                         to_add.push(QueueItem {
-                            to_stop: self.data.get_stop(&to_stop_id).unwrap(),
+                            to_stop,
                             arrival_time: departure_time
                                 + transfer.min_transfer_time.unwrap_or_default(),
                             variant: QueueItemVariant::Transfer {

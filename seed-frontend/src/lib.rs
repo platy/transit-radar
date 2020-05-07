@@ -10,6 +10,18 @@ use std::f64::consts::PI;
 use geo::algorithm::bearing::Bearing;
 use js_sys;
 
+#[wasm_bindgen(start)]
+pub fn render() {
+    App::builder(update, view)
+        .after_mount(after_mount)
+        .build_and_start();
+}
+
+fn after_mount(_: Url, orders: &mut impl Orders<Msg>) -> AfterMount<Model> {
+    orders.send_msg(Msg::FetchData);
+    AfterMount::default()
+}
+
 #[derive(Default)]
 struct Model {
     pub data: Option<GTFSData>,
@@ -19,6 +31,93 @@ struct Model {
     radar: Option<Radar>,
 
     controls: controls::Model,
+}
+
+enum Msg {
+    DataFetched(Result<GTFSDataSync, sync::LoadError>),
+    FetchData,
+    Draw,
+    ControlsMsg(controls::Msg),
+}
+
+fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
+    match msg {
+        Msg::FetchData => {
+            orders.perform_cmd(sync::fetch_data(model.session_id, model.controls.clone()).map(Msg::DataFetched));
+            orders.skip();
+        }
+
+        Msg::DataFetched(Ok(data)) => {
+            model.session_id = Some(data.session_id());
+            let data = data.merge_data(&mut model.data);
+            model.radar = Some(search(data, &model.controls));
+            orders.after_next_render(|_| Msg::Draw);
+        },
+
+        Msg::DataFetched(Err(fail_reason)) => {
+            error!(format!(
+                "Fetch error - Fetching repository info failed - {:#?}",
+                fail_reason
+            ));
+            orders.skip();
+        },
+
+        Msg::Draw => {
+            if let &mut Some(ref mut radar) = &mut model.radar {
+                let date = js_sys::Date::new_0();
+                let (_day, time) = day_time(&date);
+                if date.value_of() <= radar.expires_timestamp {
+                    radar.geometry.start_time = time;
+                } else {
+                    model.radar = Some(search(model.data.as_ref().unwrap(), &model.controls));
+                    orders.after_next_render(|_| Msg::FetchData);
+                }
+            } else {
+                model.radar = Some(search(model.data.as_ref().unwrap(), &model.controls));
+            }
+            draw(model).unwrap();
+            // The next time a render is triggered we will draw again
+            orders.after_next_render(|_| Msg::Draw);
+            if !model.controls.animate {
+                orders.skip();
+            }
+        }
+
+        Msg::ControlsMsg(msg) => {
+            controls::update(msg, &mut model.controls, &mut orders.proxy(Msg::ControlsMsg));
+            model.radar = Some(search(model.data.as_ref().unwrap(), &model.controls));
+            orders.after_next_render(|_| Msg::FetchData);
+            orders.after_next_render(|_| Msg::Draw);
+        }
+    }
+}
+
+fn view(model: &Model) -> Node<Msg> {
+    if let Some(data) = &model.data {
+        div![
+            h2!["U Voltastrasse"],
+            controls::view(&model.controls).map_msg(Msg::ControlsMsg),
+            canvas![
+                el_ref(&model.canvas),
+                attrs![
+                    At::Width => px(2400),
+                    At::Height => px(2000),
+                ],
+                style![
+                    St::Border => "1px solid black",
+                    St::Width => px(1200),
+                    St::Height => px(1000),
+                ],
+            ],
+            if let Some(radar) = &model.radar {
+                format!("data processed for {}, {}. {} trips", radar.day, radar.geometry.start_time, radar.trips.len())
+            } else {
+                format!("data received, {} stops", data.stops().count())
+            }
+        ]
+    } else {
+        div!["Data not loaded"]
+    }
 }
 
 struct Radar {
@@ -114,41 +213,6 @@ impl RadarGeometry {
     }
 }
 
-
-enum Msg {
-    DataFetched(Result<GTFSDataSync, LoadError>),
-    FetchData,
-    Draw,
-    ControlsMsg(controls::Msg),
-}
-
-#[derive(Debug)]
-enum LoadError {
-    FetchError(fetch::FetchError),
-    RMPError(rmp_serde::decode::Error),
-}
-
-impl From<fetch::FetchError> for LoadError {
-    fn from(error: fetch::FetchError) -> LoadError {
-        Self::FetchError(error)
-    }
-}
-
-impl From<rmp_serde::decode::Error> for LoadError {
-    fn from(error: rmp_serde::decode::Error) -> LoadError {
-        Self::RMPError(error)
-    }
-}
-
-async fn fetch_data(id: Option<u64>) -> Result<GTFSDataSync, LoadError> {
-    let session_part = id.map(|id| format!("&id={}&count=0", id)).unwrap_or_default();
-    // todo use serde query params
-    let url = format!("/data/U%20Voltastr.%20(Berlin)?ubahn=true&sbahn=true&bus=false&tram=false&regio=false{}", session_part);
-    let response = fetch(url).await?;
-    let body = response.bytes().await?;
-    Ok(rmp_serde::from_read_ref(&body)?)
-}
-
 fn day_time(date_time: &js_sys::Date) -> (Day, Time) {
     let now = Time::from_hms(date_time.get_hours(), date_time.get_minutes(), date_time.get_seconds());
     let day = match date_time.get_day() {
@@ -164,16 +228,18 @@ fn day_time(date_time: &js_sys::Date) -> (Day, Time) {
     (day, now)
 }
 
-fn search(data: &GTFSData) -> Radar {
+fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
     // TODO don't use client time, instead start with the server time and increment using client clock, also this is local time
     let (day, start_time) = day_time(&js_sys::Date::new_0());
     let max_duration = Duration::minutes(30);
     let mut plotter = journey_graph::JourneyGraphPlotter::new(day, Period::between(start_time, start_time + max_duration), &data);
     let origin = data.get_stop(&900000007103).unwrap();
     plotter.add_origin_station(origin);
-    plotter.add_route_type(RouteType::SuburbanRailway);
-    plotter.add_route_type(RouteType::UrbanRailway);
-    plotter.add_route_type(RouteType::TramService);
+    if controls.show_sbahn { plotter.add_route_type(RouteType::SuburbanRailway) }
+    if controls.show_ubahn { plotter.add_route_type(RouteType::UrbanRailway) }
+    if controls.show_bus { plotter.add_route_type(RouteType::BusService); plotter.add_route_type(RouteType::Bus) }
+    if controls.show_tram { plotter.add_route_type(RouteType::TramService) }
+    if controls.show_regional { plotter.add_route_type(RouteType::RailwayService) }
     let mut expires_time = start_time + max_duration;
     let mut trips: HashMap<TripId, RadarTrip> = HashMap::new();
     for item in plotter {
@@ -270,50 +336,27 @@ fn search(data: &GTFSData) -> Radar {
     radar
 }
 
-fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
-    match msg {
-        Msg::FetchData => {
-            orders.perform_cmd(fetch_data(model.session_id).map(Msg::DataFetched));
-            orders.skip();
-        }
+trait Drawable {
+    fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d) -> Result<(), JsValue>;
+}
 
-        Msg::DataFetched(Ok(data)) => {
-            model.session_id = Some(data.session_id());
-            let data = data.merge_data(&mut model.data);
-            model.radar = Some(search(data));
-            orders.after_next_render(|_| Msg::Draw);
-        },
-
-        Msg::DataFetched(Err(fail_reason)) => {
-            error!(format!(
-                "Fetch error - Fetching repository info failed - {:#?}",
-                fail_reason
-            ));
-            orders.skip();
-        },
-
-        Msg::Draw => {
-            if let &mut Some(ref mut radar) = &mut model.radar {
-                let date = js_sys::Date::new_0();
-                let (_day, time) = day_time(&date);
-                if date.value_of() <= radar.expires_timestamp {
-                    radar.geometry.start_time = time;
-                } else {
-                    model.radar = Some(search(model.data.as_ref().unwrap()));
-                    orders.after_next_render(|_| Msg::FetchData);
-                }
-            } else {
-                model.radar = Some(search(model.data.as_ref().unwrap()));
-            }
-            draw(model).unwrap();
-            // The next time a render is triggered we will draw again
-            orders.after_next_render(|_| Msg::Draw);
-            if !model.controls.animate {
-                orders.skip();
-            }
-        }
-
-        Msg::ControlsMsg(msg) => controls::update(msg, &mut model.controls, &mut orders.proxy(Msg::ControlsMsg)),
+impl Drawable for RadarGeometry {
+    fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d) -> Result<(), JsValue> {
+        let (origin_x, origin_y) = self.cartesian_origin;
+        ctx.set_line_dash(&js_sys::Array::of2(&10f64.into(), &10f64.into()).into())?;
+        ctx.set_stroke_style(&"lightgray".into());
+        ctx.set_line_width(1.);
+        ctx.begin_path();
+        ctx.arc(origin_x, origin_y, 500. / 3., 0., 2. * std::f64::consts::PI)?;
+        ctx.stroke();
+        ctx.begin_path();
+        ctx.arc(origin_x, origin_y, 500. * 2. / 3., 0., 2. * std::f64::consts::PI)?;
+        ctx.stroke();
+        ctx.begin_path();
+        ctx.arc(origin_x, origin_y, 500., 0., 2. * std::f64::consts::PI)?;
+        ctx.stroke();
+        ctx.set_line_dash(&js_sys::Array::new().into())?;
+        Ok(())
     }
 }
 
@@ -330,20 +373,8 @@ fn draw(model: &mut Model) -> Result<(), JsValue> { // todo , error type to enca
     }
 
     if let Some(Radar { day: _, expires_timestamp: _, geometry, trips, }) = &model.radar {
-        let (origin_x, origin_y) = geometry.cartesian_origin;
-        ctx.set_line_dash(&js_sys::Array::of2(&10f64.into(), &10f64.into()).into())?;
-        ctx.set_stroke_style(&"lightgray".into());
-        ctx.set_line_width(1.);
-        ctx.begin_path();
-        ctx.arc(origin_x, origin_y, 500. / 3., 0., 2. * std::f64::consts::PI)?;
-        ctx.stroke();
-        ctx.begin_path();
-        ctx.arc(origin_x, origin_y, 500. * 2. / 3., 0., 2. * std::f64::consts::PI)?;
-        ctx.stroke();
-        ctx.begin_path();
-        ctx.arc(origin_x, origin_y, 500., 0., 2. * std::f64::consts::PI)?;
-        ctx.stroke();
-        ctx.set_line_dash(&js_sys::Array::new().into())?;
+        geometry.draw(&ctx)?;
+
         let data = model.data.as_ref().unwrap();
 
         for RadarTrip { connection, route_name: _, route_type, route_color, segments } in trips {
@@ -432,10 +463,61 @@ fn draw(model: &mut Model) -> Result<(), JsValue> { // todo , error type to enca
     Ok(())
 }
 
+mod sync {
+    use seed::fetch;
+    use radar_search::search_data_sync::*;
+    use serde::Serialize;
+
+    #[derive(Debug)]
+    pub enum LoadError {
+        FetchError(fetch::FetchError),
+        RMPError(rmp_serde::decode::Error),
+    }
+
+    impl From<fetch::FetchError> for LoadError {
+        fn from(error: fetch::FetchError) -> LoadError {
+            Self::FetchError(error)
+        }
+    }
+
+    impl From<rmp_serde::decode::Error> for LoadError {
+        fn from(error: rmp_serde::decode::Error) -> LoadError {
+            Self::RMPError(error)
+        }
+    }
+
+    #[derive(Serialize)]
+    struct Params {
+        ubahn: bool,
+        sbahn: bool,
+        bus: bool,
+        tram: bool,
+        regio: bool,
+        id: Option<u64>,
+        count: Option<u64>,
+    }
+
+    pub async fn fetch_data(id: Option<u64>, controls: super::controls::Model) -> Result<GTFSDataSync, LoadError> {
+        let query = serde_urlencoded::to_string(Params {
+            ubahn: controls.show_ubahn,
+            sbahn: controls.show_sbahn,
+            bus: controls.show_bus,
+            tram: controls.show_tram,
+            regio: controls.show_regional,
+            id,
+            count: Some(0),
+        }).unwrap();
+        let url = format!("/data/U%20Voltastr.%20(Berlin)?{}", query);
+        let response = fetch::fetch(url).await?;
+        let body = response.bytes().await?;
+        Ok(rmp_serde::from_read_ref(&body)?)
+    }
+}
+
 mod controls {
     use seed::{*, prelude::*};
 
-    #[derive(Default)]
+    #[derive(Default, Clone)]
     pub struct Model {
         pub show_stations: bool,
         pub animate: bool,
@@ -493,44 +575,4 @@ mod controls {
             }, label],
         ]
     }
-}
-
-fn view(model: &Model) -> Node<Msg> {
-    if let Some(data) = &model.data {
-        div![
-            h2!["U Voltastrasse"],
-            controls::view(&model.controls).map_msg(Msg::ControlsMsg),
-            canvas![
-                el_ref(&model.canvas),
-                attrs![
-                    At::Width => px(2400),
-                    At::Height => px(2000),
-                ],
-                style![
-                    St::Border => "1px solid black",
-                    St::Width => px(1200),
-                    St::Height => px(1000),
-                ],
-            ],
-            if let Some(radar) = &model.radar {
-                format!("data processed for {}, {}. {} trips", radar.day, radar.geometry.start_time, radar.trips.len())
-            } else {
-                format!("data received, {} stops", data.stops().count())
-            }
-        ]
-    } else {
-        div!["Data not loaded"]
-    }
-}
-
-fn after_mount(_: Url, orders: &mut impl Orders<Msg>) -> AfterMount<Model> {
-    orders.send_msg(Msg::FetchData);
-    AfterMount::default()
-}
-
-#[wasm_bindgen(start)]
-pub fn render() {
-    App::builder(update, view)
-        .after_mount(after_mount)
-        .build_and_start();
 }
