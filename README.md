@@ -128,20 +128,21 @@
 [x] Get data from backend
 [x] Pre-search data filtering in backend
 [x] Data diffing using session; or
-[] Data diffing using last search (stateless)
+[x] Search from known data while waiting for backend
 [] Cleanup - todos, extractions, refactor, hardcoded stuff, edge cases, names, docs, things below
-[] Load data before its needed
-[] fast mode
-[] Decent time sync between front and back (backend responsible for macro time and frontend for micro - effectively just an offset form the frontend time)
-[] Search an extra amount (maximum will be the time to first departure) and then set expiry to that and filter when drawing
-[] Make sure it doesn't animate when not visible to save cpu
-[] Search from known data while waiting for backend
+[] Sync count check and synchronisation and request debounce in client (with timeout)
 [] Stations
 [] Smooth animation by using millisecond precision for start time; or only animate when the second changes and save cpu (checkbox?)
+[] Search an extra amount (maximum will be the time to first departure) and then set expiry to that and filter when drawing
+[] Add station search
+[] fast mode
+[] Load data before its needed
 [] Colour properly
 [] Draw in proper order
+--
+[] Decent time sync between front and back (backend responsible for macro time and frontend for micro - effectively just an offset form the frontend time)
 [] Get time initially from backend
-[] Add station search
+[] Make sure it doesn't animate when not visible to save cpu
 [] Don't freeze display thread while deserialising
 [] Reduce size of wasm
 [] Fast load with first image from backend

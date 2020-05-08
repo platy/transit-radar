@@ -62,7 +62,7 @@ async fn filtered_data_handler(
     name: String,
     options: RadarOptions,
     data: Arc<GTFSData>,
-    (session_id, session): (String, Arc<Mutex<GTFSDataSession>>),
+    session: Arc<Mutex<GTFSDataSession>>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let (day, now) = day_time(chrono::Utc::now());
     let period = Period::between(now, now + Duration::minutes(30));
@@ -78,7 +78,7 @@ async fn filtered_data_handler(
                         .with_struct_tuple()
                         .with_integer_variants();
 
-                    (*session)
+                    session
                         .add_data(data)
                         .serialize(&mut serializer)
                         .map_err(|err| {

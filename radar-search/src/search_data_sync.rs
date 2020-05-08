@@ -1,53 +1,18 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use super::search_data::*;
+use super::naive_sync::*;
 
 #[derive(Serialize, Deserialize)]
-pub enum GTFSDataSync {
-    Initial(u64, GTFSData),
-    Increment {
-        stops: HashMap<StopId, Stop>,
-        trips: HashMap<TripId, Trip>,
-        session_id: u64,
-        update_number: u32,
-    },
+pub struct GTFSSyncIncrement {
+    stops: HashMap<StopId, Stop>,
+    trips: HashMap<TripId, Trip>,
 }
 
-// todo check update numbers
-impl GTFSDataSync {
-    pub fn merge_data(self, data: &mut Option<GTFSData>) -> &GTFSData {
-        match self {
-            Self::Initial(_, new_data) => {
-                *data = Some(new_data);
-                data.as_ref().unwrap()
-            }
-            Self::Increment {
-                trips,
-                stops,
-                update_number,
-                session_id,
-            } => {
-                if let Some(existing_data) = data {
-                    existing_data.trips.extend(trips);
-                    existing_data.stops.extend(stops);
-                    &*existing_data
-                } else {
-                    panic!("bad sync: retrieved increment with no data locally");
-                }
-            }
-        }
-    }
-
-    pub fn session_id(&self) -> u64 {
-        match self {
-            Self::Initial(session_id, _) => *session_id,
-            Self::Increment {
-                trips,
-                stops,
-                update_number,
-                session_id,
-            } => *session_id,
-        }
+impl std::ops::AddAssign<GTFSSyncIncrement> for GTFSData {
+    fn add_assign(&mut self, other: GTFSSyncIncrement) {
+        self.trips.extend(other.trips);
+        self.stops.extend(other.stops);
     }
 }
 
@@ -55,11 +20,25 @@ pub struct GTFSDataSession {
     trips: HashSet<TripId>,
     stops: HashSet<StopId>,
     session_id: u64,
-    update_number: u32,
+    update_number: u64,
 }
 
-impl From<u64> for GTFSDataSession {
-    fn from(session_id: u64) -> GTFSDataSession {
+pub trait ClientSession {
+    type Data;
+    type Increment;
+
+    fn new(session_id: u64) -> Self;
+    // adds data to the clients session, producing the sync data that needs to be sent to the client and updating the session stat
+    fn add_data(&mut self, data: Self::Data) -> SyncData<Self::Data, Self::Increment>;
+    fn update_number(&self) -> u64;
+}
+
+impl ClientSession for GTFSDataSession {
+    type Data = GTFSData;
+    type Increment = GTFSSyncIncrement;
+
+    fn new(session_id: u64) -> GTFSDataSession {
+        eprintln!("New session {}", session_id);
         GTFSDataSession {
             trips: HashSet::new(),
             stops: HashSet::new(),
@@ -67,15 +46,13 @@ impl From<u64> for GTFSDataSession {
             update_number: 0,
         }
     }
-}
 
-impl GTFSDataSession {
-    pub fn add_data(&mut self, data: GTFSData) -> GTFSDataSync {
+    fn add_data(&mut self, data: GTFSData) -> SyncData<GTFSData, GTFSSyncIncrement> {
         if self.update_number == 0 {
             self.trips = data.trips.keys().cloned().collect();
             self.stops = data.stops.keys().cloned().collect();
             self.update_number = 1;
-            GTFSDataSync::Initial(self.session_id, data)
+            SyncData::Initial { session_id: self.session_id, data, update_number: 1, }
         } else {
             let mut trips = data.trips;
             for id in self.trips.iter() {
@@ -91,12 +68,19 @@ impl GTFSDataSession {
             for &id in stops.keys() {
                 self.stops.insert(id);
             }
-            GTFSDataSync::Increment {
-                stops,
-                trips,
+            self.update_number += 1;
+            SyncData::Increment {
+                increment: GTFSSyncIncrement {
+                    trips,
+                    stops,
+                },
                 update_number: self.update_number,
                 session_id: self.session_id,
             }
         }
+    }
+
+    fn update_number(&self) -> u64 {
+        self.update_number
     }
 }

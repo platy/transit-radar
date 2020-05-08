@@ -5,9 +5,9 @@ use std::sync::{
     Arc, Mutex,
 };
 use warp::{reject, Filter};
+use radar_search::search_data_sync::ClientSession;
 
-pub fn with_session<S: Sync + Send + From<u64>>(
-) -> impl Filter<Extract = ((String, Arc<Mutex<S>>),), Error = reject::Rejection> + Clone {
+pub fn with_session<S: Sync + Send + ClientSession>() -> impl Filter<Extract = (Arc<Mutex<S>>,), Error = reject::Rejection> + Clone {
     let container = Arc::new(SessionContainer::new());
     warp::query::<SessionKey>()
         .and_then(move |header| future::ready(container.session_filter(header)))
@@ -21,15 +21,10 @@ struct SessionContainer<S> {
 #[derive(serde::Deserialize)]
 struct SessionKey {
     id: Option<u64>,
-    count: Option<u32>,
+    count: Option<u64>,
 }
 
-#[derive(Debug)]
-struct SessionOutOfSync;
-
-impl reject::Reject for SessionOutOfSync {}
-
-impl<S: From<u64>> SessionContainer<S> {
+impl<S: ClientSession> SessionContainer<S> {
     fn new() -> SessionContainer<S> {
         SessionContainer {
             map: Mutex::new(HashMap::new()),
@@ -40,18 +35,19 @@ impl<S: From<u64>> SessionContainer<S> {
     pub fn session_filter(
         &self,
         key: SessionKey,
-    ) -> Result<(String, Arc<Mutex<S>>), reject::Rejection> {
+    ) -> Result<Arc<Mutex<S>>, reject::Rejection> {
         let mut map = self.map.lock().unwrap();
         let session_id = key.id.unwrap_or_else(|| self.new_session_id());
         let update_number = key.count.unwrap_or(0);
         let session = map
             .entry(session_id)
-            .or_insert_with(|| Arc::new(Mutex::new(From::from(session_id))));
-        // if (*session.lock().unwrap()).update_number == update_number {
-        Ok((session_id.to_string(), session.clone()))
-        // } else {
-        //     Err(reject::custom(SessionOutOfSync))
-        // }
+            .or_insert_with(|| Arc::new(Mutex::new(S::new(session_id))));
+        let server_update_number = (*session.lock().unwrap()).update_number();
+        if server_update_number != update_number {
+            eprintln!("session {} out of sync, client {}, server {} - resetting", session_id, update_number, server_update_number);
+            *session = Arc::new(Mutex::new(S::new(session_id)));
+        }
+        Ok(session.clone())
     }
 
     fn new_session_id(&self) -> u64 {

@@ -4,6 +4,7 @@ use web_sys::HtmlCanvasElement;
 use radar_search::time::*;
 use radar_search::search_data::*;
 use radar_search::search_data_sync::*;
+use radar_search::naive_sync::SyncData;
 use radar_search::journey_graph;
 use geo;
 use std::f64::consts::PI;
@@ -24,8 +25,7 @@ fn after_mount(_: Url, orders: &mut impl Orders<Msg>) -> AfterMount<Model> {
 
 #[derive(Default)]
 struct Model {
-    pub data: Option<GTFSData>,
-    session_id: Option<u64>, // todo should be together with data and update count
+    data: sync::ServerSync<GTFSData>,
     canvas: ElRef<HtmlCanvasElement>,
     canvas_scaled: Option<f64>,
     radar: Option<Radar>,
@@ -34,22 +34,38 @@ struct Model {
 }
 
 enum Msg {
-    DataFetched(Result<GTFSDataSync, sync::LoadError>),
+    DataFetched(Result<SyncData<GTFSData, GTFSSyncIncrement>, sync::LoadError>),
     FetchData,
     Draw,
     ControlsMsg(controls::Msg),
 }
 
+#[derive(serde::Serialize)]
+struct Params {
+    ubahn: bool,
+    sbahn: bool,
+    bus: bool,
+    tram: bool,
+    regio: bool,
+}
+
 fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
         Msg::FetchData => {
-            orders.perform_cmd(sync::fetch_data(model.session_id, model.controls.clone()).map(Msg::DataFetched));
+            let query = serde_urlencoded::to_string(Params {
+                ubahn: model.controls.show_ubahn,
+                sbahn: model.controls.show_sbahn,
+                bus: model.controls.show_bus,
+                tram: model.controls.show_tram,
+                regio: model.controls.show_regional,
+            }).unwrap();
+            let url = format!("/data/U%20Voltastr.%20(Berlin)?{}", query);
+            orders.perform_cmd(sync::request(model.data.url(url)).map(Msg::DataFetched));
             orders.skip();
         }
 
         Msg::DataFetched(Ok(data)) => {
-            model.session_id = Some(data.session_id());
-            let data = data.merge_data(&mut model.data);
+            let data = model.data.receive(data);
             model.radar = Some(search(data, &model.controls));
             orders.after_next_render(|_| Msg::Draw);
         },
@@ -69,11 +85,11 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                 if date.value_of() <= radar.expires_timestamp {
                     radar.geometry.start_time = time;
                 } else {
-                    model.radar = Some(search(model.data.as_ref().unwrap(), &model.controls));
+                    model.radar = Some(search(model.data.get().unwrap(), &model.controls));
                     orders.after_next_render(|_| Msg::FetchData);
                 }
             } else {
-                model.radar = Some(search(model.data.as_ref().unwrap(), &model.controls));
+                model.radar = Some(search(model.data.get().unwrap(), &model.controls));
             }
             draw(model).unwrap();
             // The next time a render is triggered we will draw again
@@ -85,7 +101,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 
         Msg::ControlsMsg(msg) => {
             controls::update(msg, &mut model.controls, &mut orders.proxy(Msg::ControlsMsg));
-            model.radar = Some(search(model.data.as_ref().unwrap(), &model.controls));
+            model.radar = Some(search(model.data.get().unwrap(), &model.controls));
             orders.after_next_render(|_| Msg::FetchData);
             orders.after_next_render(|_| Msg::Draw);
         }
@@ -93,7 +109,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 }
 
 fn view(model: &Model) -> Node<Msg> {
-    if let Some(data) = &model.data {
+    if let Some(data) = model.data.get() {
         div![
             h2!["U Voltastrasse"],
             controls::view(&model.controls).map_msg(Msg::ControlsMsg),
@@ -375,7 +391,7 @@ fn draw(model: &mut Model) -> Result<(), JsValue> { // todo , error type to enca
     if let Some(Radar { day: _, expires_timestamp: _, geometry, trips, }) = &model.radar {
         geometry.draw(&ctx)?;
 
-        let data = model.data.as_ref().unwrap();
+        let data = model.data.get().unwrap();
 
         for RadarTrip { connection, route_name: _, route_type, route_color, segments } in trips {
             {
@@ -465,8 +481,112 @@ fn draw(model: &mut Model) -> Result<(), JsValue> { // todo , error type to enca
 
 mod sync {
     use seed::fetch;
-    use radar_search::search_data_sync::*;
-    use serde::Serialize;
+    use serde::{Serialize, de::DeserializeOwned};
+    use radar_search::naive_sync::SyncData;
+
+    pub async fn request<'s, S>(url: String) -> Result<S, LoadError>
+    where S: DeserializeOwned {
+        let response = fetch::fetch(url).await?;
+        let body = response.bytes().await?;
+        Ok(rmp_serde::from_read_ref(&body)?)
+    }
+
+    pub enum ServerSync<D> {
+        NotSynced,
+        Synced {
+            session_id: u64,
+            update_count: u64,
+            data: D
+        }
+    }
+
+    impl<D> ServerSync<D> {
+        /// todo use a header instead and leave the url to the caller
+        pub fn url(&self, mut url: String) -> String {
+            if let ServerSync::Synced { session_id, update_count, data } = self {
+                let query = serde_urlencoded::to_string(Params {
+                    id: *session_id,
+                    count: *update_count,
+                }).unwrap();
+                url += "&";
+                url += &query;
+            }
+            url
+        }
+
+        // todo check update numbers
+        pub fn receive<'de, I>(&mut self, sync_data: SyncData<D, I>) -> &D
+        where D: std::ops::AddAssign<I> {
+
+            match sync_data {
+                SyncData::Initial {
+                    session_id,
+                    update_number: update_count,
+                    data,
+                } => {
+                    *self = Self::Synced {
+                        session_id,
+                        update_count,
+                        data,
+                    };
+                    self.get().unwrap()
+                }
+
+                SyncData::Increment {
+                    increment,
+                    update_number,
+                    session_id,
+                } => {
+                    if let Self::Synced { 
+                        session_id: our_session_id,
+                        update_count,
+                        data: existing_data, 
+                    } = self {
+                        *existing_data += increment;
+                        *update_count = update_number;
+                        assert!(session_id == *our_session_id, "session ids don't match");
+                        &*existing_data
+                    } else {
+                        panic!("bad sync: retrieved increment with no data locally");
+                    }
+                }
+            }
+        }
+
+        pub fn session_id(&self) -> Option<u64> {
+            match self {
+                Self::NotSynced =>  None,
+                Self::Synced {
+                    data,
+                    update_count,
+                    session_id,
+                } => Some(*session_id),
+            }
+        }
+
+        pub fn get(&self) -> Option<&D> {
+            match self {
+                Self::NotSynced =>  None,
+                Self::Synced {
+                    data,
+                    update_count: _,
+                    session_id: _,
+                } => Some(data),
+            }
+        }
+    }
+
+    impl<D> Default for ServerSync<D> {
+        fn default() -> Self {
+            ServerSync::NotSynced
+        }
+    }
+
+    #[derive(Serialize)]
+    struct Params {
+        id: u64,
+        count: u64,
+    }
 
     #[derive(Debug)]
     pub enum LoadError {
@@ -484,33 +604,6 @@ mod sync {
         fn from(error: rmp_serde::decode::Error) -> LoadError {
             Self::RMPError(error)
         }
-    }
-
-    #[derive(Serialize)]
-    struct Params {
-        ubahn: bool,
-        sbahn: bool,
-        bus: bool,
-        tram: bool,
-        regio: bool,
-        id: Option<u64>,
-        count: Option<u64>,
-    }
-
-    pub async fn fetch_data(id: Option<u64>, controls: super::controls::Model) -> Result<GTFSDataSync, LoadError> {
-        let query = serde_urlencoded::to_string(Params {
-            ubahn: controls.show_ubahn,
-            sbahn: controls.show_sbahn,
-            bus: controls.show_bus,
-            tram: controls.show_tram,
-            regio: controls.show_regional,
-            id,
-            count: Some(0),
-        }).unwrap();
-        let url = format!("/data/U%20Voltastr.%20(Berlin)?{}", query);
-        let response = fetch::fetch(url).await?;
-        let body = response.bytes().await?;
-        Ok(rmp_serde::from_read_ref(&body)?)
     }
 }
 
