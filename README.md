@@ -130,7 +130,7 @@
 [x] Data diffing using session; or
 [x] Search from known data while waiting for backend
 [] Cleanup - todos, extractions, refactor, hardcoded stuff, edge cases, names, docs, things below
-[] Sync count check and synchronisation and request debounce in client (with timeout)
+[x] Sync count check and synchronisation and request debounce in client -(with timeout)-
 [] Stations
 [] Smooth animation by using millisecond precision for start time; or only animate when the second changes and save cpu (checkbox?)
 [] Search an extra amount (maximum will be the time to first departure) and then set expiry to that and filter when drawing
