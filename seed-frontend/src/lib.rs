@@ -170,15 +170,15 @@ fn canvas_update(
 
         CanvasMsg::Search => {
             let result = search(model.sync.get().unwrap(), &model.controls);
+            orders.schedule_msg(result.expires_timestamp, CanvasMsg::SearchExpires);
             model.radar = Some(result);
-            // orders.schedule_message(result.expires_timestamp, CanvasMsg::SearchExpires);
         }
 
         CanvasMsg::SearchExpires => {
             let date = js_sys::Date::new_0();
             let radar = model.radar.as_mut().unwrap();
             // check whether it is actually expired, it may have been updated before this message was scheduled
-            if date.value_of() > radar.expires_timestamp {
+            if date.value_of() as u64 > radar.expires_timestamp {
                 orders.send_msg(CanvasMsg::Search);
                 orders.send_msg(CanvasMsg::SyncMsg(sync::Msg::FetchData));
             }
@@ -201,7 +201,7 @@ struct Radar {
     geometry: RadarGeometry,
     trips: Vec<RadarTrip>,
     day: Day,
-    expires_timestamp: f64,
+    expires_timestamp: u64,
 }
 
 struct RadarTrip {
@@ -451,7 +451,7 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
     };
     let radar = Radar {
         day,
-        expires_timestamp: expires_timestamp.value_of(),
+        expires_timestamp: expires_timestamp.value_of() as u64,
         geometry,
         trips: trips.into_iter().map(|(_k, v)| v).collect(),
     };

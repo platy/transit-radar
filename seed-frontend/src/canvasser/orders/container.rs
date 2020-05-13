@@ -5,7 +5,7 @@ use super::{
         CmdManager,
         Drawable,
         RenderInfo, // render_timestamp_delta::RenderTimestampDelta, CmdHandle,
-                    // Notification, ShouldRender, StreamHandle, StreamManager, SubHandle
+        // Notification, ShouldRender, StreamHandle, StreamManager, SubHandle
         UndefinedGMsg,
     },
     Orders, OrdersProxy,
@@ -116,6 +116,11 @@ impl<Ms: 'static, Mdl, Drwble: Drawable + 'static, GMs: 'static> Orders<Ms, GMs>
 
     fn send_msg(&mut self, msg: Ms) -> &mut Self {
         self.effects.push_back(msg.into());
+        self
+    }
+
+    fn schedule_msg(&mut self, timestamp: u64, msg: Ms) -> &mut Self {
+        self.app.schedule_msg(timestamp, msg);
         self
     }
 

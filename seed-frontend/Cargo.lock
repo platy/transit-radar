@@ -720,6 +720,7 @@ dependencies = [
  "enclose",
  "futures 0.3.4",
  "geo",
+ "gloo-timers",
  "js-sys",
  "radar-search",
  "rmp-serde",

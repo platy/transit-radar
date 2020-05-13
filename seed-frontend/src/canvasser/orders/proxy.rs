@@ -124,6 +124,12 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, Drwble: Drawable + 'static, GMs> Orde
         self
     }
 
+    fn schedule_msg(&mut self, timestamp: u64, msg: Ms) -> &mut Self {
+        let f = self.f.clone();
+        self.orders_container.schedule_msg(timestamp, f(msg));
+        self
+    }
+
     #[allow(clippy::redundant_closure)]
     fn perform_cmd<MsU: 'static>(&mut self, cmd: impl Future<Output = MsU> + 'static) -> &mut Self {
         let f = self.f.clone();

@@ -26,6 +26,7 @@ mod mailbox;
 mod message_mapper;
 mod orders;
 mod render_info;
+mod scheduler;
 
 pub use cmd_manager::CmdManager;
 use effects::Effect;
@@ -92,6 +93,7 @@ impl<Ms, Mdl: Default, D: Drawable, GMs> Builder<Ms, Mdl, D, GMs> {
             data: Rc::new(AppData {
                 model: RefCell::new(Mdl::default()),
                 scheduled_render_handle: RefCell::new(None),
+                scheduler: RefCell::new(scheduler::Scheduler::new()),
                 after_next_render_callbacks: RefCell::new(Vec::new()),
                 render_info: Cell::new(None),
                 animate: RefCell::new(false),
@@ -170,7 +172,13 @@ impl<Ms, Mdl, Drwble: Drawable + 'static, GMs: 'static> App<Ms, Mdl, Drwble, GMs
         self.process_effect_queue(queue);
     }
 
-    pub fn process_effect_queue(&self, mut queue: VecDeque<Effect<Ms, GMs>>) {
+    fn schedule_msg(&mut self, timestamp: u64, msg: Ms) -> &mut Self {
+        let f = enclose!((self => s) move || s.update(msg));
+        self.data.scheduler.borrow_mut().schedule(timestamp, f);
+        self
+    }
+
+    fn process_effect_queue(&self, mut queue: VecDeque<Effect<Ms, GMs>>) {
         while let Some(effect) = queue.pop_front() {
             match effect {
                 Effect::Msg(msg) => {
@@ -273,7 +281,7 @@ impl<Ms, Mdl, Drwble: Drawable + 'static, GMs: 'static> App<Ms, Mdl, Drwble, GMs
 
         let ctx = seed::canvas_context_2d(&canvas);
         ctx.set_global_composite_operation("source-over").unwrap();
-        ctx.clear_rect(0., 0., 1200., 1000.);
+        ctx.clear_rect(0., 0., width, height);
 
         // if let Some(radar) = &model.radar {
         //     radar.geometry.start_time = time;
@@ -349,6 +357,7 @@ struct AppData<Ms: 'static, Mdl> {
     model: RefCell<Mdl>,
     after_next_render_callbacks: RefCell<Vec<Box<dyn FnOnce(RenderInfo) -> Option<Ms>>>>,
     render_info: Cell<Option<RenderInfo>>,
+    scheduler: RefCell<scheduler::Scheduler>,
 
     // @TODO these 2 should be a single structure
     scheduled_render_handle: RefCell<Option<util::RequestAnimationFrameHandle>>,
