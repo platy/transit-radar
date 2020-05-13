@@ -130,6 +130,7 @@ struct CanvasModel {
 }
 
 enum CanvasMsg {
+    AnimationFrame,
     CanvasAdded,
     SyncMsg(sync::Msg<GTFSData, GTFSSyncIncrement>),
     Search,
@@ -184,11 +185,28 @@ fn canvas_update(
             }
         }
 
+        CanvasMsg::AnimationFrame => {
+            if model.controls.animate {
+                orders.next_frame_end(|_| CanvasMsg::AnimationFrame);
+            }
+
+            // by default, we skip the render, unless the clock has changed to actually cause a change
+            orders.skip();
+            if let Some(radar) = &mut model.radar {
+                let date = js_sys::Date::new_0();
+                let (_day, time) = day_time(&date);
+
+                if time != radar.geometry.start_time {
+                    log!("time changed, render");
+                    radar.geometry.start_time = time;
+                    orders.render();
+                }
+            }
+        }
+
         CanvasMsg::ControlsChange(controls) => {
-            if controls.animate {
-                orders.animate();
-            } else {
-                orders.dont_animate();
+            if controls.animate && !model.controls.animate {
+                orders.send_msg(CanvasMsg::AnimationFrame);
             }
             model.controls = controls;
             orders.send_msg(CanvasMsg::Search);
@@ -490,9 +508,6 @@ impl Drawable for RadarGeometry {
 }
 
 fn canvas_view(model: &CanvasModel) -> Vec<Box<dyn Drawable>> {
-    let date = js_sys::Date::new_0();
-    let (_day, time) = day_time(&date);
-
     if model.radar.is_none() {
         return vec![];
     }
@@ -502,8 +517,6 @@ fn canvas_view(model: &CanvasModel) -> Vec<Box<dyn Drawable>> {
         geometry,
         trips,
     } = model.radar.as_ref().unwrap();
-    let mut geometry = geometry.clone();
-    geometry.start_time = time;
     let data = model.sync.get().unwrap();
 
     let mut paths: Vec<Box<dyn Drawable>> = vec![Box::new(geometry.clone())];

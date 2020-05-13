@@ -92,11 +92,11 @@ impl<Ms, Mdl: Default, D: Drawable, GMs> Builder<Ms, Mdl, D, GMs> {
             }),
             data: Rc::new(AppData {
                 model: RefCell::new(Mdl::default()),
-                scheduled_render_handle: RefCell::new(None),
+                scheduled_render_handle: RefCell::new(AnimationFrameHandle::None),
                 scheduler: RefCell::new(scheduler::Scheduler::new()),
                 after_next_render_callbacks: RefCell::new(Vec::new()),
+                next_frame_end_callbacks: RefCell::new(Vec::new()),
                 render_info: Cell::new(None),
-                animate: RefCell::new(false),
             }),
         }
     }
@@ -194,6 +194,10 @@ impl<Ms, Mdl, Drwble: Drawable + 'static, GMs: 'static> App<Ms, Mdl, Drwble, GMs
                   // }
             }
         }
+
+        if !self.data.next_frame_end_callbacks.borrow().is_empty() {
+            self.schedule_frame_end_callbacks();
+        }
     }
 
     fn process_queue_message(&self, message: Ms) -> VecDeque<Effect<Ms, GMs>> {
@@ -206,7 +210,7 @@ impl<Ms, Mdl, Drwble: Drawable + 'static, GMs: 'static> App<Ms, Mdl, Drwble, GMs
 
         // self.patch_window_event_handlers();
 
-        if !*self.data.animate.borrow() && orders.should_render {
+        if orders.should_render {
             self.schedule_render();
         }
         orders.effects
@@ -230,37 +234,28 @@ impl<Ms, Mdl, Drwble: Drawable + 'static, GMs: 'static> App<Ms, Mdl, Drwble, GMs
     fn schedule_render(&self) {
         let mut scheduled_render_handle = self.data.scheduled_render_handle.borrow_mut();
 
-        if scheduled_render_handle.is_none() {
+        if scheduled_render_handle.is_not_render() {
+            scheduled_render_handle.take();
             let cb = Closure::new(enclose!((self => s) move |_| {
                 s.data.scheduled_render_handle.borrow_mut().take();
                 s.rerender();
             }));
 
-            *scheduled_render_handle = Some(util::request_animation_frame(cb));
+            *scheduled_render_handle = AnimationFrameHandle::Render(util::request_animation_frame(cb));
         }
     }
 
-    pub fn animate(&self) {
-        self.data.animate.replace(true);
+    fn schedule_frame_end_callbacks(&self) {
+        let mut scheduled_render_handle = self.data.scheduled_render_handle.borrow_mut();
 
-        self.request_animation_frame();
-    }
+        if scheduled_render_handle.is_none() {
+            let cb = Closure::new(enclose!((self => s) move |_| {
+                s.data.scheduled_render_handle.borrow_mut().take();
+                s.non_render_frame();
+            }));
 
-    pub fn dont_animate(&self) {
-        self.data.animate.replace(false);
-
-        self.data.scheduled_render_handle.borrow_mut().take();
-    }
-
-    fn request_animation_frame(&self) {
-        let cb = Closure::new(enclose!((self => s) move |_| {
-            s.rerender();
-
-            s.request_animation_frame();
-        }));
-
-        let handle = util::request_animation_frame(cb);
-        self.data.scheduled_render_handle.replace(Some(handle));
+            *scheduled_render_handle = AnimationFrameHandle::NoRender(util::request_animation_frame(cb));
+        }
     }
 
     fn rerender(&self) {
@@ -338,6 +333,24 @@ impl<Ms, Mdl, Drwble: Drawable + 'static, GMs: 'static> App<Ms, Mdl, Drwble, GMs
                 .replace(Vec::new())
                 .into_iter()
                 .filter_map(|callback| callback(render_info).map(Effect::Msg))
+                .chain(
+                    self.data
+                        .next_frame_end_callbacks
+                        .replace(Vec::new())
+                        .into_iter()
+                        .filter_map(|callback| callback(Some(render_info)).map(Effect::Msg))
+                )
+                .collect(),
+        );
+    }
+
+    fn non_render_frame(&self) {
+        self.process_effect_queue(
+            self.data
+                .next_frame_end_callbacks
+                .replace(Vec::new())
+                .into_iter()
+                .filter_map(|callback| callback(None).map(Effect::Msg))
                 .collect(),
         );
     }
@@ -356,12 +369,43 @@ impl<Ms, Mdl, Drwble: Drawable + 'static, GMs: 'static> App<Ms, Mdl, Drwble, GMs
 struct AppData<Ms: 'static, Mdl> {
     model: RefCell<Mdl>,
     after_next_render_callbacks: RefCell<Vec<Box<dyn FnOnce(RenderInfo) -> Option<Ms>>>>,
+    next_frame_end_callbacks: RefCell<Vec<Box<dyn FnOnce(Option<RenderInfo>) -> Option<Ms>>>>,
     render_info: Cell<Option<RenderInfo>>,
     scheduler: RefCell<scheduler::Scheduler>,
 
-    // @TODO these 2 should be a single structure
-    scheduled_render_handle: RefCell<Option<util::RequestAnimationFrameHandle>>,
-    animate: RefCell<bool>,
+    scheduled_render_handle: RefCell<AnimationFrameHandle>,
+}
+
+enum AnimationFrameHandle {
+    None,
+    NoRender(util::RequestAnimationFrameHandle),
+    Render(util::RequestAnimationFrameHandle),
+}
+
+impl AnimationFrameHandle {
+    fn is_none(&self) -> bool {
+        match self {
+            Self::None => true,
+            _ => false,
+        }
+    }
+
+    fn is_not_render(&self) -> bool {
+        match self {
+            Self::Render(_) => false,
+            _ => true,
+        }
+    }
+
+    fn take(&mut self) -> Self {
+        std::mem::take(self)
+    }
+}
+
+impl Default for AnimationFrameHandle {
+    fn default() -> Self {
+        AnimationFrameHandle::None
+    }
 }
 
 pub struct AppCfg<Ms, Mdl, Drwble, GMs>

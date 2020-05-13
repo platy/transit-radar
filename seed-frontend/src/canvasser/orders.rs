@@ -41,12 +41,6 @@ pub trait Orders<Ms: 'static, GMs = UndefinedGMsg> {
     /// No effect if animation is enabled
     fn skip(&mut self) -> &mut Self;
 
-    /// Enable animation
-    fn animate(&mut self) -> &mut Self;
-
-    /// Disable animation
-    fn dont_animate(&mut self) -> &mut Self;
-
     // /// Notify all subscription handlers that listen for messages with the `message`'s type.
     // ///
     // /// _Note:_ Seed's native subscriptions / `messages` can be also sent - e.g.
@@ -181,6 +175,12 @@ pub trait Orders<Ms: 'static, GMs = UndefinedGMsg> {
     fn after_next_render<MsU: 'static>(
         &mut self,
         callback: impl FnOnce(RenderInfo) -> MsU + 'static,
+    ) -> &mut Self;
+
+    /// Same idea as `after_next_render` except it will run on the next animation frame even if we don't performma a render
+    fn next_frame_end<MsU: 'static>(
+        &mut self,
+        callback: impl FnOnce(Option<RenderInfo>) -> MsU + 'static,
     ) -> &mut Self;
 
     // /// Subscribe for messages with the `handler`s input type.

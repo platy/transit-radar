@@ -98,16 +98,6 @@ impl<Ms: 'static, Mdl, Drwble: Drawable + 'static, GMs: 'static> Orders<Ms, GMs>
         self
     }
 
-    fn animate(&mut self) -> &mut Self {
-        self.app.animate();
-        self
-    }
-
-    fn dont_animate(&mut self) -> &mut Self {
-        self.app.dont_animate();
-        self
-    }
-
     // fn notify(&mut self, message: impl Any + Clone) -> &mut Self {
     //     self.effects
     //         .push_back(Effect::Notification(Notification::new(message)));
@@ -201,6 +191,25 @@ impl<Ms: 'static, Mdl, Drwble: Drawable + 'static, GMs: 'static> Orders<Ms, GMs>
         self.app
             .data
             .after_next_render_callbacks
+            .borrow_mut()
+            .push(callback);
+        self
+    }
+
+    fn next_frame_end<MsU: 'static>(
+        &mut self,
+        callback: impl FnOnce(Option<RenderInfo>) -> MsU + 'static,
+    ) -> &mut Self {
+        let callback = map_callback_return_to_option_ms!(
+            dyn FnOnce(Option<RenderInfo>) -> Option<Ms>,
+            callback,
+            "Callback can return only Msg, Option<Msg> or ()!",
+            Box
+        );
+
+        self.app
+            .data
+            .next_frame_end_callbacks
             .borrow_mut()
             .push(callback);
         self

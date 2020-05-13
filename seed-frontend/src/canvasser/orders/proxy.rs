@@ -102,16 +102,6 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, Drwble: Drawable + 'static, GMs> Orde
         self
     }
 
-    fn animate(&mut self) -> &mut Self {
-        self.orders_container.animate();
-        self
-    }
-
-    fn dont_animate(&mut self) -> &mut Self {
-        self.orders_container.dont_animate();
-        self
-    }
-
     // fn notify(&mut self, message: impl Any + Clone) -> &mut Self {
     //     self.orders_container.notify(message);
     //     self
@@ -215,6 +205,28 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, Drwble: Drawable + 'static, GMs> Orde
         self.clone_app()
             .data
             .after_next_render_callbacks
+            .borrow_mut()
+            .push(Box::new(move |render_info| {
+                callback(render_info).map(|ms| f(ms))
+            }));
+        self
+    }
+
+    fn next_frame_end<MsU: 'static>(
+        &mut self,
+        callback: impl FnOnce(Option<RenderInfo>) -> MsU + 'static,
+    ) -> &mut Self {
+        let callback = map_callback_return_to_option_ms!(
+            dyn FnOnce(Option<RenderInfo>) -> Option<Ms>,
+            callback,
+            "Callback can return only Msg, Option<Msg> or ()!",
+            Box
+        );
+
+        let f = self.f.clone();
+        self.clone_app()
+            .data
+            .next_frame_end_callbacks
             .borrow_mut()
             .push(Box::new(move |render_info| {
                 callback(render_info).map(|ms| f(ms))
