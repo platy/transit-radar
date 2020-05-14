@@ -268,15 +268,10 @@ impl<Ms, Mdl, Drwble: Drawable + 'static, GMs: 'static> App<Ms, Mdl, Drwble, GMs
         // get canvas height / width ratio
         let rect = canvas.get_bounding_client_rect();
 
-        let height = rect.height();
-        let width = rect.width();
-
-        canvas.set_width(width as u32);
-        canvas.set_height(height as u32);
-
         let ctx = seed::canvas_context_2d(&canvas);
         ctx.set_global_composite_operation("source-over").unwrap();
-        ctx.clear_rect(0., 0., width, height);
+        ctx.clear_rect(0., 0., rect.width(), rect.height());
+        ctx.set_transform(2., 0., 0., 2., 0., 0., ).unwrap();
 
         // if let Some(radar) = &model.radar {
         //     radar.geometry.start_time = time;

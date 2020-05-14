@@ -133,8 +133,9 @@
 [x] Sync count check and synchronisation and request debounce in client -(with timeout)-
 [x] Only animate when the second changes and save cpu
 [x] Stations
-[] Figure out scaling again for antialiasing
+[x] Figure out scaling again for antialiasing
 [] Implement the draw with geometry as a parameter meaning the view wont have to be recalculated when the time changes (improves performance by having no allocations in the render process - application wont need render loop, it will only need to act on changes and researching)
+[] curved paths not going to the end
 [] Search an extra amount (maximum will be the time to first departure) and then set expiry to that and filter when drawing
 [] Add station search
 [] fast mode
@@ -142,6 +143,7 @@
 [] Colour properly
 [] Draw in proper order
 --
+[] Fit on a mobile screen
 [] Write route name at end of route
 [] Use RCs to avoid copying
 [] Move data sync / search back to the seed app, canvas view only needs the search results?

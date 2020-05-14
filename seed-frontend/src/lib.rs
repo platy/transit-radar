@@ -197,7 +197,6 @@ fn canvas_update(
                 let (_day, time) = day_time(&date);
 
                 if time != radar.geometry.start_time {
-                    log!("time changed, render");
                     radar.geometry.start_time = time;
                     orders.render();
                 }
