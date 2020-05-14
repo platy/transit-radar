@@ -131,8 +131,10 @@
 [x] Search from known data while waiting for backend
 [] Cleanup - todos, extractions, refactor, hardcoded stuff, edge cases, names, docs, things below
 [x] Sync count check and synchronisation and request debounce in client -(with timeout)-
-[] Stations
-[] Smooth animation by using millisecond precision for start time; or only animate when the second changes and save cpu (checkbox?)
+[x] Only animate when the second changes and save cpu
+[x] Stations
+[] Figure out scaling again for antialiasing
+[] Implement the draw with geometry as a parameter meaning the view wont have to be recalculated when the time changes (improves performance by having no allocations in the render process - application wont need render loop, it will only need to act on changes and researching)
 [] Search an extra amount (maximum will be the time to first departure) and then set expiry to that and filter when drawing
 [] Add station search
 [] fast mode
@@ -140,6 +142,9 @@
 [] Colour properly
 [] Draw in proper order
 --
+[] Write route name at end of route
+[] Use RCs to avoid copying
+[] Move data sync / search back to the seed app, canvas view only needs the search results?
 [] Decent time sync between front and back (backend responsible for macro time and frontend for micro - effectively just an offset form the frontend time)
 [] Get time initially from backend
 [] Make sure it doesn't animate when not visible to save cpu
@@ -151,6 +156,7 @@
 [] Break up initial load into smaller parts to show something quicker
 [] Change time
 [] Click station to show from there (from arrival time or now?)
+[] more transfer efficient way of indexing / syncing the data
 
 # Models
 

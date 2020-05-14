@@ -218,8 +218,15 @@ fn canvas_update(
 struct Radar {
     geometry: RadarGeometry,
     trips: Vec<RadarTrip>,
+    stations: Vec<Station>,
     day: Day,
     expires_timestamp: u64,
+}
+
+struct Station {
+    location: geo::Point<f64>,
+    earliest_arrival: Time,
+    name: String,
 }
 
 struct RadarTrip {
@@ -231,8 +238,8 @@ struct RadarTrip {
 }
 
 struct TripSegment {
-    from: StopId,
-    to: StopId,
+    from: geo::Point<f64>,
+    to: geo::Point<f64>,
     departure_time: Time,
     arrival_time: Time,
 }
@@ -377,17 +384,18 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
     }
     let mut expires_time = start_time + max_duration;
     let mut trips: HashMap<TripId, RadarTrip> = HashMap::new();
+    let mut stations = vec![];
     for item in plotter {
         match item {
             journey_graph::Item::Station {
-                stop: _,
-                earliest_arrival: _,
+                stop,
+                earliest_arrival,
             } => {
-                // FEStop {
-                //     bearing: origin.location.bearing(stop.location),
-                //     name: stop.stop_name.replace(" (Berlin)", ""),
-                //     seconds: (earliest_arrival - period.start()).to_secs(),
-                // });
+                stations.push(Station {
+                    location: stop.location,
+                    name: stop.stop_name.replace(" (Berlin)", ""),
+                    earliest_arrival,
+                });
             }
             journey_graph::Item::JourneySegment {
                 departure_time: _,
@@ -422,8 +430,8 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
                     .get_mut(&trip_id)
                     .expect("trip to have been connected to");
                 trip.segments.push(TripSegment {
-                    from: from_stop.stop_id,
-                    to: to_stop.stop_id,
+                    from: from_stop.location,
+                    to: to_stop.location,
                     departure_time,
                     arrival_time,
                 });
@@ -445,8 +453,8 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
                         route_type,
                         route_color: route_color.to_owned(),
                         connection: TripSegment {
-                            from: from_stop.stop_id,
-                            to: to_stop.stop_id,
+                            from: from_stop.location,
+                            to: to_stop.location,
                             departure_time,
                             arrival_time,
                         },
@@ -472,11 +480,12 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
         expires_timestamp: expires_timestamp.value_of() as u64,
         geometry,
         trips: trips.into_iter().map(|(_k, v)| v).collect(),
+        stations,
     };
     radar
 }
 
-use canvasser::{Drawable, Path};
+use canvasser::{Drawable, Path, Circle, Text};
 
 impl Drawable for RadarGeometry {
     fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d) {
@@ -516,8 +525,8 @@ fn canvas_view(model: &CanvasModel) -> Vec<Box<dyn Drawable>> {
         expires_timestamp: _,
         geometry,
         trips,
+        stations,
     } = model.radar.as_ref().unwrap();
-    let data = model.sync.get().unwrap();
 
     let mut paths: Vec<Box<dyn Drawable>> = vec![Box::new(geometry.clone())];
     for RadarTrip {
@@ -539,17 +548,13 @@ fn canvas_view(model: &CanvasModel) -> Vec<Box<dyn Drawable>> {
             path.set_line_dash(&[2., 4.]);
             path.set_stroke_style(route_color);
 
-            let start_point = data.get_stop(from).unwrap().location;
-            let mut end_point = data.get_stop(to).unwrap().location;
-            if end_point == geometry.geographic_origin {
+            let mut to = to;
+            if *from == geometry.geographic_origin {
                 // connection is from origin meaning no natural bearing for it, we use the bearing to the next stop
-                end_point = data
-                    .get_stop(&segments.first().expect("at least one segment in a trip").to)
-                    .unwrap()
-                    .location;
+                to = &segments.first().expect("at least one segment in a trip").to;
             }
             let (from_x, from_y, to_x, to_y) =
-                geometry.line_coords(start_point, *departure_time, end_point, *arrival_time);
+                geometry.line_coords(*from, *departure_time, *to, *arrival_time);
             path.move_to(to_x, to_y);
             path.line_to(from_x, from_y);
             paths.push(Box::new(path));
@@ -578,19 +583,19 @@ fn canvas_view(model: &CanvasModel) -> Vec<Box<dyn Drawable>> {
                 // first segment
                 let segment = &segments[0];
                 let (from_x, from_y, to_x, to_y) = geometry.line_coords(
-                    data.get_stop(&segment.from).unwrap().location,
+                    segment.from,
                     segment.departure_time,
-                    data.get_stop(&segment.to).unwrap().location,
+                    segment.to,
                     segment.arrival_time,
                 );
                 path.move_to(from_x, from_y);
                 let (cp1x, cp1y) = geometry.initial_control_point((from_x, from_y), (to_x, to_y));
-                let (post_id, post_time) = if segments[1].from != segment.to {
+                let (post_location, post_time) = if segments[1].from != segment.to {
                     (segments[1].from, segments[1].departure_time)
                 } else {
                     (segments[1].to, segments[1].arrival_time)
                 };
-                let post_xy = geometry.coords(data.get_stop(&post_id).unwrap().location, post_time);
+                let post_xy = geometry.coords(post_location, post_time);
                 let ((cp2x, cp2y), next_control_point) =
                     geometry.control_points((from_x, from_y), (to_x, to_y), post_xy);
                 path.bezier_curve_to(cp1x, cp1y, cp2x, cp2y, to_x, to_y);
@@ -600,24 +605,24 @@ fn canvas_view(model: &CanvasModel) -> Vec<Box<dyn Drawable>> {
             for window in segments.windows(3) {
                 if let &[pre, segment, post] = &window {
                     let (from_x, from_y, to_x, to_y) = geometry.line_coords(
-                        data.get_stop(&segment.from).unwrap().location,
+                        segment.from,
                         segment.departure_time,
-                        data.get_stop(&segment.to).unwrap().location,
+                        segment.to,
                         segment.arrival_time,
                     );
                     let (pre_x, pre_y) =
-                        geometry.coords(data.get_stop(&pre.to).unwrap().location, pre.arrival_time);
+                        geometry.coords(pre.to, pre.arrival_time);
                     if pre_x != from_x && pre_y != from_y {
                         // there is a gap in the route and so we move
                         path.move_to(from_x, from_y);
                     }
-                    let (post_id, post_time) = if post.from != segment.to {
+                    let (post_location, post_time) = if post.from != segment.to {
                         (post.from, post.departure_time)
                     } else {
                         (post.to, post.arrival_time)
                     };
                     let post_xy =
-                        geometry.coords(data.get_stop(&post_id).unwrap().location, post_time);
+                        geometry.coords(post_location, post_time);
                     let (cp1x, cp1y) = next_control_point;
                     let ((cp2x, cp2y), next_control_point_tmp) =
                         geometry.control_points((from_x, from_y), (to_x, to_y), post_xy);
@@ -631,7 +636,7 @@ fn canvas_view(model: &CanvasModel) -> Vec<Box<dyn Drawable>> {
                 // draw the last curve
                 let end = segments.last().unwrap();
                 let (to_x, to_y) = geometry.coords(
-                    data.get_stop(&end.from).unwrap().location,
+                    end.from,
                     end.departure_time,
                 );
                 let (cp1x, cp1y) = next_control_point;
@@ -640,15 +645,28 @@ fn canvas_view(model: &CanvasModel) -> Vec<Box<dyn Drawable>> {
         } else {
             let segment = &segments[0];
             let (from_x, from_y, to_x, to_y) = geometry.line_coords(
-                data.get_stop(&segment.from).unwrap().location,
+                segment.from,
                 segment.departure_time,
-                data.get_stop(&segment.to).unwrap().location,
+                segment.to,
                 segment.arrival_time,
             );
             path.move_to(from_x, from_y);
             path.line_to(to_x, to_y);
         }
         paths.push(Box::new(path));
+    }
+    
+    for Station {
+        location,
+        earliest_arrival,
+        name,
+    } in stations {
+        const STOP_RADIUS: f64 = 3.;
+        let (cx, cy) = geometry.coords(*location, *earliest_arrival);
+        paths.push(Box::new(vec![
+            Box::new(Circle::new(cx, cy, STOP_RADIUS)) as Box<dyn Drawable>,
+            Box::new(Text::new(cx + STOP_RADIUS + 6., cy + 4., name.clone())),
+        ]));
     }
     paths
 }

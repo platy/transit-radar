@@ -523,3 +523,41 @@ impl Drawable for Path {
         }
     }
 }
+
+pub struct Circle {
+    r: f64,
+    cx: f64,
+    cy: f64,
+}
+
+impl Circle {
+    pub fn new(cx: f64, cy: f64, r: f64) -> Circle {
+        Circle { cx, cy, r }
+    }
+}
+
+impl Drawable for Circle {
+    fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d) {
+        ctx.begin_path();
+        ctx.arc(self.cx, self.cy, self.r, 0., 2. * std::f64::consts::PI).unwrap();
+        ctx.fill();
+    }
+}
+
+pub struct Text {
+    x: f64,
+    y: f64,
+    text: String,
+}
+
+impl Text {
+    pub fn new(x: f64, y: f64, text: String) -> Text {
+        Text { x, y, text }
+    }
+}
+
+impl Drawable for Text {
+    fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d) {
+        ctx.fill_text(&self.text, self.x, self.y).unwrap();
+    }
+}
