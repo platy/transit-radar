@@ -635,8 +635,8 @@ fn canvas_view(model: &CanvasModel) -> Vec<Box<dyn Drawable>> {
                 // draw the last curve
                 let end = segments.last().unwrap();
                 let (to_x, to_y) = geometry.coords(
-                    end.from,
-                    end.departure_time,
+                    end.to,
+                    end.arrival_time,
                 );
                 let (cp1x, cp1y) = next_control_point;
                 path.bezier_curve_to(cp1x, cp1y, to_x, to_y, to_x, to_y);

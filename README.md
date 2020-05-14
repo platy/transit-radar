@@ -135,14 +135,15 @@
 [x] Stations
 [x] Figure out scaling again for antialiasing
 [] Implement the draw with geometry as a parameter meaning the view wont have to be recalculated when the time changes (improves performance by having no allocations in the render process - application wont need render loop, it will only need to act on changes and researching)
-[] curved paths not going to the end
+[x] curved paths not going to the end
 [] Search an extra amount (maximum will be the time to first departure) and then set expiry to that and filter when drawing
 [] Add station search
-[] fast mode
 [] Load data before its needed
 [] Colour properly
 [] Draw in proper order
+[] Connections at alex missing
 --
+[] Fast mode
 [] Fit on a mobile screen
 [] Write route name at end of route
 [] Use RCs to avoid copying
@@ -152,13 +153,14 @@
 [] Make sure it doesn't animate when not visible to save cpu
 [] Don't freeze display thread while deserialising
 [] Reduce size of wasm
-[] Fast load with first image from backend
+[] Fast load with first image from backend (& no script)
 [] Animate search change
 [] Geometry parameters and animation
 [] Break up initial load into smaller parts to show something quicker
 [] Change time
 [] Click station to show from there (from arrival time or now?)
 [] more transfer efficient way of indexing / syncing the data
+[] Animate with video stream form backend
 
 # Models
 
