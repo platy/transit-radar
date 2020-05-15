@@ -30,7 +30,6 @@ impl Polar {
     }
 
     pub fn coords(&self, bearing: Bearing, magnitude: f64) -> (f64, f64) {
-
         let radius = magnitude - self.origin;
         if radius < 0. {
             self.cartesian_offset
@@ -43,6 +42,10 @@ impl Polar {
                 -y * self.cartesian_max + self.cartesian_offset.1,
             )
         }
+    }
+
+    pub fn max(&self) -> f64 {
+        self.origin + self.max
     }
 }
 
@@ -191,10 +194,12 @@ impl Drawable<Polar> for Path<Polar> {
         for op in &self.ops {
             match op {
                 &PathOp::MoveTo((bearing, magnitude)) => {
+                    if magnitude > geometry.max() { break }
                     let (x, y) = geometry.coords(bearing, magnitude);
                     ctx.move_to(x, y)
                 }
                 &PathOp::LineTo((bearing, magnitude)) => {
+                    if magnitude > geometry.max() { break }
                     let (x, y) = geometry.coords(bearing, magnitude);
                     ctx.line_to(x, y)
                 }
@@ -203,6 +208,7 @@ impl Drawable<Polar> for Path<Polar> {
                     (cp2_bearing, cp2_magnitude), 
                     (bearing, magnitude),
                 ) => {
+                    if magnitude > geometry.max() { break }
                     let (cp1x, cp1y) = geometry.coords(cp1_bearing, cp1_magnitude);
                     let (cp2x, cp2y) = geometry.coords(cp2_bearing, cp2_magnitude);
                     let (x, y) = geometry.coords(bearing, magnitude);

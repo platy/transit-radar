@@ -66,6 +66,8 @@ struct Params {
     bus: bool,
     tram: bool,
     regio: bool,
+    start_time: Time,
+    end_time: Time,
 }
 
 fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
@@ -149,12 +151,15 @@ fn canvas_update(
             }
         }
         CanvasMsg::SyncMsg(msg) => {
+            let (_day, start_time) = day_time(&js_sys::Date::new_0());
             let query = serde_urlencoded::to_string(Params {
                 ubahn: model.controls.show_ubahn,
                 sbahn: model.controls.show_sbahn,
                 tram: model.controls.show_tram,
                 regio: model.controls.show_regional,
                 bus: model.controls.show_bus,
+                start_time,
+                end_time: start_time + Duration::minutes(40),
             })
             .unwrap();
             let url = format!("/data/U%20Voltastr.%20(Berlin)?{}", query);
@@ -358,9 +363,11 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
     // TODO don't use client time, instead start with the server time and increment using client clock, also this is local time
     let (day, start_time) = day_time(&js_sys::Date::new_0());
     let max_duration = Duration::minutes(30);
+    let end_time = start_time + max_duration;
+    let max_extra_search = Duration::minutes(10);
     let mut plotter = journey_graph::JourneyGraphPlotter::new(
         day,
-        Period::between(start_time, start_time + max_duration),
+        Period::between(start_time, end_time + max_extra_search),
         &data,
     );
     let origin = data.get_stop(&900000007103).unwrap();
@@ -381,7 +388,7 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
     if controls.show_regional {
         plotter.add_route_type(RouteType::RailwayService)
     }
-    let mut expires_time = start_time + max_duration;
+    let mut expires_time = end_time;
     let mut trips: HashMap<TripId, RadarTrip> = HashMap::new();
 
     let mut polar_drawables: Vec<Box<dyn Drawable<Polar>>> = vec![];
@@ -398,6 +405,9 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
                 stop,
                 earliest_arrival,
             } => {
+                if earliest_arrival > end_time + (expires_time - start_time) {
+                    break;
+                }
                 let station = Station {
                     coords: (stop.location, earliest_arrival),
                     name: stop.stop_name.replace(" (Berlin)", ""),
@@ -586,7 +596,7 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
                 let cp1 = next_control_point;
                 path.bezier_curve_to(cp1, to, to);
             }
-        } else {
+        } else if segments.len() == 1 {
             let segment = &segments[0];
             let to_bearing = geometry.bearing(segment.to).unwrap();
             let from_bearing = geometry.bearing(segment.from).unwrap();
@@ -689,6 +699,7 @@ impl Station<RadarGeometry> {
 impl Drawable<Polar> for Station<Polar> {
     fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d, geometry: &Polar) {
         let (bearing, magnitude) = self.coords;
+        if magnitude > geometry.max() { return }
         const STOP_RADIUS: f64 = 3.;
         let (cx, cy) = geometry.coords(bearing, magnitude);
         Circle::new((cx, cy), STOP_RADIUS).draw(ctx, &Cartesian);

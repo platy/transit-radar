@@ -65,7 +65,7 @@ async fn filtered_data_handler(
     session: Arc<Mutex<GTFSDataSession>>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let (day, now) = day_time(chrono::Utc::now());
-    let period = Period::between(now, now + Duration::minutes(30));
+    let period = Period::between(options.start_time, options.end_time);
 
     match decode(&name) {
         Ok(name) => {
@@ -107,6 +107,8 @@ pub struct RadarOptions {
     pub bus: bool,
     pub regio: bool,
     pub tram: bool,
+    pub start_time: Time,
+    pub end_time: Time,
 }
 
 fn filtered_data_route(

@@ -134,14 +134,15 @@
 [x] Only animate when the second changes and save cpu
 [x] Stations
 [x] Figure out scaling again for antialiasing
-[] Implement the draw with geometry as a parameter meaning the view wont have to be recalculated when the time changes (improves performance by having no allocations in the render process - application wont need render loop, it will only need to act on changes and researching)
+[x] Implement the draw with geometry as a parameter meaning the view wont have to be recalculated when the time changes (improves performance by having no allocations in the render process - application wont need render loop, it will only need to act on changes and researching)
 [x] curved paths not going to the end
-[] Search an extra amount (maximum will be the time to first departure) and then set expiry to that and filter when drawing
+[x] Search an extra amount (maximum will be the time to first departure) and then set expiry to that and filter when drawing
 [] Add station search
 [] Load data before its needed
 [] Colour properly
 [] Draw in proper order
 [] Connections at alex missing
+[] Debounce needs a timeout
 --
 [] Fast mode
 [] Fit on a mobile screen
