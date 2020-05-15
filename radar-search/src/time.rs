@@ -92,6 +92,10 @@ impl Time {
     pub fn second(self) -> u8 {
         (self.seconds_since_midnight % 60).try_into().unwrap()
     }
+
+    pub fn seconds_since_midnight(&self) -> u32 {
+        self.seconds_since_midnight
+    }
 }
 
 impl ser::Serialize for Time {

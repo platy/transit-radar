@@ -1,5 +1,4 @@
 use geo;
-use geo::algorithm::bearing::Bearing;
 use js_sys;
 use radar_search::journey_graph;
 use radar_search::search_data::*;
@@ -45,7 +44,7 @@ struct Model {
 impl Default for Model {
     fn default() -> Model {
         Model {
-            canvasser: canvasser::App::builder(canvas_update, canvas_view)
+            canvasser: canvasser::App::builder(canvas_update, canvas_draw)
                 .canvas_added(|| CanvasMsg::CanvasAdded)
                 .build(),
             controls: controls::Model::default(),
@@ -216,15 +215,15 @@ fn canvas_update(
 
 struct Radar {
     geometry: RadarGeometry,
-    trips: Vec<RadarTrip>,
-    stations: Vec<Station>,
+    drawables: Vec<Box<dyn Drawable>>,
+    polar_drawables: Vec<Box<dyn Drawable<Polar>>>,
     day: Day,
     expires_timestamp: u64,
 }
 
-struct Station {
-    location: geo::Point<f64>,
-    earliest_arrival: Time,
+#[derive(Clone)]
+struct Station<G: Geometry> {
+    coords: G::Coords,
     name: String,
 }
 
@@ -252,75 +251,72 @@ struct RadarGeometry {
     max_duration: Duration,
 }
 
+impl Geometry for RadarGeometry {
+    type Coords = (geo::Point<f64>, Time);
+}
+
 impl RadarGeometry {
-    fn coords(&self, point: geo::Point<f64>, time: Time) -> (f64, f64) {
-        let duration = time - self.start_time;
-        if duration.to_secs() < 0 {
-            self.cartesian_origin
+    fn bearing(&self, point: geo::Point<f64>) -> Option<Bearing> {
+        if point == self.geographic_origin {
+            None
         } else {
-            let bearing = self.geographic_origin.bearing(point);
-            let h = duration.to_secs() as f64 / self.max_duration.to_secs() as f64;
-            let x = h * (bearing * PI / 180.).cos();
-            let y = h * (bearing * PI / 180.).sin();
-            (
-                (x + 1.) * self.cartesian_origin.0,
-                (-y + 1.) * self.cartesian_origin.1,
-            )
+            Some(Bearing::degrees(geo::algorithm::bearing::Bearing::bearing(&self.geographic_origin, point)))
         }
     }
 
-    fn line_coords(
-        &self,
-        start_point: geo::Point<f64>,
-        start_time: Time,
-        end_point: geo::Point<f64>,
-        end_time: Time,
-    ) -> (f64, f64, f64, f64) {
-        let (x1, y1) = if start_point == self.geographic_origin {
-            // no bearing to the start point, so use the bearing of the end point
-            self.coords(end_point, start_time)
-        } else {
-            self.coords(start_point, start_time)
-        };
-        let (x2, y2) = self.coords(end_point, end_time);
-        (x1, y1, x2, y2)
-    }
+    fn initial_control_point(&self,
+        (start_point, start_time): (geo::Point<f64>, Time),
+        (end_point, end_time): (geo::Point<f64>, Time),
+    ) -> (Bearing, f64) {
+        assert!(end_time > start_time);
 
-    fn initial_control_point(&self, (x1, y1): (f64, f64), (x2, y2): (f64, f64)) -> (f64, f64) {
-        let (xo, yo) = self.cartesian_origin;
-        let angle_to_origin = (yo - y1).atan2(xo - x1);
-        let angle_to_next = (y2 - y1).atan2(x2 - x1);
-        // things to adjust and improve
-        let mut angle_between = angle_to_origin - angle_to_next;
-        if angle_between < 0. {
-            angle_between = 2. * PI + angle_between;
+        // this is here because the calculation is not independent of start_time, this means that the animation will be an approximation and will distort :(
+        let origin = self.start_time.seconds_since_midnight() as f64;
+
+        let start_bearing = self.bearing(start_point);
+        let end_bearing = self.bearing(end_point).unwrap();
+
+        let start_mag = start_time.seconds_since_midnight() as f64 - origin;
+        let end_mag = end_time.seconds_since_midnight() as f64 - origin;
+
+        if let Some(start_bearing) = start_bearing {
+            let mut bearing_difference = start_bearing.as_radians() - end_bearing.as_radians();
+            if bearing_difference > PI { bearing_difference -= 2.*PI }
+            else if bearing_difference < -PI { bearing_difference += 2.*PI }
+            // the magnitude at end_bearing of the tangent of start
+            let tangential_end_mag = start_mag / bearing_difference.cos();
+
+            // if a straight line between would travel closer to the origin than the start
+            if end_mag < tangential_end_mag {
+                // add a control point to prevent that
+                let cp_bearing = start_bearing.as_radians() - bearing_difference / 2.;
+                return (Bearing::radians(cp_bearing), origin + start_mag / (bearing_difference / 2.).cos())
+            }
         }
-        if angle_between < PI / 2. {
-            let cpangle = angle_to_origin - PI / 2.;
-            let cpmag = 0.5 * ((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2)).sqrt();
-            (x1 + cpmag * cpangle.cos(), y1 + cpmag * cpangle.sin())
-        } else if angle_between > 3. * PI / 2. {
-            let cpangle = angle_to_origin + PI / 2.;
-            let cpmag = 0.5 * ((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2)).sqrt();
-            (x1 + cpmag * cpangle.cos(), y1 + cpmag * cpangle.sin())
-        } else {
-            (x1, y1)
-        }
+        (start_bearing.unwrap_or(end_bearing), origin + start_mag)
     }
 
     fn control_points(
         &self,
-        (x1, y1): (f64, f64),
-        (x2, y2): (f64, f64),
-        (x3, y3): (f64, f64),
-    ) -> ((f64, f64), (f64, f64)) {
-        let cpfrac = 0.3;
+        (bearing1, magnitude1): (Bearing, f64),
+        (bearing2, magnitude2): (Bearing, f64),
+        (bearing3, magnitude3): (Bearing, f64),
+    ) -> ((Bearing, f64), (Bearing, f64)) {
+        // using a fake geometry to calculate these in cartsian space as I can't figure out the trigonometry from polar
+        // what happens as the stat time changes? does it skew weirdly?
+        let polar = Polar::new(self.start_time.seconds_since_midnight() as f64, self.max_duration.to_secs() as f64, (0., 0.), self.cartesian_origin.0);
+
+        let (x1, y1) = polar.coords(bearing1, magnitude1);
+        let (x2, y2) = polar.coords(bearing2, magnitude2);
+        let (x3, y3) = polar.coords(bearing3, magnitude3);
+
+        const CPFRAC: f64 = 0.3;
         let angle_to_prev = (y2 - y1).atan2(x2 - x1);
         let angle_to_next = (y2 - y3).atan2(x2 - x3);
         // things to adjust and improve
         let angle_to_tangent = (PI + angle_to_next + angle_to_prev) / 2.;
-        let cp2mag = -cpfrac * ((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)).sqrt();
-        let cp3mag = cpfrac * ((x2 - x3) * (x2 - x3) + (y2 - y3) * (y2 - y3)).sqrt();
+        let cp2mag = -CPFRAC * ((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)).sqrt();
+        let cp3mag = CPFRAC * ((x2 - x3) * (x2 - x3) + (y2 - y3) * (y2 - y3)).sqrt();
         // ^^ improve these
         let mut dx = angle_to_tangent.cos();
         let mut dy = angle_to_tangent.sin();
@@ -328,10 +324,14 @@ impl RadarGeometry {
             dy = -dy;
             dx = -dx;
         }
-        (
-            (x2 + (dx * cp2mag), y2 + (dy * cp2mag)),
-            (x2 + (dx * cp3mag), y2 + (dy * cp3mag)),
-        )
+        let (cp2x, cp2y) = (x2 + (dx * cp2mag), y2 + (dy * cp2mag));
+        let (cp3x, cp3y) = (x2 + (dx * cp3mag), y2 + (dy * cp3mag));
+        let cp = (
+            // the need to negate here is weird, maybe the above atan2 calls are the wrong way around
+            (Bearing::radians(-(cp2y).atan2(cp2x)), (cp2x * cp2x + cp2y * cp2y).sqrt() * self.max_duration.to_secs() as f64 / self.cartesian_origin.0 + self.start_time.seconds_since_midnight() as f64),
+            (Bearing::radians(-(cp3y).atan2(cp3x)), (cp3x * cp3x + cp3y * cp3y).sqrt() * self.max_duration.to_secs() as f64 / self.cartesian_origin.0 + self.start_time.seconds_since_midnight() as f64),
+        );
+        cp
     }
 }
 
@@ -391,9 +391,8 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
                 earliest_arrival,
             } => {
                 stations.push(Station {
-                    location: stop.location,
+                    coords: (stop.location, earliest_arrival),
                     name: stop.stop_name.replace(" (Berlin)", ""),
-                    earliest_arrival,
                 });
             }
             journey_graph::Item::JourneySegment {
@@ -474,20 +473,151 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
         start_time,
         max_duration,
     };
+
+
+    let drawables: Vec<Box<dyn Drawable>> = vec![Box::new(geometry.clone())];
+    let mut polar_drawables: Vec<Box<dyn Drawable<Polar>>> = vec![];
+    for RadarTrip {
+        connection,
+        // route_name: _,
+        route_type,
+        route_color,
+        segments,
+    } in trips.values()
+    {
+        {
+            let TripSegment {
+                from,
+                to,
+                departure_time,
+                arrival_time,
+            } = connection;
+            let mut path = Path::begin_path();
+            path.set_line_dash(&[2., 4.]);
+            path.set_stroke_style(route_color);
+
+            let mut to = to;
+            if *from == geometry.geographic_origin {
+                // connection is from origin meaning no natural bearing for it, we use the bearing to the next stop
+                to = &segments.first().expect("at least one segment in a trip").to;
+            }
+            path.move_to((geometry.bearing(*to).unwrap(), arrival_time.seconds_since_midnight() as f64));
+            path.line_to((geometry.bearing(*from).unwrap_or_default(), departure_time.seconds_since_midnight() as f64));
+            polar_drawables.push(Box::new(path));
+        }
+
+        let mut path = Path::begin_path();
+        use RouteType::*;
+        if [
+            Rail,
+            RailwayService,
+            SuburbanRailway,
+            UrbanRailway,
+            WaterTransportService,
+        ]
+        .contains(route_type)
+        {
+            path.set_line_width(2.);
+        } else {
+            // Bus, BusService, TramService,
+            path.set_line_width(1.);
+        }
+        path.set_line_dash(&[]);
+        path.set_stroke_style(&route_color);
+        if segments.len() > 1 {
+            let mut next_control_point = {
+                // first segment
+                let segment = &segments[0];
+                let to_bearing = geometry.bearing(segment.to).unwrap();
+                let from_bearing = geometry.bearing(segment.from).unwrap_or(to_bearing);
+                let from_mag = segment.departure_time.seconds_since_midnight() as f64;
+                let to_mag = segment.arrival_time.seconds_since_midnight() as f64;
+                path.move_to((from_bearing, from_mag));
+
+                let cp1 = geometry.initial_control_point(
+                    (segment.from, segment.departure_time),
+                    (segment.to, segment.arrival_time));
+                let (post_location, post_time) = if segments[1].from != segment.to {
+                    (segments[1].from, segments[1].departure_time)
+                } else {
+                    (segments[1].to, segments[1].arrival_time)
+                };
+                let post_bearing = geometry.bearing(post_location).unwrap();
+                let post_mag = post_time.seconds_since_midnight() as f64;
+
+                let (cp2, next_control_point) =
+                    geometry.control_points((from_bearing, from_mag), (to_bearing, to_mag), (post_bearing, post_mag));
+                path.bezier_curve_to(cp1, cp2, (to_bearing, to_mag));
+                next_control_point
+            };
+            // all the connecting segments
+            for window in segments.windows(3) {
+                if let &[pre, segment, post] = &window {
+                    let to_bearing = geometry.bearing(segment.to).unwrap();
+                    let from_bearing = geometry.bearing(segment.from).unwrap_or(to_bearing);
+                    let from_mag = segment.departure_time.seconds_since_midnight() as f64;
+                    let to_mag = segment.arrival_time.seconds_since_midnight() as f64;
+
+                    let pre_bearing = geometry.bearing(pre.to).unwrap();
+                    let pre_mag = pre.arrival_time.seconds_since_midnight() as f64;
+                    if pre_bearing != from_bearing && pre_mag != from_mag {
+                        // there is a gap in the route and so we move
+                        path.move_to((from_bearing, from_mag));
+                        next_control_point = geometry.initial_control_point((segment.from, segment.departure_time), (segment.to, segment.arrival_time));
+                    }
+                    let (post_location, post_time) = if post.from != segment.to {
+                        (post.from, post.departure_time)
+                    } else {
+                        (post.to, post.arrival_time)
+                    };
+                    let post_bearing = geometry.bearing(post_location).unwrap();
+                    let post_mag = post_time.seconds_since_midnight() as f64;
+                    let cp1 = next_control_point;
+                    let (cp2, next_control_point_tmp) =
+                        geometry.control_points((from_bearing, from_mag), (to_bearing, to_mag), (post_bearing, post_mag));
+                    path.bezier_curve_to(cp1, cp2, (to_bearing, to_mag));
+                    next_control_point = next_control_point_tmp;
+                } else {
+                    panic!("unusual window");
+                }
+            }
+            {
+                // draw the last curve
+                let end = segments.last().unwrap();
+                let to = (
+                    geometry.bearing(end.to).unwrap(),
+                    end.arrival_time.seconds_since_midnight() as f64,
+                );
+                let cp1 = next_control_point;
+                path.bezier_curve_to(cp1, to, to);
+            }
+        } else {
+            let segment = &segments[0];
+            let to_bearing = geometry.bearing(segment.to).unwrap();
+            let from_bearing = geometry.bearing(segment.from).unwrap();
+
+            path.move_to((from_bearing, segment.departure_time.seconds_since_midnight() as f64));
+            path.line_to((to_bearing, segment.arrival_time.seconds_since_midnight() as f64));
+        }
+        polar_drawables.push(Box::new(path));
+    }
+
+    polar_drawables.extend(stations.into_iter().map::<Box<dyn Drawable<Polar>>, _>(|s| Box::new(s.clone().to_polar(&geometry))));
+
     let radar = Radar {
         day,
         expires_timestamp: expires_timestamp.value_of() as u64,
         geometry,
-        trips: trips.into_iter().map(|(_k, v)| v).collect(),
-        stations,
+        drawables,
+        polar_drawables,
     };
     radar
 }
 
-use canvasser::{Drawable, Path, Circle, Text};
+use canvasser::draw::*;
 
 impl Drawable for RadarGeometry {
-    fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d) {
+    fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d, _: &Cartesian) {
         let (origin_x, origin_y) = self.cartesian_origin;
         ctx.set_line_dash(&js_sys::Array::of2(&10f64.into(), &10f64.into()).into())
             .unwrap();
@@ -515,7 +645,7 @@ impl Drawable for RadarGeometry {
     }
 }
 
-fn canvas_view(model: &CanvasModel) -> Vec<Box<dyn Drawable>> {
+fn canvas_draw(model: &CanvasModel, ctx: &web_sys::CanvasRenderingContext2d) -> Vec<Box<dyn Drawable>> {
     if model.radar.is_none() {
         return vec![];
     }
@@ -523,149 +653,45 @@ fn canvas_view(model: &CanvasModel) -> Vec<Box<dyn Drawable>> {
         day: _,
         expires_timestamp: _,
         geometry,
-        trips,
-        stations,
+        drawables,
+        polar_drawables,
     } = model.radar.as_ref().unwrap();
 
-    let mut paths: Vec<Box<dyn Drawable>> = vec![Box::new(geometry.clone())];
-    for RadarTrip {
-        connection,
-        // route_name: _,
-        route_type,
-        route_color,
-        segments,
-    } in trips
-    {
-        {
-            let TripSegment {
-                from,
-                to,
-                departure_time,
-                arrival_time,
-            } = connection;
-            let mut path = Path::begin_path();
-            path.set_line_dash(&[2., 4.]);
-            path.set_stroke_style(route_color);
+    drawables.draw(ctx, &Cartesian);
+    polar_drawables.draw(ctx, &Polar::new(
+        geometry.start_time.seconds_since_midnight() as f64, 
+        geometry.max_duration.to_secs() as f64, 
+        geometry.cartesian_origin,
+        geometry.cartesian_origin.0, //hack
+    ));
+    vec![]
+}
 
-            let mut to = to;
-            if *from == geometry.geographic_origin {
-                // connection is from origin meaning no natural bearing for it, we use the bearing to the next stop
-                to = &segments.first().expect("at least one segment in a trip").to;
-            }
-            let (from_x, from_y, to_x, to_y) =
-                geometry.line_coords(*from, *departure_time, *to, *arrival_time);
-            path.move_to(to_x, to_y);
-            path.line_to(from_x, from_y);
-            paths.push(Box::new(path));
-        }
-
-        let mut path = Path::begin_path();
-        use RouteType::*;
-        if [
-            Rail,
-            RailwayService,
-            SuburbanRailway,
-            UrbanRailway,
-            WaterTransportService,
-        ]
-        .contains(route_type)
-        {
-            path.set_line_width(2.);
-        } else {
-            // Bus, BusService, TramService,
-            path.set_line_width(1.);
-        }
-        path.set_line_dash(&[]);
-        path.set_stroke_style(&route_color);
-        if segments.len() > 1 {
-            let mut next_control_point = {
-                // first segment
-                let segment = &segments[0];
-                let (from_x, from_y, to_x, to_y) = geometry.line_coords(
-                    segment.from,
-                    segment.departure_time,
-                    segment.to,
-                    segment.arrival_time,
-                );
-                path.move_to(from_x, from_y);
-                let (cp1x, cp1y) = geometry.initial_control_point((from_x, from_y), (to_x, to_y));
-                let (post_location, post_time) = if segments[1].from != segment.to {
-                    (segments[1].from, segments[1].departure_time)
-                } else {
-                    (segments[1].to, segments[1].arrival_time)
-                };
-                let post_xy = geometry.coords(post_location, post_time);
-                let ((cp2x, cp2y), next_control_point) =
-                    geometry.control_points((from_x, from_y), (to_x, to_y), post_xy);
-                path.bezier_curve_to(cp1x, cp1y, cp2x, cp2y, to_x, to_y);
-                next_control_point
-            };
-            // all the connecting segments
-            for window in segments.windows(3) {
-                if let &[pre, segment, post] = &window {
-                    let (from_x, from_y, to_x, to_y) = geometry.line_coords(
-                        segment.from,
-                        segment.departure_time,
-                        segment.to,
-                        segment.arrival_time,
-                    );
-                    let (pre_x, pre_y) =
-                        geometry.coords(pre.to, pre.arrival_time);
-                    if pre_x != from_x && pre_y != from_y {
-                        // there is a gap in the route and so we move
-                        path.move_to(from_x, from_y);
-                    }
-                    let (post_location, post_time) = if post.from != segment.to {
-                        (post.from, post.departure_time)
-                    } else {
-                        (post.to, post.arrival_time)
-                    };
-                    let post_xy =
-                        geometry.coords(post_location, post_time);
-                    let (cp1x, cp1y) = next_control_point;
-                    let ((cp2x, cp2y), next_control_point_tmp) =
-                        geometry.control_points((from_x, from_y), (to_x, to_y), post_xy);
-                    path.bezier_curve_to(cp1x, cp1y, cp2x, cp2y, to_x, to_y);
-                    next_control_point = next_control_point_tmp;
-                } else {
-                    panic!("unusual window");
-                }
-            }
-            {
-                // draw the last curve
-                let end = segments.last().unwrap();
-                let (to_x, to_y) = geometry.coords(
-                    end.to,
-                    end.arrival_time,
-                );
-                let (cp1x, cp1y) = next_control_point;
-                path.bezier_curve_to(cp1x, cp1y, to_x, to_y, to_x, to_y);
-            }
-        } else {
-            let segment = &segments[0];
-            let (from_x, from_y, to_x, to_y) = geometry.line_coords(
-                segment.from,
-                segment.departure_time,
-                segment.to,
-                segment.arrival_time,
-            );
-            path.move_to(from_x, from_y);
-            path.line_to(to_x, to_y);
-        }
-        paths.push(Box::new(path));
-    }
-    
-    for Station {
-        location,
-        earliest_arrival,
-        name,
-    } in stations {
+impl Drawable for Station<Cartesian> {
+    fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d, _: &Cartesian) {
         const STOP_RADIUS: f64 = 3.;
-        let (cx, cy) = geometry.coords(*location, *earliest_arrival);
-        paths.push(Box::new(vec![
-            Box::new(Circle::new(cx, cy, STOP_RADIUS)) as Box<dyn Drawable>,
-            Box::new(Text::new(cx + STOP_RADIUS + 6., cy + 4., name.clone())),
-        ]));
+        let (cx, cy) = self.coords;
+        Circle::new((cx, cy), STOP_RADIUS).draw(ctx, &Cartesian);
+        Text::new(cx + STOP_RADIUS + 6., cy + 4., self.name.clone()).draw(ctx, &Cartesian);
     }
-    paths
+}
+
+impl Station<RadarGeometry> {
+    fn to_polar(self, geometry: &RadarGeometry) -> Station<Polar> {
+        let (point, time) = self.coords;
+        Station {
+            coords: (geometry.bearing(point).unwrap_or_default(), time.seconds_since_midnight() as f64),
+            name: self.name,
+        }
+    }
+}
+
+impl Drawable<Polar> for Station<Polar> {
+    fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d, geometry: &Polar) {
+        let (bearing, magnitude) = self.coords;
+        const STOP_RADIUS: f64 = 3.;
+        let (cx, cy) = geometry.coords(bearing, magnitude);
+        Circle::new((cx, cy), STOP_RADIUS).draw(ctx, &Cartesian);
+        Text::new(cx + STOP_RADIUS + 6., cy + 4., self.name.clone()).draw(ctx, &Cartesian);
+    }
 }

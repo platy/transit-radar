@@ -13,11 +13,8 @@ use seed::util;
 use seed::util::ClosureNew;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
-use std::iter::FromIterator;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
-use wasm_bindgen::JsValue;
-use web_sys::CanvasRenderingContext2d;
 use web_sys::HtmlCanvasElement;
 
 mod cmd_manager;
@@ -27,7 +24,9 @@ mod message_mapper;
 mod orders;
 mod render_info;
 mod scheduler;
+pub mod draw;
 
+pub use draw::Drawable;
 pub use cmd_manager::CmdManager;
 use effects::Effect;
 use mailbox::Mailbox;
@@ -39,7 +38,7 @@ pub type UpdateFn<Ms, Mdl, Drwble, GMs> =
     fn(Ms, &mut Mdl, &mut OrdersContainer<Ms, Mdl, Drwble, GMs>);
 pub type SinkFn<Ms, Mdl, Drwble, GMs> =
     fn(GMs, &mut Mdl, &mut OrdersContainer<Ms, Mdl, Drwble, GMs>);
-pub type ViewFn<Mdl, Drwble> = fn(&Mdl) -> Drwble;
+pub type ViewFn<Mdl, Drwble> = fn(&Mdl, &web_sys::CanvasRenderingContext2d) -> Drwble;
 
 pub struct UndefinedGMsg;
 
@@ -279,8 +278,7 @@ impl<Ms, Mdl, Drwble: Drawable + 'static, GMs: 'static> App<Ms, Mdl, Drwble, GMs
 
         //     let data = model.sync.get().unwrap();
 
-        let new = (self.cfg.view)(&self.data.model.borrow());
-        new.draw(&ctx);
+        (self.cfg.view)(&self.data.model.borrow(), &ctx);
         // }
 
         // // Create a new vdom: The top element, and all its children. Does not yet
@@ -417,142 +415,4 @@ where
 
     /// the update fn will be called with this each time that the canvas is added to the page
     canvas_added: Option<fn() -> Ms>,
-}
-
-pub trait Drawable {
-    fn draw(&self, ctx: &CanvasRenderingContext2d);
-}
-
-impl<T> Drawable for Vec<T>
-where
-    T: Drawable,
-{
-    fn draw(&self, ctx: &CanvasRenderingContext2d) {
-        for i in self {
-            i.draw(ctx);
-        }
-    }
-}
-
-impl<T: ?Sized> Drawable for Box<T>
-where
-    T: Drawable,
-{
-    fn draw(&self, ctx: &CanvasRenderingContext2d) {
-        self.as_ref().draw(ctx);
-    }
-}
-
-pub struct Path {
-    line_width: f64,
-    line_dash: Vec<f64>,
-    stroke_style: Option<String>,
-    ops: Vec<PathOp>,
-}
-
-enum PathOp {
-    MoveTo(f64, f64),
-    LineTo(f64, f64),
-    BezierCurveTo(f64, f64, f64, f64, f64, f64),
-}
-
-impl Path {
-    pub fn begin_path() -> Path {
-        Path {
-            line_width: 1.,
-            line_dash: vec![],
-            stroke_style: None,
-            ops: vec![],
-        }
-    }
-
-    pub fn set_line_width(&mut self, line_width: f64) {
-        self.line_width = line_width;
-    }
-
-    pub fn set_line_dash(&mut self, line_dash: &[f64]) {
-        self.line_dash = line_dash.into();
-    }
-
-    pub fn set_stroke_style(&mut self, stroke_style: &str) {
-        self.stroke_style = Some(stroke_style.to_owned());
-    }
-
-    pub fn move_to(&mut self, x: f64, y: f64) {
-        self.ops.push(PathOp::MoveTo(x, y));
-    }
-
-    pub fn line_to(&mut self, x: f64, y: f64) {
-        self.ops.push(PathOp::LineTo(x, y));
-    }
-
-    pub fn bezier_curve_to(&mut self, cp1x: f64, cp1y: f64, cp2x: f64, cp2y: f64, x: f64, y: f64) {
-        self.ops
-            .push(PathOp::BezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y))
-    }
-}
-
-impl Drawable for Path {
-    fn draw(&self, ctx: &CanvasRenderingContext2d) {
-        ctx.begin_path();
-        ctx.set_line_width(self.line_width);
-        ctx.set_line_dash(&js_sys::Array::from_iter(
-            self.line_dash.iter().cloned().map(JsValue::from_f64),
-        ))
-        .unwrap();
-        if let Some(stroke_style) = &self.stroke_style {
-            ctx.set_stroke_style(&JsValue::from_str(&stroke_style));
-        }
-
-        for op in &self.ops {
-            match op {
-                &PathOp::MoveTo(x, y) => ctx.move_to(x, y),
-                &PathOp::LineTo(x, y) => ctx.line_to(x, y),
-                &PathOp::BezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y) => {
-                    ctx.bezier_curve_to(cp1x, cp1y, cp2x, cp2y, x, y)
-                }
-            }
-        }
-        if self.stroke_style.is_some() {
-            ctx.stroke();
-        }
-    }
-}
-
-pub struct Circle {
-    r: f64,
-    cx: f64,
-    cy: f64,
-}
-
-impl Circle {
-    pub fn new(cx: f64, cy: f64, r: f64) -> Circle {
-        Circle { cx, cy, r }
-    }
-}
-
-impl Drawable for Circle {
-    fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d) {
-        ctx.begin_path();
-        ctx.arc(self.cx, self.cy, self.r, 0., 2. * std::f64::consts::PI).unwrap();
-        ctx.fill();
-    }
-}
-
-pub struct Text {
-    x: f64,
-    y: f64,
-    text: String,
-}
-
-impl Text {
-    pub fn new(x: f64, y: f64, text: String) -> Text {
-        Text { x, y, text }
-    }
-}
-
-impl Drawable for Text {
-    fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d) {
-        ctx.fill_text(&self.text, self.x, self.y).unwrap();
-    }
 }
