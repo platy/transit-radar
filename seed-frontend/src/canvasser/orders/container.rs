@@ -3,7 +3,6 @@ use super::{
         effects::Effect,
         App,
         CmdManager,
-        Drawable,
         RenderInfo, // render_timestamp_delta::RenderTimestampDelta, CmdHandle,
         // Notification, ShouldRender, StreamHandle, StreamManager, SubHandle
         UndefinedGMsg,
@@ -47,14 +46,14 @@ macro_rules! map_callback_return_to_option_ms {
 }
 
 #[allow(clippy::module_name_repetitions)]
-pub struct OrdersContainer<Ms: 'static, Mdl: 'static, Drwble: Drawable, GMs = UndefinedGMsg> {
+pub struct OrdersContainer<Ms: 'static, Mdl: 'static, GMs = UndefinedGMsg> {
     pub(crate) should_render: bool,
     pub(crate) effects: VecDeque<Effect<Ms, GMs>>,
-    app: App<Ms, Mdl, Drwble, GMs>,
+    app: App<Ms, Mdl, GMs>,
 }
 
-impl<Ms, Mdl, Drwble: Drawable, GMs> OrdersContainer<Ms, Mdl, Drwble, GMs> {
-    pub fn new(app: App<Ms, Mdl, Drwble, GMs>) -> Self {
+impl<Ms, Mdl, GMs> OrdersContainer<Ms, Mdl, GMs> {
+    pub fn new(app: App<Ms, Mdl, GMs>) -> Self {
         Self {
             should_render: true,
             effects: VecDeque::new(),
@@ -68,18 +67,17 @@ impl<Ms, Mdl, Drwble: Drawable, GMs> OrdersContainer<Ms, Mdl, Drwble, GMs> {
     // }
 }
 
-impl<Ms: 'static, Mdl, Drwble: Drawable + 'static, GMs: 'static> Orders<Ms, GMs>
-    for OrdersContainer<Ms, Mdl, Drwble, GMs>
+impl<Ms: 'static, Mdl, GMs: 'static> Orders<Ms, GMs>
+    for OrdersContainer<Ms, Mdl, GMs>
 {
     type AppMs = Ms;
     type Mdl = Mdl;
-    type Drwble = Drwble;
 
     #[allow(clippy::redundant_closure)]
     fn proxy<ChildMs: 'static>(
         &mut self,
         f: impl FnOnce(ChildMs) -> Ms + 'static + Clone,
-    ) -> OrdersProxy<ChildMs, Ms, Mdl, Drwble, GMs> {
+    ) -> OrdersProxy<ChildMs, Ms, Mdl, GMs> {
         OrdersProxy::new(self, move |child_ms| f.clone()(child_ms))
     }
 
@@ -169,7 +167,7 @@ impl<Ms: 'static, Mdl, Drwble: Drawable + 'static, GMs: 'static> Orders<Ms, GMs>
     //     CmdManager::perform_cmd_with_handle(cmd)
     // }
 
-    fn clone_app(&self) -> App<Self::AppMs, Self::Mdl, Self::Drwble, GMs> {
+    fn clone_app(&self) -> App<Self::AppMs, Self::Mdl, GMs> {
         self.app.clone()
     }
 

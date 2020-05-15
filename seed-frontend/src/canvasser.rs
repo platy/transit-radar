@@ -34,11 +34,11 @@ pub use message_mapper::MessageMapper;
 pub use orders::*;
 pub use render_info::RenderInfo;
 
-pub type UpdateFn<Ms, Mdl, Drwble, GMs> =
-    fn(Ms, &mut Mdl, &mut OrdersContainer<Ms, Mdl, Drwble, GMs>);
-pub type SinkFn<Ms, Mdl, Drwble, GMs> =
-    fn(GMs, &mut Mdl, &mut OrdersContainer<Ms, Mdl, Drwble, GMs>);
-pub type ViewFn<Mdl, Drwble> = fn(&Mdl, &web_sys::CanvasRenderingContext2d) -> Drwble;
+pub type UpdateFn<Ms, Mdl, GMs> =
+    fn(Ms, &mut Mdl, &mut OrdersContainer<Ms, Mdl, GMs>);
+pub type SinkFn<Ms, Mdl, GMs> =
+    fn(GMs, &mut Mdl, &mut OrdersContainer<Ms, Mdl, GMs>);
+pub type DrawFn<Mdl> = fn(&Mdl, &web_sys::CanvasRenderingContext2d);
 
 pub struct UndefinedGMsg;
 
@@ -49,14 +49,14 @@ pub struct UndefinedGMsg;
 ///    canvas: App,
 /// }
 /// ```
-pub struct App<Ms: 'static, Mdl: 'static, Drwble: Drawable, GMs = UndefinedGMsg> {
+pub struct App<Ms: 'static, Mdl: 'static, GMs = UndefinedGMsg> {
     /// App configuration available for the entire application lifetime.
-    cfg: Rc<AppCfg<Ms, Mdl, Drwble, GMs>>,
+    cfg: Rc<AppCfg<Ms, Mdl, GMs>>,
     /// Mutable app state.
     data: Rc<AppData<Ms, Mdl>>,
 }
 
-impl<Ms, Mdl, Drwble: Drawable, GMs> Clone for App<Ms, Mdl, Drwble, GMs> {
+impl<Ms, Mdl, GMs> Clone for App<Ms, Mdl, GMs> {
     fn clone(&self) -> Self {
         Self {
             cfg: Rc::clone(&self.cfg),
@@ -66,21 +66,21 @@ impl<Ms, Mdl, Drwble: Drawable, GMs> Clone for App<Ms, Mdl, Drwble, GMs> {
 }
 
 /// Used to create and store initial app configuration, ie items passed by the app creator.
-pub struct Builder<Ms: 'static, Mdl: 'static, Drwble: Drawable, GMs> {
-    update: UpdateFn<Ms, Mdl, Drwble, GMs>,
-    sink: Option<SinkFn<Ms, Mdl, Drwble, GMs>>,
-    view: ViewFn<Mdl, Drwble>,
+pub struct Builder<Ms: 'static, Mdl: 'static, GMs> {
+    update: UpdateFn<Ms, Mdl, GMs>,
+    sink: Option<SinkFn<Ms, Mdl, GMs>>,
+    view: DrawFn<Mdl>,
 
     canvas_added: Option<fn() -> Ms>,
 }
 
-impl<Ms, Mdl: Default, D: Drawable, GMs> Builder<Ms, Mdl, D, GMs> {
+impl<Ms, Mdl: Default, GMs> Builder<Ms, Mdl, GMs> {
     pub fn canvas_added(mut self, f: fn() -> Ms) -> Self {
         self.canvas_added = Some(f);
         self
     }
 
-    pub fn build(self) -> App<Ms, Mdl, D, GMs> {
+    pub fn build(self) -> App<Ms, Mdl, GMs> {
         App {
             cfg: Rc::new(AppCfg {
                 canvas: ElRef::new(),
@@ -101,11 +101,11 @@ impl<Ms, Mdl: Default, D: Drawable, GMs> Builder<Ms, Mdl, D, GMs> {
     }
 }
 
-impl<Ms, Mdl, Drwble: Drawable + 'static, GMs: 'static> App<Ms, Mdl, Drwble, GMs> {
+impl<Ms, Mdl, GMs: 'static> App<Ms, Mdl, GMs> {
     pub fn builder(
-        update: UpdateFn<Ms, Mdl, Drwble, GMs>,
-        view: ViewFn<Mdl, Drwble>,
-    ) -> Builder<Ms, Mdl, Drwble, GMs> {
+        update: UpdateFn<Ms, Mdl, GMs>,
+        view: DrawFn<Mdl>,
+    ) -> Builder<Ms, Mdl, GMs> {
         Builder {
             update,
             sink: None,
@@ -401,15 +401,14 @@ impl Default for AnimationFrameHandle {
     }
 }
 
-pub struct AppCfg<Ms, Mdl, Drwble, GMs>
+pub struct AppCfg<Ms, Mdl, GMs>
 where
     Ms: 'static,
     Mdl: 'static,
-    Drwble: Drawable,
 {
-    update: UpdateFn<Ms, Mdl, Drwble, GMs>,
-    view: ViewFn<Mdl, Drwble>,
-    sink: Option<SinkFn<Ms, Mdl, Drwble, GMs>>,
+    update: UpdateFn<Ms, Mdl, GMs>,
+    view: DrawFn<Mdl>,
+    sink: Option<SinkFn<Ms, Mdl, GMs>>,
 
     canvas: ElRef<HtmlCanvasElement>,
 

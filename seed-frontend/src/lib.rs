@@ -37,7 +37,7 @@ fn after_mount(_: Url, orders: &mut impl Orders<Msg>) -> AfterMount<Model> {
 ///         }
 
 struct Model {
-    canvasser: canvasser::App<CanvasMsg, CanvasModel, Vec<Box<dyn Drawable>>>, // going to need to find a workaround to avoid the view return type in here
+    canvasser: canvasser::App<CanvasMsg, CanvasModel>,
     controls: controls::Model,
 }
 
@@ -383,17 +383,26 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
     }
     let mut expires_time = start_time + max_duration;
     let mut trips: HashMap<TripId, RadarTrip> = HashMap::new();
-    let mut stations = vec![];
+
+    let mut polar_drawables: Vec<Box<dyn Drawable<Polar>>> = vec![];
+    let geometry = RadarGeometry {
+        cartesian_origin: (500., 500.),
+        geographic_origin: origin.location,
+        start_time,
+        max_duration,
+    };
+
     for item in plotter {
         match item {
             journey_graph::Item::Station {
                 stop,
                 earliest_arrival,
             } => {
-                stations.push(Station {
+                let station = Station {
                     coords: (stop.location, earliest_arrival),
                     name: stop.stop_name.replace(" (Berlin)", ""),
-                });
+                };
+                polar_drawables.push(Box::new(station.to_polar(&geometry)));
             }
             journey_graph::Item::JourneySegment {
                 departure_time: _,
@@ -462,21 +471,7 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
             }
         }
     }
-    let expires_timestamp = js_sys::Date::new_0();
-    expires_timestamp.set_hours(expires_time.hour() as u32);
-    expires_timestamp.set_minutes(expires_time.minute() as u32);
-    expires_timestamp.set_seconds(expires_time.second() as u32 + 1); // expire once this second is over
-    expires_timestamp.set_milliseconds(0);
-    let geometry = RadarGeometry {
-        cartesian_origin: (500., 500.),
-        geographic_origin: origin.location,
-        start_time,
-        max_duration,
-    };
 
-
-    let drawables: Vec<Box<dyn Drawable>> = vec![Box::new(geometry.clone())];
-    let mut polar_drawables: Vec<Box<dyn Drawable<Polar>>> = vec![];
     for RadarTrip {
         connection,
         // route_name: _,
@@ -602,7 +597,13 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
         polar_drawables.push(Box::new(path));
     }
 
-    polar_drawables.extend(stations.into_iter().map::<Box<dyn Drawable<Polar>>, _>(|s| Box::new(s.clone().to_polar(&geometry))));
+    let drawables: Vec<Box<dyn Drawable>> = vec![Box::new(geometry.clone())];
+
+    let expires_timestamp = js_sys::Date::new_0();
+    expires_timestamp.set_hours(expires_time.hour() as u32);
+    expires_timestamp.set_minutes(expires_time.minute() as u32);
+    expires_timestamp.set_seconds(expires_time.second() as u32 + 1); // expire once this second is over
+    expires_timestamp.set_milliseconds(0);
 
     let radar = Radar {
         day,
@@ -645,9 +646,9 @@ impl Drawable for RadarGeometry {
     }
 }
 
-fn canvas_draw(model: &CanvasModel, ctx: &web_sys::CanvasRenderingContext2d) -> Vec<Box<dyn Drawable>> {
+fn canvas_draw(model: &CanvasModel, ctx: &web_sys::CanvasRenderingContext2d) {
     if model.radar.is_none() {
-        return vec![];
+        return;
     }
     let Radar {
         day: _,
@@ -664,7 +665,6 @@ fn canvas_draw(model: &CanvasModel, ctx: &web_sys::CanvasRenderingContext2d) -> 
         geometry.cartesian_origin,
         geometry.cartesian_origin.0, //hack
     ));
-    vec![]
 }
 
 impl Drawable for Station<Cartesian> {

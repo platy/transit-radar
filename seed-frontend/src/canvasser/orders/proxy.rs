@@ -2,7 +2,6 @@ use super::{
     super::{
         App,
         CmdManager,
-        Drawable,
         RenderInfo, // CmdHandle, StreamHandle, StreamManager, SubHandle,
         UndefinedGMsg,
     },
@@ -48,18 +47,17 @@ pub struct OrdersProxy<
     Ms,
     AppMs: 'static,
     Mdl: 'static,
-    Drwble: Drawable,
     GMs: 'static = UndefinedGMsg,
 > {
-    orders_container: &'a mut OrdersContainer<AppMs, Mdl, Drwble, GMs>,
+    orders_container: &'a mut OrdersContainer<AppMs, Mdl, GMs>,
     f: Rc<dyn Fn(Ms) -> AppMs>,
 }
 
-impl<'a, Ms: 'static, AppMs: 'static, Mdl, Drwble: Drawable, GMs>
-    OrdersProxy<'a, Ms, AppMs, Mdl, Drwble, GMs>
+impl<'a, Ms: 'static, AppMs: 'static, Mdl, GMs>
+    OrdersProxy<'a, Ms, AppMs, Mdl, GMs>
 {
     pub fn new(
-        orders_container: &'a mut OrdersContainer<AppMs, Mdl, Drwble, GMs>,
+        orders_container: &'a mut OrdersContainer<AppMs, Mdl, GMs>,
         f: impl Fn(Ms) -> AppMs + 'static,
     ) -> Self {
         OrdersProxy {
@@ -69,17 +67,16 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, Drwble: Drawable, GMs>
     }
 }
 
-impl<'a, Ms: 'static, AppMs: 'static, Mdl, Drwble: Drawable + 'static, GMs> Orders<Ms, GMs>
-    for OrdersProxy<'a, Ms, AppMs, Mdl, Drwble, GMs>
+impl<'a, Ms: 'static, AppMs: 'static, Mdl, GMs> Orders<Ms, GMs>
+    for OrdersProxy<'a, Ms, AppMs, Mdl, GMs>
 {
     type AppMs = AppMs;
     type Mdl = Mdl;
-    type Drwble = Drwble;
 
     fn proxy<ChildMs: 'static>(
         &mut self,
         f: impl FnOnce(ChildMs) -> Ms + 'static + Clone,
-    ) -> OrdersProxy<ChildMs, AppMs, Mdl, Drwble, GMs> {
+    ) -> OrdersProxy<ChildMs, AppMs, Mdl, GMs> {
         let previous_f = self.f.clone();
         OrdersProxy {
             orders_container: self.orders_container,
@@ -180,7 +177,7 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, Drwble: Drawable + 'static, GMs> Orde
     //     self.orders_container.perform_g_cmd_with_handle(g_cmd)
     // }
 
-    fn clone_app(&self) -> App<Self::AppMs, Self::Mdl, Self::Drwble, GMs> {
+    fn clone_app(&self) -> App<Self::AppMs, Self::Mdl, GMs> {
         self.orders_container.clone_app()
     }
 

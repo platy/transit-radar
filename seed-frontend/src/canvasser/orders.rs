@@ -1,4 +1,4 @@
-use super::{App, Drawable, RenderInfo, UndefinedGMsg}; // CmdHandle, StreamHandle, SubHandle,
+use super::{App, RenderInfo, UndefinedGMsg}; // CmdHandle, StreamHandle, SubHandle,
                                                        // use futures::stream::Stream;
 use std::future::Future;
 
@@ -14,7 +14,6 @@ pub use proxy::OrdersProxy;
 pub trait Orders<Ms: 'static, GMs = UndefinedGMsg> {
     type AppMs: 'static;
     type Mdl: 'static;
-    type Drwble: Drawable + 'static;
 
     /// Automatically map message type. It allows you to pass `Orders` into child module.
     ///
@@ -28,7 +27,7 @@ pub trait Orders<Ms: 'static, GMs = UndefinedGMsg> {
     fn proxy<ChildMs: 'static>(
         &mut self,
         f: impl FnOnce(ChildMs) -> Ms + 'static + Clone,
-    ) -> OrdersProxy<ChildMs, Self::AppMs, Self::Mdl, Self::Drwble, GMs>;
+    ) -> OrdersProxy<ChildMs, Self::AppMs, Self::Mdl, GMs>;
 
     /// Schedule web page rerender after model update. It's the default behaviour.
     /// No effect if animation is enabled
@@ -139,7 +138,7 @@ pub trait Orders<Ms: 'static, GMs = UndefinedGMsg> {
     // ) -> CmdHandle;
 
     /// Get app instance. Cloning is cheap because `App` contains only `Rc` fields.
-    fn clone_app(&self) -> App<Self::AppMs, Self::Mdl, Self::Drwble, GMs>;
+    fn clone_app(&self) -> App<Self::AppMs, Self::Mdl, GMs>;
 
     /// Get the function that maps module's `Msg` to app's (root's) one.
     ///
