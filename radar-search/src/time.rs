@@ -76,6 +76,12 @@ impl Time {
         }
     }
 
+    pub fn from_seconds_since_midnight(seconds: u32) -> Time {
+        Time {
+            seconds_since_midnight: seconds,
+        }
+    }
+
     /// get the clock hour, it can be over 23
     pub fn hour(self) -> u8 {
         (self.seconds_since_midnight / 60 / 60).try_into().unwrap()

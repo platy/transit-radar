@@ -137,6 +137,7 @@ enum CanvasMsg {
     Search,
     SearchExpires,
     ControlsChange(controls::Model),
+    LoadDataAhead(Time),
 }
 
 fn canvas_update(
@@ -173,19 +174,46 @@ fn canvas_update(
             }
         }
 
+        CanvasMsg::LoadDataAhead(start_time) => {
+            log!("load data ahead");
+            let query = serde_urlencoded::to_string(Params {
+                ubahn: model.controls.show_ubahn,
+                sbahn: model.controls.show_sbahn,
+                tram: model.controls.show_tram,
+                regio: model.controls.show_regional,
+                bus: model.controls.show_bus,
+                start_time,
+                end_time: start_time + Duration::minutes(40),
+            })
+            .unwrap();
+            let url = format!("/data/U%20Voltastr.%20(Berlin)?{}", query);
+            if sync::update(
+                sync::Msg::FetchData,
+                &mut model.sync,
+                url,
+                &mut orders.proxy(CanvasMsg::SyncMsg),
+            ) {
+                orders.send_msg(CanvasMsg::Search);
+            }
+        }
+
         CanvasMsg::Search => {
             let result = search(model.sync.get().unwrap(), &model.controls);
+            let expires_date = js_sys::Date::new_0();
+            expires_date.set_time(result.expires_timestamp as f64);
+            let next_search_time = day_time(&expires_date).1;
+            orders.schedule_msg(result.expires_timestamp - 15_000, CanvasMsg::LoadDataAhead(next_search_time));
             orders.schedule_msg(result.expires_timestamp, CanvasMsg::SearchExpires);
             model.radar = Some(result);
         }
 
         CanvasMsg::SearchExpires => {
+            log!("Search expires");
             let date = js_sys::Date::new_0();
             let radar = model.radar.as_mut().unwrap();
             // check whether it is actually expired, it may have been updated before this message was scheduled
             if date.value_of() as u64 > radar.expires_timestamp {
                 orders.send_msg(CanvasMsg::Search);
-                orders.send_msg(CanvasMsg::SyncMsg(sync::Msg::FetchData));
             }
         }
 
@@ -273,7 +301,7 @@ impl RadarGeometry {
         (start_point, start_time): (geo::Point<f64>, Time),
         (end_point, end_time): (geo::Point<f64>, Time),
     ) -> (Bearing, f64) {
-        assert!(end_time > start_time);
+        assert!(end_time >= start_time);
 
         // this is here because the calculation is not independent of start_time, this means that the animation will be an approximation and will distort :(
         let origin = self.start_time.seconds_since_midnight() as f64;
