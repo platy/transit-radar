@@ -137,13 +137,14 @@
 [x] Implement the draw with geometry as a parameter meaning the view wont have to be recalculated when the time changes (improves performance by having no allocations in the render process - application wont need render loop, it will only need to act on changes and researching)
 [x] curved paths not going to the end
 [x] Search an extra amount (maximum will be the time to first departure) and then set expiry to that and filter when drawing
+[x] Load data before its needed
+[] Debounce needs a timeout
 [] Add station search
-[] Load data before its needed
 [] Colour properly
 [] Draw in proper order
 [] Connections at alex missing
-[] Debounce needs a timeout
 --
+[] Initial curve for S8 / S1
 [] Fast mode
 [] Fit on a mobile screen
 [] Write route name at end of route

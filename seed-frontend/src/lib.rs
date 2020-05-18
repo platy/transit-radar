@@ -126,6 +126,7 @@ fn view(model: &Model) -> Node<Msg> {
 struct CanvasModel {
     sync: sync::Model<GTFSData>,
     radar: Option<Radar>,
+    frame_count: u64,
 
     controls: controls::Model,
 }
@@ -175,7 +176,6 @@ fn canvas_update(
         }
 
         CanvasMsg::LoadDataAhead(start_time) => {
-            log!("load data ahead");
             let query = serde_urlencoded::to_string(Params {
                 ubahn: model.controls.show_ubahn,
                 sbahn: model.controls.show_sbahn,
@@ -198,17 +198,19 @@ fn canvas_update(
         }
 
         CanvasMsg::Search => {
+            let previous_expires_timestamp = model.radar.as_ref().map(|radar| radar.expires_timestamp);
             let result = search(model.sync.get().unwrap(), &model.controls);
             let expires_date = js_sys::Date::new_0();
             expires_date.set_time(result.expires_timestamp as f64);
             let next_search_time = day_time(&expires_date).1;
-            orders.schedule_msg(result.expires_timestamp - 15_000, CanvasMsg::LoadDataAhead(next_search_time));
-            orders.schedule_msg(result.expires_timestamp, CanvasMsg::SearchExpires);
+            if previous_expires_timestamp != Some(result.expires_timestamp) {
+                orders.schedule_msg(result.expires_timestamp - 15_000, CanvasMsg::LoadDataAhead(next_search_time));
+                orders.schedule_msg(result.expires_timestamp, CanvasMsg::SearchExpires);
+            }
             model.radar = Some(result);
         }
 
         CanvasMsg::SearchExpires => {
-            log!("Search expires");
             let date = js_sys::Date::new_0();
             let radar = model.radar.as_mut().unwrap();
             // check whether it is actually expired, it may have been updated before this message was scheduled
@@ -222,16 +224,9 @@ fn canvas_update(
                 orders.next_frame_end(|_| CanvasMsg::AnimationFrame);
             }
 
-            // by default, we skip the render, unless the clock has changed to actually cause a change
-            orders.skip();
-            if let Some(radar) = &mut model.radar {
-                let date = js_sys::Date::new_0();
-                let (_day, time) = day_time(&date);
-
-                if time != radar.geometry.start_time {
-                    radar.geometry.start_time = time;
-                    orders.render();
-                }
+            model.frame_count += 1;
+            if model.radar.is_none() || model.frame_count % 6 != 0 {
+                orders.skip();
             }
         }
 
@@ -261,7 +256,7 @@ struct Station<G: Geometry> {
 }
 
 struct RadarTrip {
-    // route_name: String,
+    route_name: String,
     route_type: RouteType,
     route_color: String,
     connection: TripSegment,
@@ -312,18 +307,22 @@ impl RadarGeometry {
         let start_mag = start_time.seconds_since_midnight() as f64 - origin;
         let end_mag = end_time.seconds_since_midnight() as f64 - origin;
 
+
         if let Some(start_bearing) = start_bearing {
-            let mut bearing_difference = start_bearing.as_radians() - end_bearing.as_radians();
-            if bearing_difference > PI { bearing_difference -= 2.*PI }
-            else if bearing_difference < -PI { bearing_difference += 2.*PI }
-            // the magnitude at end_bearing of the tangent of start
-            let tangential_end_mag = start_mag / bearing_difference.cos();
+            let bearing_difference = start_bearing.as_radians() - end_bearing.as_radians();
+            let tangential_end_mag = if bearing_difference >= PI/2. || bearing_difference <= -PI/2. { 
+                // at PI or beyond PI/2 the tangent never crosses
+                std::f64::MAX
+            } else { 
+                // the magnitude at end_bearing of the tangent of start
+                start_mag / bearing_difference.cos() 
+            };
 
             // if a straight line between would travel closer to the origin than the start
             if end_mag < tangential_end_mag {
                 // add a control point to prevent that
-                let cp_bearing = start_bearing.as_radians() - bearing_difference / 2.;
-                return (Bearing::radians(cp_bearing), origin + start_mag / (bearing_difference / 2.).cos())
+                let cp_bearing = start_bearing.as_radians() - bearing_difference / 3.;
+                return (Bearing::radians(cp_bearing), origin + start_mag / (bearing_difference / 3.).cos())
             }
         }
         (start_bearing.unwrap_or(end_bearing), origin + start_mag)
@@ -494,7 +493,7 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
                 trips.insert(
                     trip_id,
                     RadarTrip {
-                        // route_name: route_name.to_string(),
+                        route_name: route_name.to_string(),
                         route_type,
                         route_color: route_color.to_owned(),
                         connection: TripSegment {
@@ -512,7 +511,7 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
 
     for RadarTrip {
         connection,
-        // route_name: _,
+        route_name,
         route_type,
         route_color,
         segments,
@@ -642,6 +641,7 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
     expires_timestamp.set_minutes(expires_time.minute() as u32);
     expires_timestamp.set_seconds(expires_time.second() as u32 + 1); // expire once this second is over
     expires_timestamp.set_milliseconds(0);
+    polar_drawables.reverse();
 
     let radar = Radar {
         day,
@@ -697,8 +697,10 @@ fn canvas_draw(model: &CanvasModel, ctx: &web_sys::CanvasRenderingContext2d) {
     } = model.radar.as_ref().unwrap();
 
     drawables.draw(ctx, &Cartesian);
+    let now = js_sys::Date::new_0();
+    let now = ((now.get_hours() * 60 + now.get_minutes()) * 60 + now.get_seconds()) as f64 + now.get_milliseconds() as f64 / 1000.;
     polar_drawables.draw(ctx, &Polar::new(
-        geometry.start_time.seconds_since_midnight() as f64, 
+        now,
         geometry.max_duration.to_secs() as f64, 
         geometry.cartesian_origin,
         geometry.cartesian_origin.0, //hack
