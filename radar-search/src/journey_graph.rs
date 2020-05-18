@@ -86,9 +86,8 @@ impl<'r> JourneyGraphPlotter<'r> {
                 } in items
                 {
                     builder.keep_stop(to_stop);
-                    if let Some(from_stop) = variant.get_from_stop() {
-                        // I thought that all the from_stops would also be to_stops but apparently not and this is necessary
-                        builder.keep_stop(from_stop);
+                    if let Some(parent_id) = to_stop.parent_station() {
+                        builder.keep_stop_deferred(parent_id, &self.data.stops);
                     }
                     if let Some(trip_id) = variant.get_trip_id() {
                         builder.keep_trip(trip_id);

@@ -130,7 +130,8 @@ fn produce_tree_json<'r>(
                 to_stop,
                 route_name,
                 route_type,
-                route_color: &str,
+                route_color: _,
+                trip_id: _,
             } => {
                 let to = *stop_id_to_idx.get(&to_stop.station_id()).unwrap();
                 let from_stop_or_station_id = from_stop.station_id();
@@ -343,14 +344,14 @@ fn station_name_search_route(
 #[tokio::main]
 async fn main() {
     let port = std::env::var("PORT")
-        .unwrap_or("8080".to_owned())
+        .unwrap_or("8085".to_owned())
         .parse()
         .unwrap();
     let static_dir = std::env::var("STATIC_DIR").unwrap_or("frontend/build".to_owned());
     let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
 
-    let data = Arc::new(db::load_data(&gtfs_dir, db::DayFilter::All).unwrap());
+    let data = Arc::new(db::load_data(&gtfs_dir, db::DayFilter::All, HashMap::new()).unwrap());
     let station_name_index = Arc::new(db::build_station_word_index(&*data));
 
     eprintln!("Starting web server on port {}", port);

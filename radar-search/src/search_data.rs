@@ -381,6 +381,13 @@ impl<'r> FilterBuilder<'r> {
             .or_insert_with(|| stop.clone());
     }
 
+    pub fn keep_stop_deferred(&mut self, stop_id: StopId, stops: &HashMap<StopId, Stop>) {
+        self.new_data
+            .stops
+            .entry(stop_id)
+            .or_insert_with(|| stops.get(&stop_id).unwrap().clone());
+    }
+
     pub fn keep_trip(&mut self, trip_id: TripId) {
         if !self.new_data.trips.contains_key(&trip_id) {
             self.new_data.trips.insert(

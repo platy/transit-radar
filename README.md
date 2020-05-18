@@ -138,12 +138,12 @@
 [x] curved paths not going to the end
 [x] Search an extra amount (maximum will be the time to first departure) and then set expiry to that and filter when drawing
 [x] Load data before its needed
-[] Debounce needs a timeout
+[x] Draw in proper order
+[x] Connections at alex missing
 [] Add station search
 [] Colour properly
-[] Draw in proper order
-[] Connections at alex missing
 --
+[] Debounce needs a timeout - or does it?
 [] Initial curve for S8 / S1
 [] Fast mode
 [] Fit on a mobile screen
