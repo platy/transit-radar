@@ -91,6 +91,7 @@ where
                 "Fetch error - Fetching repository info failed - {:#?}",
                 fail_reason
             ));
+            model.status = RequestStatus::Ready;
             orders.skip();
             false
         }
