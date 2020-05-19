@@ -1,5 +1,5 @@
 use super::{App, RenderInfo, UndefinedGMsg}; // CmdHandle, StreamHandle, SubHandle,
-                                                       // use futures::stream::Stream;
+                                             // use futures::stream::Stream;
 use std::future::Future;
 
 // @TODO: Add links to doc comment once https://github.com/rust-lang/rust/issues/43466 is resolved

@@ -8,6 +8,7 @@ use seed::{prelude::*, *};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
+mod autocomplete;
 mod canvasser;
 mod controls;
 mod sync;
@@ -73,14 +74,15 @@ struct Params {
 fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
         Msg::ControlsMsg(msg) => {
-            controls::update(
+            if controls::update(
                 msg,
                 &mut model.controls,
                 &mut orders.proxy(Msg::ControlsMsg),
-            );
-            model
-                .canvasser
-                .update(CanvasMsg::ControlsChange(model.controls.clone()));
+            ) {
+                model
+                    .canvasser
+                    .update(CanvasMsg::ControlsChange(model.controls.params.clone()));
+            }
         }
         Msg::Rendered => {
             model.canvasser.rendered();
@@ -92,7 +94,13 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 fn view(model: &Model) -> Node<Msg> {
     // if let Some(data) = model.sync.get() {
     div![
-        h2!["U Voltastrasse"],
+        h2![&model
+            .controls
+            .params
+            .station_selection
+            .as_ref()
+            .map(|s| s.name.as_str())
+            .unwrap_or_default()],
         controls::view(&model.controls).map_msg(Msg::ControlsMsg),
         div![canvas![
             &model.canvasser.el_ref(),
@@ -137,7 +145,7 @@ enum CanvasMsg {
     SyncMsg(sync::Msg<GTFSData, GTFSSyncIncrement>),
     Search,
     SearchExpires,
-    ControlsChange(controls::Model),
+    ControlsChange(controls::Params),
     LoadDataAhead(Time),
 }
 
@@ -154,60 +162,38 @@ fn canvas_update(
         }
         CanvasMsg::SyncMsg(msg) => {
             let (_day, start_time) = day_time(&js_sys::Date::new_0());
-            let query = serde_urlencoded::to_string(Params {
-                ubahn: model.controls.show_ubahn,
-                sbahn: model.controls.show_sbahn,
-                tram: model.controls.show_tram,
-                regio: model.controls.show_regional,
-                bus: model.controls.show_bus,
-                start_time,
-                end_time: start_time + Duration::minutes(40),
-            })
-            .unwrap();
-            let url = format!("/data/U%20Voltastr.%20(Berlin)?{}", query);
-            if sync::update(
-                msg,
-                &mut model.sync,
-                url,
-                &mut orders.proxy(CanvasMsg::SyncMsg),
-            ) {
-                orders.send_msg(CanvasMsg::Search);
-            }
+            sync_data(msg, model, orders, start_time);
         }
 
         CanvasMsg::LoadDataAhead(start_time) => {
-            let query = serde_urlencoded::to_string(Params {
-                ubahn: model.controls.show_ubahn,
-                sbahn: model.controls.show_sbahn,
-                tram: model.controls.show_tram,
-                regio: model.controls.show_regional,
-                bus: model.controls.show_bus,
-                start_time,
-                end_time: start_time + Duration::minutes(40),
-            })
-            .unwrap();
-            let url = format!("/data/U%20Voltastr.%20(Berlin)?{}", query);
-            if sync::update(
-                sync::Msg::FetchData,
-                &mut model.sync,
-                url,
-                &mut orders.proxy(CanvasMsg::SyncMsg),
-            ) {
-                orders.send_msg(CanvasMsg::Search);
-            }
+            sync_data(sync::Msg::FetchData, model, orders, start_time);
         }
 
         CanvasMsg::Search => {
-            let previous_expires_timestamp = model.radar.as_ref().map(|radar| radar.expires_timestamp);
-            let result = search(model.sync.get().unwrap(), &model.controls);
-            let expires_date = js_sys::Date::new_0();
-            expires_date.set_time(result.expires_timestamp as f64);
-            let next_search_time = day_time(&expires_date).1;
-            if previous_expires_timestamp != Some(result.expires_timestamp) {
-                orders.schedule_msg(result.expires_timestamp - 15_000, CanvasMsg::LoadDataAhead(next_search_time));
-                orders.schedule_msg(result.expires_timestamp, CanvasMsg::SearchExpires);
+            if let Some(data) = model.sync.get() {
+                if let Some(origin) = model
+                    .controls
+                    .params
+                    .station_selection
+                    .as_ref()
+                    .and_then(|suggestion| data.get_stop(&suggestion.stop_id))
+                {
+                    let previous_expires_timestamp =
+                        model.radar.as_ref().map(|radar| radar.expires_timestamp);
+                    let result = search(data, origin, &model.controls.params);
+                    let expires_date = js_sys::Date::new_0();
+                    expires_date.set_time(result.expires_timestamp as f64);
+                    let next_search_time = day_time(&expires_date).1;
+                    if previous_expires_timestamp != Some(result.expires_timestamp) {
+                        orders.schedule_msg(
+                            result.expires_timestamp - 15_000,
+                            CanvasMsg::LoadDataAhead(next_search_time),
+                        );
+                        orders.schedule_msg(result.expires_timestamp, CanvasMsg::SearchExpires);
+                    }
+                    model.radar = Some(result);
+                }
             }
-            model.radar = Some(result);
         }
 
         CanvasMsg::SearchExpires => {
@@ -220,7 +206,7 @@ fn canvas_update(
         }
 
         CanvasMsg::AnimationFrame => {
-            if model.controls.animate {
+            if model.controls.params.animate {
                 orders.next_frame_end(|_| CanvasMsg::AnimationFrame);
             }
 
@@ -230,13 +216,47 @@ fn canvas_update(
             }
         }
 
-        CanvasMsg::ControlsChange(controls) => {
-            if controls.animate && !model.controls.animate {
+        CanvasMsg::ControlsChange(params) => {
+            if params.animate && !model.controls.params.animate {
                 orders.send_msg(CanvasMsg::AnimationFrame);
             }
-            model.controls = controls;
+            model.controls.params = params;
             orders.send_msg(CanvasMsg::Search);
             orders.send_msg(CanvasMsg::SyncMsg(sync::Msg::FetchData));
+        }
+    }
+}
+
+fn sync_data(
+    msg: sync::Msg<GTFSData, GTFSSyncIncrement>,
+    model: &mut CanvasModel,
+    orders: &mut impl canvasser::Orders<CanvasMsg>,
+    start_time: Time,
+) {
+    let params = &model.controls.params;
+    if let Some(station_selection) = &params.station_selection {
+        let query = serde_urlencoded::to_string(Params {
+            ubahn: params.show_ubahn,
+            sbahn: params.show_sbahn,
+            tram: params.show_tram,
+            regio: params.show_regional,
+            bus: params.show_bus,
+            start_time,
+            end_time: start_time + Duration::minutes(40),
+        })
+        .unwrap();
+        let url = format!(
+            "/data/{}?{}",
+            station_selection.name.replace(" ", "%20"),
+            query
+        );
+        if sync::update(
+            msg,
+            &mut model.sync,
+            url,
+            &mut orders.proxy(CanvasMsg::SyncMsg),
+        ) {
+            orders.send_msg(CanvasMsg::Search);
         }
     }
 }
@@ -288,11 +308,15 @@ impl RadarGeometry {
         if point == self.geographic_origin {
             None
         } else {
-            Some(Bearing::degrees(geo::algorithm::bearing::Bearing::bearing(&self.geographic_origin, point)))
+            Some(Bearing::degrees(geo::algorithm::bearing::Bearing::bearing(
+                &self.geographic_origin,
+                point,
+            )))
         }
     }
 
-    fn initial_control_point(&self,
+    fn initial_control_point(
+        &self,
         (start_point, start_time): (geo::Point<f64>, Time),
         (end_point, end_time): (geo::Point<f64>, Time),
     ) -> (Bearing, f64) {
@@ -307,22 +331,25 @@ impl RadarGeometry {
         let start_mag = start_time.seconds_since_midnight() as f64 - origin;
         let end_mag = end_time.seconds_since_midnight() as f64 - origin;
 
-
         if let Some(start_bearing) = start_bearing {
             let bearing_difference = start_bearing.as_radians() - end_bearing.as_radians();
-            let tangential_end_mag = if bearing_difference >= PI/2. || bearing_difference <= -PI/2. { 
-                // at PI or beyond PI/2 the tangent never crosses
-                std::f64::MAX
-            } else { 
-                // the magnitude at end_bearing of the tangent of start
-                start_mag / bearing_difference.cos() 
-            };
+            let tangential_end_mag =
+                if bearing_difference >= PI / 2. || bearing_difference <= -PI / 2. {
+                    // at PI or beyond PI/2 the tangent never crosses
+                    std::f64::MAX
+                } else {
+                    // the magnitude at end_bearing of the tangent of start
+                    start_mag / bearing_difference.cos()
+                };
 
             // if a straight line between would travel closer to the origin than the start
             if end_mag < tangential_end_mag {
                 // add a control point to prevent that
                 let cp_bearing = start_bearing.as_radians() - bearing_difference / 3.;
-                return (Bearing::radians(cp_bearing), origin + start_mag / (bearing_difference / 3.).cos())
+                return (
+                    Bearing::radians(cp_bearing),
+                    origin + start_mag / (bearing_difference / 3.).cos(),
+                );
             }
         }
         (start_bearing.unwrap_or(end_bearing), origin + start_mag)
@@ -336,7 +363,12 @@ impl RadarGeometry {
     ) -> ((Bearing, f64), (Bearing, f64)) {
         // using a fake geometry to calculate these in cartsian space as I can't figure out the trigonometry from polar
         // what happens as the stat time changes? does it skew weirdly?
-        let polar = Polar::new(self.start_time.seconds_since_midnight() as f64, self.max_duration.to_secs() as f64, (0., 0.), self.cartesian_origin.0);
+        let polar = Polar::new(
+            self.start_time.seconds_since_midnight() as f64,
+            self.max_duration.to_secs() as f64,
+            (0., 0.),
+            self.cartesian_origin.0,
+        );
 
         let (x1, y1) = polar.coords(bearing1, magnitude1);
         let (x2, y2) = polar.coords(bearing2, magnitude2);
@@ -360,8 +392,18 @@ impl RadarGeometry {
         let (cp3x, cp3y) = (x2 + (dx * cp3mag), y2 + (dy * cp3mag));
         let cp = (
             // the need to negate here is weird, maybe the above atan2 calls are the wrong way around
-            (Bearing::radians(-(cp2y).atan2(cp2x)), (cp2x * cp2x + cp2y * cp2y).sqrt() * self.max_duration.to_secs() as f64 / self.cartesian_origin.0 + self.start_time.seconds_since_midnight() as f64),
-            (Bearing::radians(-(cp3y).atan2(cp3x)), (cp3x * cp3x + cp3y * cp3y).sqrt() * self.max_duration.to_secs() as f64 / self.cartesian_origin.0 + self.start_time.seconds_since_midnight() as f64),
+            (
+                Bearing::radians(-(cp2y).atan2(cp2x)),
+                (cp2x * cp2x + cp2y * cp2y).sqrt() * self.max_duration.to_secs() as f64
+                    / self.cartesian_origin.0
+                    + self.start_time.seconds_since_midnight() as f64,
+            ),
+            (
+                Bearing::radians(-(cp3y).atan2(cp3x)),
+                (cp3x * cp3x + cp3y * cp3y).sqrt() * self.max_duration.to_secs() as f64
+                    / self.cartesian_origin.0
+                    + self.start_time.seconds_since_midnight() as f64,
+            ),
         );
         cp
     }
@@ -386,7 +428,7 @@ fn day_time(date_time: &js_sys::Date) -> (Day, Time) {
     (day, now)
 }
 
-fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
+fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Radar {
     // TODO don't use client time, instead start with the server time and increment using client clock, also this is local time
     let (day, start_time) = day_time(&js_sys::Date::new_0());
     let max_duration = Duration::minutes(30);
@@ -397,7 +439,6 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
         Period::between(start_time, end_time + max_extra_search),
         &data,
     );
-    let origin = data.get_stop(&900000007103).unwrap();
     plotter.add_origin_station(origin);
     if controls.show_sbahn {
         plotter.add_route_type(RouteType::SuburbanRailway)
@@ -511,7 +552,7 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
 
     for RadarTrip {
         connection,
-        route_name,
+        route_name: _,
         route_type,
         route_color,
         segments,
@@ -533,8 +574,14 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
                 // connection is from origin meaning no natural bearing for it, we use the bearing to the next stop
                 to = &segments.first().expect("at least one segment in a trip").to;
             }
-            path.move_to((geometry.bearing(*to).unwrap(), arrival_time.seconds_since_midnight() as f64));
-            path.line_to((geometry.bearing(*from).unwrap_or_default(), departure_time.seconds_since_midnight() as f64));
+            path.move_to((
+                geometry.bearing(*to).unwrap(),
+                arrival_time.seconds_since_midnight() as f64,
+            ));
+            path.line_to((
+                geometry.bearing(*from).unwrap_or_default(),
+                departure_time.seconds_since_midnight() as f64,
+            ));
             polar_drawables.push(Box::new(path));
         }
 
@@ -568,7 +615,8 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
 
                 let cp1 = geometry.initial_control_point(
                     (segment.from, segment.departure_time),
-                    (segment.to, segment.arrival_time));
+                    (segment.to, segment.arrival_time),
+                );
                 let (post_location, post_time) = if segments[1].from != segment.to {
                     (segments[1].from, segments[1].departure_time)
                 } else {
@@ -577,8 +625,11 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
                 let post_bearing = geometry.bearing(post_location).unwrap();
                 let post_mag = post_time.seconds_since_midnight() as f64;
 
-                let (cp2, next_control_point) =
-                    geometry.control_points((from_bearing, from_mag), (to_bearing, to_mag), (post_bearing, post_mag));
+                let (cp2, next_control_point) = geometry.control_points(
+                    (from_bearing, from_mag),
+                    (to_bearing, to_mag),
+                    (post_bearing, post_mag),
+                );
                 path.bezier_curve_to(cp1, cp2, (to_bearing, to_mag));
                 next_control_point
             };
@@ -595,7 +646,10 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
                     if pre_bearing != from_bearing && pre_mag != from_mag {
                         // there is a gap in the route and so we move
                         path.move_to((from_bearing, from_mag));
-                        next_control_point = geometry.initial_control_point((segment.from, segment.departure_time), (segment.to, segment.arrival_time));
+                        next_control_point = geometry.initial_control_point(
+                            (segment.from, segment.departure_time),
+                            (segment.to, segment.arrival_time),
+                        );
                     }
                     let (post_location, post_time) = if post.from != segment.to {
                         (post.from, post.departure_time)
@@ -605,8 +659,11 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
                     let post_bearing = geometry.bearing(post_location).unwrap();
                     let post_mag = post_time.seconds_since_midnight() as f64;
                     let cp1 = next_control_point;
-                    let (cp2, next_control_point_tmp) =
-                        geometry.control_points((from_bearing, from_mag), (to_bearing, to_mag), (post_bearing, post_mag));
+                    let (cp2, next_control_point_tmp) = geometry.control_points(
+                        (from_bearing, from_mag),
+                        (to_bearing, to_mag),
+                        (post_bearing, post_mag),
+                    );
                     path.bezier_curve_to(cp1, cp2, (to_bearing, to_mag));
                     next_control_point = next_control_point_tmp;
                 } else {
@@ -628,8 +685,14 @@ fn search(data: &GTFSData, controls: &controls::Model) -> Radar {
             let to_bearing = geometry.bearing(segment.to).unwrap();
             let from_bearing = geometry.bearing(segment.from).unwrap();
 
-            path.move_to((from_bearing, segment.departure_time.seconds_since_midnight() as f64));
-            path.line_to((to_bearing, segment.arrival_time.seconds_since_midnight() as f64));
+            path.move_to((
+                from_bearing,
+                segment.departure_time.seconds_since_midnight() as f64,
+            ));
+            path.line_to((
+                to_bearing,
+                segment.arrival_time.seconds_since_midnight() as f64,
+            ));
         }
         polar_drawables.push(Box::new(path));
     }
@@ -698,13 +761,17 @@ fn canvas_draw(model: &CanvasModel, ctx: &web_sys::CanvasRenderingContext2d) {
 
     drawables.draw(ctx, &Cartesian);
     let now = js_sys::Date::new_0();
-    let now = ((now.get_hours() * 60 + now.get_minutes()) * 60 + now.get_seconds()) as f64 + now.get_milliseconds() as f64 / 1000.;
-    polar_drawables.draw(ctx, &Polar::new(
-        now,
-        geometry.max_duration.to_secs() as f64, 
-        geometry.cartesian_origin,
-        geometry.cartesian_origin.0, //hack
-    ));
+    let now = ((now.get_hours() * 60 + now.get_minutes()) * 60 + now.get_seconds()) as f64
+        + now.get_milliseconds() as f64 / 1000.;
+    polar_drawables.draw(
+        ctx,
+        &Polar::new(
+            now,
+            geometry.max_duration.to_secs() as f64,
+            geometry.cartesian_origin,
+            geometry.cartesian_origin.0, //hack
+        ),
+    );
 }
 
 impl Drawable for Station<Cartesian> {
@@ -720,7 +787,10 @@ impl Station<RadarGeometry> {
     fn to_polar(self, geometry: &RadarGeometry) -> Station<Polar> {
         let (point, time) = self.coords;
         Station {
-            coords: (geometry.bearing(point).unwrap_or_default(), time.seconds_since_midnight() as f64),
+            coords: (
+                geometry.bearing(point).unwrap_or_default(),
+                time.seconds_since_midnight() as f64,
+            ),
             name: self.name,
         }
     }
@@ -729,7 +799,9 @@ impl Station<RadarGeometry> {
 impl Drawable<Polar> for Station<Polar> {
     fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d, geometry: &Polar) {
         let (bearing, magnitude) = self.coords;
-        if magnitude > geometry.max() { return }
+        if magnitude > geometry.max() {
+            return;
+        }
         const STOP_RADIUS: f64 = 3.;
         let (cx, cy) = geometry.coords(bearing, magnitude);
         Circle::new((cx, cy), STOP_RADIUS).draw(ctx, &Cartesian);

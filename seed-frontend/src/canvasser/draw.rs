@@ -21,11 +21,11 @@ pub struct Polar {
 
 impl Polar {
     pub fn new(origin: f64, max: f64, cartesian_offset: (f64, f64), cartesian_max: f64) -> Polar {
-        Polar { 
+        Polar {
             origin,
             max,
             cartesian_offset,
-            cartesian_max
+            cartesian_max,
         }
     }
 
@@ -147,8 +147,7 @@ impl<G: Geometry> Path<G> {
     }
 
     pub fn bezier_curve_to(&mut self, cp1: G::Coords, cp2: G::Coords, to: G::Coords) {
-        self.ops
-            .push(PathOp::BezierCurveTo(cp1, cp2, to))
+        self.ops.push(PathOp::BezierCurveTo(cp1, cp2, to))
     }
 }
 
@@ -194,21 +193,27 @@ impl Drawable<Polar> for Path<Polar> {
         for op in &self.ops {
             match op {
                 &PathOp::MoveTo((bearing, magnitude)) => {
-                    if magnitude > geometry.max() { break }
+                    if magnitude > geometry.max() {
+                        break;
+                    }
                     let (x, y) = geometry.coords(bearing, magnitude);
                     ctx.move_to(x, y)
                 }
                 &PathOp::LineTo((bearing, magnitude)) => {
-                    if magnitude > geometry.max() { break }
+                    if magnitude > geometry.max() {
+                        break;
+                    }
                     let (x, y) = geometry.coords(bearing, magnitude);
                     ctx.line_to(x, y)
                 }
                 &PathOp::BezierCurveTo(
                     (cp1_bearing, cp1_magnitude),
-                    (cp2_bearing, cp2_magnitude), 
+                    (cp2_bearing, cp2_magnitude),
                     (bearing, magnitude),
                 ) => {
-                    if magnitude > geometry.max() { break }
+                    if magnitude > geometry.max() {
+                        break;
+                    }
                     let (cp1x, cp1y) = geometry.coords(cp1_bearing, cp1_magnitude);
                     let (cp2x, cp2y) = geometry.coords(cp2_bearing, cp2_magnitude);
                     let (x, y) = geometry.coords(bearing, magnitude);
@@ -237,7 +242,8 @@ impl Drawable<Cartesian> for Circle<Cartesian> {
     fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d, _: &Cartesian) {
         ctx.begin_path();
         let (cx, cy) = self.coords;
-        ctx.arc(cx, cy, self.r, 0., 2. * std::f64::consts::PI).unwrap();
+        ctx.arc(cx, cy, self.r, 0., 2. * std::f64::consts::PI)
+            .unwrap();
         ctx.fill();
     }
 }

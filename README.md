@@ -140,9 +140,10 @@
 [x] Load data before its needed
 [x] Draw in proper order
 [x] Connections at alex missing
-[] Add station search
+[x] Add station search
 [] Colour properly
 --
+[] Presearch stations in local data - show those results at the top
 [] Debounce needs a timeout - or does it?
 [] Initial curve for S8 / S1
 [] Fast mode

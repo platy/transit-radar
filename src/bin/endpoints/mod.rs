@@ -1,0 +1,3 @@
+mod station_name_search_endpoint;
+
+pub use station_name_search_endpoint::station_name_search_route;

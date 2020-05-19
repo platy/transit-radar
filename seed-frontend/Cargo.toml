@@ -30,6 +30,10 @@ features = [
     "HtmlCanvasElement",
     "DomRect", 
     "Element",
+    # for autocomplete
+    "Window",
+    "CssStyleDeclaration",
+    "DomRectReadOnly",
 ]
 
 

@@ -23,8 +23,8 @@ impl SchedulerState {
     {
         match self {
             SchedulerState::Empty => {
-              let mut scheduled_wakes: BTreeMap<u64, Box<dyn FnOnce() -> ()>> = BTreeMap::new();
-              scheduled_wakes.insert(timestamp, Box::new(f));
+                let mut scheduled_wakes: BTreeMap<u64, Box<dyn FnOnce() -> ()>> = BTreeMap::new();
+                scheduled_wakes.insert(timestamp, Box::new(f));
                 *self = SchedulerState::Scheduled {
                     next_timeout: Timeout::new(millis_to as u32, scheduler.waker()),
                     scheduled_wakes,
@@ -81,9 +81,7 @@ impl Scheduler {
     {
         let millis_to = timestamp as i64 - (Date::now() as i64);
         if millis_to < 0 {
-            self.0
-                .borrow_mut()
-                .schedule(0, timestamp, f, &self);
+            self.0.borrow_mut().schedule(0, timestamp, f, &self);
         } else {
             self.0
                 .borrow_mut()

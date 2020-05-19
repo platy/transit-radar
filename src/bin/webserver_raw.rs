@@ -7,7 +7,9 @@ use warp::Filter;
 
 use radar_search::{journey_graph, search_data::*, search_data_sync::*, time::*};
 use transit_radar::gtfs::db;
+use transit_radar::Suggester;
 
+mod endpoints;
 mod web_util;
 use web_util::*;
 
@@ -135,9 +137,13 @@ async fn main() {
 
     let colors = db::load_colors(Path::new("./Linienfarben.csv")).unwrap();
     let data = Arc::new(db::load_data(&gtfs_dir, db::DayFilter::All, colors).unwrap());
+    let station_name_index = Arc::new(db::build_station_word_index(&*data));
 
     eprintln!("Starting web server on port {}", port);
-    warp::serve(warp::fs::dir(static_dir).or(filtered_data_route(data.clone())))
+    warp::serve(warp::fs::dir(static_dir)
+            .or(filtered_data_route(data.clone()))
+            .or(endpoints::station_name_search_route(data.clone(), station_name_index)),
+        )
         .run(([127, 0, 0, 1], port))
         .await;
 }

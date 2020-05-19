@@ -18,26 +18,24 @@ use wasm_bindgen::closure::Closure;
 use web_sys::HtmlCanvasElement;
 
 mod cmd_manager;
+pub mod draw;
 mod effects;
 mod mailbox;
 mod message_mapper;
 mod orders;
 mod render_info;
 mod scheduler;
-pub mod draw;
 
-pub use draw::Drawable;
 pub use cmd_manager::CmdManager;
+pub use draw::Drawable;
 use effects::Effect;
 use mailbox::Mailbox;
 pub use message_mapper::MessageMapper;
 pub use orders::*;
 pub use render_info::RenderInfo;
 
-pub type UpdateFn<Ms, Mdl, GMs> =
-    fn(Ms, &mut Mdl, &mut OrdersContainer<Ms, Mdl, GMs>);
-pub type SinkFn<Ms, Mdl, GMs> =
-    fn(GMs, &mut Mdl, &mut OrdersContainer<Ms, Mdl, GMs>);
+pub type UpdateFn<Ms, Mdl, GMs> = fn(Ms, &mut Mdl, &mut OrdersContainer<Ms, Mdl, GMs>);
+pub type SinkFn<Ms, Mdl, GMs> = fn(GMs, &mut Mdl, &mut OrdersContainer<Ms, Mdl, GMs>);
 pub type DrawFn<Mdl> = fn(&Mdl, &web_sys::CanvasRenderingContext2d);
 
 pub struct UndefinedGMsg;
@@ -102,10 +100,7 @@ impl<Ms, Mdl: Default, GMs> Builder<Ms, Mdl, GMs> {
 }
 
 impl<Ms, Mdl, GMs: 'static> App<Ms, Mdl, GMs> {
-    pub fn builder(
-        update: UpdateFn<Ms, Mdl, GMs>,
-        view: DrawFn<Mdl>,
-    ) -> Builder<Ms, Mdl, GMs> {
+    pub fn builder(update: UpdateFn<Ms, Mdl, GMs>, view: DrawFn<Mdl>) -> Builder<Ms, Mdl, GMs> {
         Builder {
             update,
             sink: None,
@@ -240,7 +235,8 @@ impl<Ms, Mdl, GMs: 'static> App<Ms, Mdl, GMs> {
                 s.rerender();
             }));
 
-            *scheduled_render_handle = AnimationFrameHandle::Render(util::request_animation_frame(cb));
+            *scheduled_render_handle =
+                AnimationFrameHandle::Render(util::request_animation_frame(cb));
         }
     }
 
@@ -253,7 +249,8 @@ impl<Ms, Mdl, GMs: 'static> App<Ms, Mdl, GMs> {
                 s.non_render_frame();
             }));
 
-            *scheduled_render_handle = AnimationFrameHandle::NoRender(util::request_animation_frame(cb));
+            *scheduled_render_handle =
+                AnimationFrameHandle::NoRender(util::request_animation_frame(cb));
         }
     }
 
@@ -270,7 +267,7 @@ impl<Ms, Mdl, GMs: 'static> App<Ms, Mdl, GMs> {
         let ctx = seed::canvas_context_2d(&canvas);
         ctx.set_global_composite_operation("source-over").unwrap();
         ctx.clear_rect(0., 0., rect.width(), rect.height());
-        ctx.set_transform(2., 0., 0., 2., 0., 0., ).unwrap();
+        ctx.set_transform(2., 0., 0., 2., 0., 0.).unwrap();
 
         // if let Some(radar) = &model.radar {
         //     radar.geometry.start_time = time;
@@ -331,7 +328,7 @@ impl<Ms, Mdl, GMs: 'static> App<Ms, Mdl, GMs> {
                         .next_frame_end_callbacks
                         .replace(Vec::new())
                         .into_iter()
-                        .filter_map(|callback| callback(Some(render_info)).map(Effect::Msg))
+                        .filter_map(|callback| callback(Some(render_info)).map(Effect::Msg)),
                 )
                 .collect(),
         );
