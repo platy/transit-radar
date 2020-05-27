@@ -225,6 +225,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "gloo-events"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "088514ec8ef284891c762c88a66b639b3a730134714692ee31829765c5bc814f"
+dependencies = [
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "gloo-file"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f9fecfe46b5dc3cc46f58e98ba580cc714f2c93860796d002eb3527a465ef49"
+dependencies = [
+ "futures-channel",
+ "gloo-events",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "gloo-timers"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -370,9 +393,9 @@ dependencies = [
 
 [[package]]
 name = "pulldown-cmark"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c2d7fd131800e0d63df52aff46201acaab70b431a4a1ec6f0343fe8e64f35a4"
+checksum = "3e142c3b8f49d2200605ee6ba0b1d757310e9e7a72afe78c36ee2ef67300ee00"
 dependencies = [
  "bitflags",
  "getopts",
@@ -417,6 +440,7 @@ dependencies = [
  "rand_chacha",
  "rand_core",
  "rand_hc",
+ "rand_pcg",
 ]
 
 [[package]]
@@ -443,6 +467,15 @@ name = "rand_hc"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca3129af7b92a17112d59ad498c6f81eaf463253766b90396d39ea7a39d6613c"
+dependencies = [
+ "rand_core",
+]
+
+[[package]]
+name = "rand_pcg"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16abd0c1b639e9eb4d7c50c0b8100b0d0f849be2349829c740fe8e6eb4816429"
 dependencies = [
  "rand_core",
 ]
@@ -512,24 +545,34 @@ checksum = "ea6a9290e3c9cf0f18145ef7ffa62d68ee0bf5fcd651017e586dc7fd5da448c2"
 
 [[package]]
 name = "seed"
-version = "0.6.0"
-source = "git+https://github.com/seed-rs/seed#45879209f34f4464016b44e45f832bc93a7b25a6"
+version = "0.7.0"
+source = "git+https://github.com/seed-rs/seed?rev=b25cf59#b25cf5990ae2189548281942713f4e305743f6d5"
 dependencies = [
  "console_error_panic_hook",
  "cookie",
  "dbg",
  "enclose",
  "futures 0.3.4",
+ "gloo-file",
  "gloo-timers",
  "indexmap",
  "js-sys",
  "pulldown-cmark",
+ "rand",
  "serde",
  "serde_json",
  "uuid",
  "version_check 0.9.1",
  "wasm-bindgen",
  "wasm-bindgen-futures 0.4.12",
+ "web-sys",
+]
+
+[[package]]
+name = "seed-autocomplete"
+version = "0.1.0"
+dependencies = [
+ "seed",
  "web-sys",
 ]
 
@@ -570,9 +613,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.51"
+version = "1.0.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da07b57ee2623368351e9a0488bb0b261322a15a6e0ae53e243cbdc0f4208da9"
+checksum = "993948e75b189211a9b31a7528f950c6adc21f9720b6438ff80a7fa2f864cea2"
 dependencies = [
  "itoa",
  "ryu",
@@ -725,6 +768,7 @@ dependencies = [
  "radar-search",
  "rmp-serde",
  "seed",
+ "seed-autocomplete",
  "serde",
  "serde_urlencoded",
  "wasm-bindgen",
@@ -924,9 +968,9 @@ dependencies = [
 
 [[package]]
 name = "web-sys"
-version = "0.3.37"
+version = "0.3.39"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d6f51648d8c56c366144378a33290049eafdd784071077f6fe37dae64c1c4cb"
+checksum = "8bc359e5dd3b46cb9687a051d50a2fdd228e4ba7cf6fcf861a5365c3d671a642"
 dependencies = [
  "js-sys",
  "wasm-bindgen",

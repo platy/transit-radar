@@ -5,6 +5,7 @@ use std::sync::Arc;
 use urlencoding::decode;
 use warp::Filter;
 
+mod endpoints;
 use radar_search::journey_graph;
 use radar_search::{search_data::*, time::*};
 use transit_radar::gtfs::db;

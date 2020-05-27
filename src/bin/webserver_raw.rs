@@ -7,7 +7,6 @@ use warp::Filter;
 
 use radar_search::{journey_graph, search_data::*, search_data_sync::*, time::*};
 use transit_radar::gtfs::db;
-use transit_radar::Suggester;
 
 mod endpoints;
 mod web_util;
@@ -66,7 +65,7 @@ async fn filtered_data_handler(
     data: Arc<GTFSData>,
     session: Arc<Mutex<GTFSDataSession>>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let (day, now) = day_time(chrono::Utc::now());
+    let (day, _now) = day_time(chrono::Utc::now());
     let period = Period::between(options.start_time, options.end_time);
 
     match decode(&name) {
@@ -133,16 +132,19 @@ async fn main() {
         .unwrap();
     let static_dir = std::env::var("STATIC_DIR").unwrap_or("seed-frontend".to_owned());
     let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());
+    let line_colors_path = std::env::var("LINE_COLORS").unwrap_or("./Linienfarben.csv".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
 
-    let colors = db::load_colors(Path::new("./Linienfarben.csv")).unwrap();
-    let data = Arc::new(db::load_data(&gtfs_dir, db::DayFilter::All, colors).unwrap());
+    let colors = db::load_colors(Path::new(&line_colors_path)).expect(&line_colors_path);
+    let data = Arc::new(db::load_data(&gtfs_dir, db::DayFilter::All, colors).expect("gtfs data to load"));
     let station_name_index = Arc::new(db::build_station_word_index(&*data));
 
     eprintln!("Starting web server on port {}", port);
+    let log = warp::log("api");
     warp::serve(warp::fs::dir(static_dir)
             .or(filtered_data_route(data.clone()))
-            .or(endpoints::station_name_search_route(data.clone(), station_name_index)),
+            .or(endpoints::station_name_search_route(data.clone(), station_name_index))
+            .with(log),
         )
         .run(([127, 0, 0, 1], port))
         .await;

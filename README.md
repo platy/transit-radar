@@ -141,28 +141,34 @@
 [x] Draw in proper order
 [x] Connections at alex missing
 [x] Add station search
-[] Colour properly
---
+[x] Publish wasm version
+[x] Share autocomplete component
 [] Presearch stations in local data - show those results at the top
+[] Fit on a mobile screen
+[] Shareable routing
+[] Colour properly
+[] Make sure it doesn't animate when not visible to save cpu
+---
+[] Reduce size of wasm
+[] Break up initial load into smaller parts to show something quicker
+[] more transfer efficient way of indexing / syncing the data
+---
+[] Fade in/out
+[] Animate search change
+[] Geographical mode
+[] Change time
+---
 [] Debounce needs a timeout - or does it?
 [] Initial curve for S8 / S1
 [] Fast mode
-[] Fit on a mobile screen
 [] Write route name at end of route
 [] Use RCs to avoid copying
 [] Move data sync / search back to the seed app, canvas view only needs the search results?
 [] Decent time sync between front and back (backend responsible for macro time and frontend for micro - effectively just an offset form the frontend time)
 [] Get time initially from backend
-[] Make sure it doesn't animate when not visible to save cpu
 [] Don't freeze display thread while deserialising
-[] Reduce size of wasm
 [] Fast load with first image from backend (& no script)
-[] Animate search change
-[] Geometry parameters and animation
-[] Break up initial load into smaller parts to show something quicker
-[] Change time
 [] Click station to show from there (from arrival time or now?)
-[] more transfer efficient way of indexing / syncing the data
 [] Animate with video stream form backend
 
 # Models
@@ -206,6 +212,12 @@ cd frontend
 npm run build
 ```
 
+Build alpha frontend:
+```
+cd seed-frontend
+cargo make compile_release
+```
+
 Deploy backend change:
 ```
 ssh root@s4.njk.onl /app/transit-radar/service.sh stop
@@ -213,14 +225,27 @@ scp target/x86_64-unknown-linux-musl/release/webserver root@s4.njk.onl:/app/tran
 ssh root@s4.njk.onl /app/transit-radar/service.sh start
 ```
 
-Deploy frontend change:
+Deploy backend change (alpha):
 ```
-scp -r frontend/build root@s4.njk.onl:/app/transit-radar/ 
+ssh root@s4.njk.onl /app/transit-radar/service-alpha.sh stop
+scp target/x86_64-unknown-linux-musl/release/webserver_raw root@s4.njk.onl:/app/transit-radar/transit-radar-alpha
+scp Linienfarben.csv root@s4.njk.onl:/app/transit-radar/
+ssh root@s4.njk.onl /app/transit-radar/service-alpha.sh start
 ```
 
-Deploy everything:
+Deploy frontend change:
 ```
-scp -r target/x86_64-unknown-linux-musl/release/transit-radar frontend/build run.sh service.sh update-timetables.sh root@s4.njk.onl:/app/transit-radar/ 
+scp -r frontend/build root@s4.njk.onl:/app/transit-radar/
+scp -r seed-frontend/pkg root@s4.njk.onl:/app/transit-radar/frontend-alpha/
+scp -r seed-frontend/index.html root@s4.njk.onl:/app/transit-radar/frontend-alpha/
+```
+
+Deploy ops:
+```
+scp run.sh service.sh run-alpha.sh service-alpha.sh update-timetables.sh root@s4.njk.onl:/app/transit-radar/
+scp transit-radar.conf root@s4.njk.onl:/etc/nginx/sites-available/transit-radar
+scp transit-radar-alpha.conf root@s4.njk.onl:/etc/nginx/sites-available/transit-radar-alpha
+ssh root@s4.njk.onl nginx -t && ssh root@s4.njk.onl nginx -s reload
 ```
 
 Update timetables:
@@ -246,4 +271,5 @@ ssh root@s4.njk.onl /app/transit-radar/service.sh restart
 Logs 
 ```
 ssh root@s4.njk.onl tail -f /var/log/transit-radar/log
+ssh root@s4.njk.onl tail -f /var/log/transit-radar/log-alpha
 ```

@@ -67,9 +67,7 @@ impl<Ms, Mdl, GMs> OrdersContainer<Ms, Mdl, GMs> {
     // }
 }
 
-impl<Ms: 'static, Mdl, GMs: 'static> Orders<Ms, GMs>
-    for OrdersContainer<Ms, Mdl, GMs>
-{
+impl<Ms: 'static, Mdl, GMs: 'static> Orders<Ms, GMs> for OrdersContainer<Ms, Mdl, GMs> {
     type AppMs = Ms;
     type Mdl = Mdl;
 

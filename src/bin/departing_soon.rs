@@ -8,7 +8,7 @@ fn main() {
     let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
 
-    let data = db::load_data(&gtfs_dir, db::DayFilter::All).unwrap();
+    let data = db::load_data(&gtfs_dir, db::DayFilter::All, std::collections::HashMap::new()).unwrap();
 
     let date_time = chrono::Utc::now().with_timezone(&chrono_tz::Europe::Berlin);
     let now = Time::from_hms(date_time.hour(), date_time.minute(), date_time.second());

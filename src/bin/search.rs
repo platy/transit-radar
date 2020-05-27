@@ -66,14 +66,17 @@ fn produce_tree_json<'r>(
                 trip_id,
                 route_name,
                 route_type,
+                route_color,
             } => {}
             journey_graph::Item::ConnectionToTrip {
                 departure_time,
                 arrival_time,
                 from_stop,
                 to_stop,
+                trip_id,
                 route_name,
                 route_type,
+                route_color,
             } => {}
         }
     }
@@ -109,7 +112,7 @@ fn main() {
     let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
 
-    let data = db::load_data(&gtfs_dir, db::DayFilter::All).unwrap();
+    let data = db::load_data(&gtfs_dir, db::DayFilter::All, std::collections::HashMap::new()).unwrap();
 
     search(
         "U Voltastr. (Berlin)".to_owned(),

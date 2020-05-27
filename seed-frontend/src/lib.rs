@@ -8,7 +8,6 @@ use seed::{prelude::*, *};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
-mod autocomplete;
 mod canvasser;
 mod controls;
 mod sync;

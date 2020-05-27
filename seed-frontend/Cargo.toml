@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 
 
 [dependencies]
-seed = { git = "https://github.com/seed-rs/seed" }
+seed = { git = "https://github.com/seed-rs/seed", rev = "b25cf59" }
 wasm-bindgen = {version = "0.2.62", features = ["serde-serialize"]}
 wasm-bindgen-futures = "0.4.12"
 enclose = "1.1.8"
@@ -22,9 +22,10 @@ geo = "0.13.0"
 js-sys = "0.3.37"
 rmp-serde = "0.14.3"
 gloo-timers = "0.2.1"
+seed-autocomplete = { path = "../../seed-autocomplete" }
 
 [dependencies.web-sys]
-version = "0.3.32"
+version = "0.3.39"
 features = [
     "CanvasRenderingContext2d",
     "HtmlCanvasElement",

@@ -42,20 +42,12 @@ macro_rules! map_callback_return_to_option_ms {
 }
 
 #[allow(clippy::module_name_repetitions)]
-pub struct OrdersProxy<
-    'a,
-    Ms,
-    AppMs: 'static,
-    Mdl: 'static,
-    GMs: 'static = UndefinedGMsg,
-> {
+pub struct OrdersProxy<'a, Ms, AppMs: 'static, Mdl: 'static, GMs: 'static = UndefinedGMsg> {
     orders_container: &'a mut OrdersContainer<AppMs, Mdl, GMs>,
     f: Rc<dyn Fn(Ms) -> AppMs>,
 }
 
-impl<'a, Ms: 'static, AppMs: 'static, Mdl, GMs>
-    OrdersProxy<'a, Ms, AppMs, Mdl, GMs>
-{
+impl<'a, Ms: 'static, AppMs: 'static, Mdl, GMs> OrdersProxy<'a, Ms, AppMs, Mdl, GMs> {
     pub fn new(
         orders_container: &'a mut OrdersContainer<AppMs, Mdl, GMs>,
         f: impl Fn(Ms) -> AppMs + 'static,

@@ -29,11 +29,20 @@ impl<D> Default for Model<D> {
 enum RequestStatus {
     /// no request is being made
     Ready,
-    /// a request is being made
-    InProgress,
-    /// a request is being made and another request is needed
-    Invalidated,
+    /// a request is being made, parameter is the timestamp that it was made at
+    InProgress, //(u64),
+    /// a request is being made and another request is needed, parameter is the timestamp that it was made at
+    Invalidated, //(u64),
 }
+
+// impl RequestStatus {
+//     fn request_allowed(&self) -> bool {
+//         match self {
+//             Self::Ready => true,
+//             Self::InProgress(request_made) =>
+//         }
+//     }
+// }
 
 pub enum ServerSync<D> {
     NotSynced,
