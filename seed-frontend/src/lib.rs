@@ -104,13 +104,11 @@ fn view(model: &Model) -> Node<Msg> {
         div![canvas![
             &model.canvasser.el_ref(),
             attrs![
-                At::Width => px(2400),
+                At::Width => px(2200),
                 At::Height => px(2000),
             ],
             style![
-                St::Border => "1px solid black",
-                St::Width => px(1200),
-                St::Height => px(1000),
+                St::Width => "100%",
             ],
         ]],
         // if let Some(radar) = &model.radar {
@@ -332,17 +330,17 @@ impl RadarGeometry {
 
         if let Some(start_bearing) = start_bearing {
             let bearing_difference = start_bearing.as_radians() - end_bearing.as_radians();
-            let tangential_end_mag =
+            let initial_heads_closer_to_origin =
                 if bearing_difference >= PI / 2. || bearing_difference <= -PI / 2. {
                     // at PI or beyond PI/2 the tangent never crosses
-                    std::f64::MAX
+                    true
                 } else {
-                    // the magnitude at end_bearing of the tangent of start
-                    start_mag / bearing_difference.cos()
+                    // compare the distance from origin of the end with the distance that the tangent to start would be at that bearing
+                    end_mag < (start_mag / bearing_difference.cos())
                 };
 
             // if a straight line between would travel closer to the origin than the start
-            if end_mag < tangential_end_mag {
+            if initial_heads_closer_to_origin {
                 // add a control point to prevent that
                 let cp_bearing = start_bearing.as_radians() - bearing_difference / 3.;
                 return (
@@ -361,7 +359,7 @@ impl RadarGeometry {
         (bearing3, magnitude3): (Bearing, f64),
     ) -> ((Bearing, f64), (Bearing, f64)) {
         // using a fake geometry to calculate these in cartsian space as I can't figure out the trigonometry from polar
-        // what happens as the stat time changes? does it skew weirdly?
+        // what happens as the start time changes? does it skew weirdly?
         let polar = Polar::new(
             self.start_time.seconds_since_midnight() as f64,
             self.max_duration.to_secs() as f64,

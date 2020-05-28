@@ -261,12 +261,10 @@ impl<Ms, Mdl, GMs: 'static> App<Ms, Mdl, GMs> {
             .now();
 
         let canvas = self.cfg.canvas.get().expect("get canvas element");
-        // get canvas height / width ratio
-        let rect = canvas.get_bounding_client_rect();
 
         let ctx = seed::canvas_context_2d(&canvas);
         ctx.set_global_composite_operation("source-over").unwrap();
-        ctx.clear_rect(0., 0., rect.width(), rect.height());
+        ctx.clear_rect(0., 0., canvas.width().into(), canvas.height().into());
         ctx.set_transform(2., 0., 0., 2., 0., 0.).unwrap();
 
         // if let Some(radar) = &model.radar {
