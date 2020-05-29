@@ -143,20 +143,26 @@
 [x] Add station search
 [x] Publish wasm version
 [x] Share autocomplete component
-[] Presearch stations in local data - show those results at the top
-[] Fit on a mobile screen
-[] Shareable routing
+[x] Fit on a mobile screen
+[x] Shareable routing
 [] Colour properly
 [] Make sure it doesn't animate when not visible to save cpu
+[] New name (not colliding with translate.google.com) and description of what it does
+[] Show time and timetable time
+[] Is there an analogy from quantum or analogue computing?
+[] Debug logging
+[] Preselect checkboxes
 ---
 [] Reduce size of wasm
-[] Break up initial load into smaller parts to show something quicker
+[] Break up large loads into smaller parts to show something quicker and to avoid a long block while parsing
 [] more transfer efficient way of indexing / syncing the data
+[] Presearch stations in local data - show those results at the top
 ---
 [] Fade in/out
 [] Animate search change
 [] Geographical mode
 [] Change time
+[] Use location and have initial walk to stations
 ---
 [] Debounce needs a timeout - or does it?
 [] Initial curve for S8 / S1

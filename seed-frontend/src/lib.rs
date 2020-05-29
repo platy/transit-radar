@@ -1,5 +1,3 @@
-use geo;
-use js_sys;
 use radar_search::journey_graph;
 use radar_search::search_data::*;
 use radar_search::search_data_sync::*;
@@ -14,14 +12,18 @@ mod sync;
 
 #[wasm_bindgen(start)]
 pub fn render() {
-    App::builder(update, view)
-        .after_mount(after_mount)
-        .build_and_start();
+    App::start("app", init, update, view);
 }
 
-fn after_mount(_: Url, orders: &mut impl Orders<Msg>) -> AfterMount<Model> {
+fn init(url: Url, orders: &mut impl Orders<Msg>) -> Model {
     orders.after_next_render(|_| Msg::Rendered);
-    AfterMount::default()
+
+    Model {
+        canvasser: canvasser::App::builder(canvas_update, canvas_draw)
+            .canvas_added(|| CanvasMsg::CanvasAdded)
+            .build(),
+        controls: controls::Model::init(url, &mut orders.proxy(Msg::ControlsMsg)),
+    }
 }
 
 /// fn after_mount(_: Url, orders: &mut impl Orders<Msg>) -> AfterMount<Model> {
@@ -41,17 +43,6 @@ struct Model {
     controls: controls::Model,
 }
 
-impl Default for Model {
-    fn default() -> Model {
-        Model {
-            canvasser: canvasser::App::builder(canvas_update, canvas_draw)
-                .canvas_added(|| CanvasMsg::CanvasAdded)
-                .build(),
-            controls: controls::Model::default(),
-        }
-    }
-}
-
 enum Msg {
     /// When a user changes a control
     ControlsMsg(controls::Msg),
@@ -60,6 +51,7 @@ enum Msg {
 }
 
 #[derive(serde::Serialize)]
+#[allow(clippy::struct_excessive_bools)]
 struct Params {
     ubahn: bool,
     sbahn: bool,
@@ -203,7 +195,7 @@ fn canvas_update(
         }
 
         CanvasMsg::AnimationFrame => {
-            if model.controls.params.animate {
+            if model.controls.params.flags.animate {
                 orders.next_frame_end(|_| CanvasMsg::AnimationFrame);
             }
 
@@ -214,7 +206,7 @@ fn canvas_update(
         }
 
         CanvasMsg::ControlsChange(params) => {
-            if params.animate && !model.controls.params.animate {
+            if params.flags.animate && !model.controls.params.flags.animate {
                 orders.send_msg(CanvasMsg::AnimationFrame);
             }
             model.controls.params = params;
@@ -233,11 +225,11 @@ fn sync_data(
     let params = &model.controls.params;
     if let Some(station_selection) = &params.station_selection {
         let query = serde_urlencoded::to_string(Params {
-            ubahn: params.show_ubahn,
-            sbahn: params.show_sbahn,
-            tram: params.show_tram,
-            regio: params.show_regional,
-            bus: params.show_bus,
+            ubahn: params.flags.show_ubahn,
+            sbahn: params.flags.show_sbahn,
+            tram: params.flags.show_tram,
+            regio: params.flags.show_regional,
+            bus: params.flags.show_bus,
             start_time,
             end_time: start_time + Duration::minutes(40),
         })
@@ -358,6 +350,7 @@ impl RadarGeometry {
         (bearing2, magnitude2): (Bearing, f64),
         (bearing3, magnitude3): (Bearing, f64),
     ) -> ((Bearing, f64), (Bearing, f64)) {
+        const CPFRAC: f64 = 0.3;
         // using a fake geometry to calculate these in cartsian space as I can't figure out the trigonometry from polar
         // what happens as the start time changes? does it skew weirdly?
         let polar = Polar::new(
@@ -371,7 +364,6 @@ impl RadarGeometry {
         let (x2, y2) = polar.coords(bearing2, magnitude2);
         let (x3, y3) = polar.coords(bearing3, magnitude3);
 
-        const CPFRAC: f64 = 0.3;
         let angle_to_prev = (y2 - y1).atan2(x2 - x1);
         let angle_to_next = (y2 - y3).atan2(x2 - x3);
         // things to adjust and improve
@@ -385,24 +377,23 @@ impl RadarGeometry {
             dy = -dy;
             dx = -dx;
         }
-        let (cp2x, cp2y) = (x2 + (dx * cp2mag), y2 + (dy * cp2mag));
-        let (cp3x, cp3y) = (x2 + (dx * cp3mag), y2 + (dy * cp3mag));
-        let cp = (
+        let (cp2_x, cp2_y) = (x2 + (dx * cp2mag), y2 + (dy * cp2mag));
+        let (cp3_x, cp3_y) = (x2 + (dx * cp3mag), y2 + (dy * cp3mag));
+        (
             // the need to negate here is weird, maybe the above atan2 calls are the wrong way around
             (
-                Bearing::radians(-(cp2y).atan2(cp2x)),
-                (cp2x * cp2x + cp2y * cp2y).sqrt() * self.max_duration.to_secs() as f64
+                Bearing::radians(-(cp2_y).atan2(cp2_x)),
+                (cp2_x * cp2_x + cp2_y * cp2_y).sqrt() * self.max_duration.to_secs() as f64
                     / self.cartesian_origin.0
                     + self.start_time.seconds_since_midnight() as f64,
             ),
             (
-                Bearing::radians(-(cp3y).atan2(cp3x)),
-                (cp3x * cp3x + cp3y * cp3y).sqrt() * self.max_duration.to_secs() as f64
+                Bearing::radians(-(cp3_y).atan2(cp3_x)),
+                (cp3_x * cp3_x + cp3_y * cp3_y).sqrt() * self.max_duration.to_secs() as f64
                     / self.cartesian_origin.0
                     + self.start_time.seconds_since_midnight() as f64,
             ),
-        );
-        cp
+        )
     }
 }
 
@@ -437,20 +428,20 @@ fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Radar 
         &data,
     );
     plotter.add_origin_station(origin);
-    if controls.show_sbahn {
+    if controls.flags.show_sbahn {
         plotter.add_route_type(RouteType::SuburbanRailway)
     }
-    if controls.show_ubahn {
+    if controls.flags.show_ubahn {
         plotter.add_route_type(RouteType::UrbanRailway)
     }
-    if controls.show_bus {
+    if controls.flags.show_bus {
         plotter.add_route_type(RouteType::BusService);
         plotter.add_route_type(RouteType::Bus)
     }
-    if controls.show_tram {
+    if controls.flags.show_tram {
         plotter.add_route_type(RouteType::TramService)
     }
-    if controls.show_regional {
+    if controls.flags.show_regional {
         plotter.add_route_type(RouteType::RailwayService)
     }
     let mut expires_time = end_time;
@@ -555,6 +546,7 @@ fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Radar 
         segments,
     } in trips.values()
     {
+        use RouteType::*;
         {
             let TripSegment {
                 from,
@@ -583,7 +575,6 @@ fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Radar 
         }
 
         let mut path = Path::begin_path();
-        use RouteType::*;
         if [
             Rail,
             RailwayService,
@@ -614,10 +605,10 @@ fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Radar 
                     (segment.from, segment.departure_time),
                     (segment.to, segment.arrival_time),
                 );
-                let (post_location, post_time) = if segments[1].from != segment.to {
-                    (segments[1].from, segments[1].departure_time)
-                } else {
+                let (post_location, post_time) = if segments[1].from == segment.to {
                     (segments[1].to, segments[1].arrival_time)
+                } else {
+                    (segments[1].from, segments[1].departure_time)
                 };
                 let post_bearing = geometry.bearing(post_location).unwrap();
                 let post_mag = post_time.seconds_since_midnight() as f64;
@@ -648,10 +639,10 @@ fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Radar 
                             (segment.to, segment.arrival_time),
                         );
                     }
-                    let (post_location, post_time) = if post.from != segment.to {
-                        (post.from, post.departure_time)
-                    } else {
+                    let (post_location, post_time) = if post.from == segment.to {
                         (post.to, post.arrival_time)
+                    } else {
+                        (post.from, post.departure_time)
                     };
                     let post_bearing = geometry.bearing(post_location).unwrap();
                     let post_mag = post_time.seconds_since_midnight() as f64;
@@ -703,14 +694,13 @@ fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Radar 
     expires_timestamp.set_milliseconds(0);
     polar_drawables.reverse();
 
-    let radar = Radar {
+    Radar {
         day,
         expires_timestamp: expires_timestamp.value_of() as u64,
         geometry,
         drawables,
         polar_drawables,
-    };
-    radar
+    }
 }
 
 use canvasser::draw::*;
@@ -718,7 +708,7 @@ use canvasser::draw::*;
 impl Drawable for RadarGeometry {
     fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d, _: &Cartesian) {
         let (origin_x, origin_y) = self.cartesian_origin;
-        ctx.set_line_dash(&js_sys::Array::of2(&10f64.into(), &10f64.into()).into())
+        ctx.set_line_dash(&js_sys::Array::of2(&10_f64.into(), &10_f64.into()).into())
             .unwrap();
         ctx.set_stroke_style(&"lightgray".into());
         ctx.set_line_width(1.);
@@ -795,11 +785,11 @@ impl Station<RadarGeometry> {
 
 impl Drawable<Polar> for Station<Polar> {
     fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d, geometry: &Polar) {
+        const STOP_RADIUS: f64 = 3.;
         let (bearing, magnitude) = self.coords;
         if magnitude > geometry.max() {
             return;
         }
-        const STOP_RADIUS: f64 = 3.;
         let (cx, cy) = geometry.coords(bearing, magnitude);
         Circle::new((cx, cy), STOP_RADIUS).draw(ctx, &Cartesian);
         Text::new(cx + STOP_RADIUS + 6., cy + 4., self.name.clone()).draw(ctx, &Cartesian);
