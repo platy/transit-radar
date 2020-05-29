@@ -309,7 +309,10 @@ async fn main() {
     warp::serve(
         warp::fs::dir(static_dir)
             .or(json_tree_route(data.clone()))
-            .or(endpoints::station_name_search_route(data.clone(), station_name_index)),
+            .or(endpoints::station_name_search_route(
+                data.clone(),
+                station_name_index,
+            )),
     )
     .run(([127, 0, 0, 1], port))
     .await;

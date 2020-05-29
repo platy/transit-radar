@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub enum SyncData<D, I> {
@@ -21,7 +21,7 @@ impl<D, I> SyncData<D, I> {
                 session_id,
                 update_number: _,
                 data: _,
-             } => *session_id,
+            } => *session_id,
             Self::Increment {
                 increment: _,
                 update_number: _,

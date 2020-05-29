@@ -227,12 +227,10 @@ impl<'r> JourneyGraphPlotter<'r> {
                 // parent stations transfer to parents, so transfer to the children as well (but aybe they hav entries in transfer to use without this implicit transfer?)
                 // we ignore any missing stops in case this is a partial data set
                 let to_stop = self.data.get_stop(&transfer.to_stop_id);
-                let iter = to_stop.iter()
+                let iter = to_stop
+                    .iter()
                     .map(|stop| &stop.stop_id)
-                    .chain(to_stop.iter()
-                        .map(|stop| stop.children())
-                        .flatten()
-                    );
+                    .chain(to_stop.iter().map(|stop| stop.children()).flatten());
                 for to_stop_id in iter {
                     if let Some(to_stop) = self.data.get_stop(to_stop_id) {
                         to_add.push(QueueItem {

@@ -13,14 +13,14 @@ pub enum Msg<D, I> {
 
 pub struct Model<D> {
     status: RequestStatus,
-    sync: ServerSync<D>,
+    sync: State<D>,
 }
 
 impl<D> Default for Model<D> {
     fn default() -> Model<D> {
         Model {
             status: RequestStatus::Ready,
-            sync: ServerSync::NotSynced,
+            sync: State::NotSynced,
         }
     }
 }
@@ -44,7 +44,7 @@ enum RequestStatus {
 //     }
 // }
 
-pub enum ServerSync<D> {
+enum State<D> {
     NotSynced,
     Synced {
         session_id: u64,
@@ -119,7 +119,7 @@ where
 impl<D> Model<D> {
     /// todo use a header instead and leave the url to the caller
     pub fn url(&self, mut url: String) -> String {
-        if let ServerSync::Synced {
+        if let State::Synced {
             session_id,
             update_count,
             data: _,
@@ -147,7 +147,7 @@ impl<D> Model<D> {
                 update_number: update_count,
                 data,
             } => {
-                self.sync = ServerSync::Synced {
+                self.sync = State::Synced {
                     session_id,
                     update_count,
                     data,
@@ -160,7 +160,7 @@ impl<D> Model<D> {
                 update_number,
                 session_id,
             } => {
-                if let ServerSync::Synced {
+                if let State::Synced {
                     session_id: our_session_id,
                     update_count,
                     data: existing_data,
@@ -179,8 +179,8 @@ impl<D> Model<D> {
 
     pub fn get(&self) -> Option<&D> {
         match &self.sync {
-            ServerSync::NotSynced => None,
-            ServerSync::Synced {
+            State::NotSynced => None,
+            State::Synced {
                 data,
                 update_count: _,
                 session_id: _,

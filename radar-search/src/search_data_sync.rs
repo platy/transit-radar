@@ -1,7 +1,7 @@
+use super::naive_sync::*;
+use super::search_data::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use super::search_data::*;
-use super::naive_sync::*;
 
 #[derive(Serialize, Deserialize)]
 pub struct GTFSSyncIncrement {
@@ -52,7 +52,11 @@ impl ClientSession for GTFSDataSession {
             self.trips = data.trips.keys().cloned().collect();
             self.stops = data.stops.keys().cloned().collect();
             self.update_number = 1;
-            SyncData::Initial { session_id: self.session_id, data, update_number: 1, }
+            SyncData::Initial {
+                session_id: self.session_id,
+                data,
+                update_number: 1,
+            }
         } else {
             let mut trips = data.trips;
             for id in self.trips.iter() {
@@ -70,10 +74,7 @@ impl ClientSession for GTFSDataSession {
             }
             self.update_number += 1;
             SyncData::Increment {
-                increment: GTFSSyncIncrement {
-                    trips,
-                    stops,
-                },
+                increment: GTFSSyncIncrement { trips, stops },
                 update_number: self.update_number,
                 session_id: self.session_id,
             }

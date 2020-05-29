@@ -70,8 +70,8 @@ pub enum RouteType {
 #[derive(Serialize, Deserialize)]
 pub struct GTFSData {
     // sync whole trip as unit
-    pub (crate) trips: HashMap<TripId, Trip>,
-    pub (crate) stops: HashMap<StopId, Stop>,
+    pub(crate) trips: HashMap<TripId, Trip>,
+    pub(crate) stops: HashMap<StopId, Stop>,
 
     // all synced initially
     services_by_day: HashMap<Day, HashSet<ServiceId>>,

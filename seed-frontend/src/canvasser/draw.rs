@@ -110,6 +110,7 @@ pub struct Path<G: Geometry> {
     ops: Vec<PathOp<G>>,
 }
 
+#[allow(clippy::enum_variant_names)]
 enum PathOp<G: Geometry> {
     MoveTo(G::Coords),
     LineTo(G::Coords),
@@ -167,8 +168,8 @@ impl Drawable for Path<Cartesian> {
             match op {
                 &PathOp::MoveTo((x, y)) => ctx.move_to(x, y),
                 &PathOp::LineTo((x, y)) => ctx.line_to(x, y),
-                &PathOp::BezierCurveTo((cp1x, cp1y), (cp2x, cp2y), (x, y)) => {
-                    ctx.bezier_curve_to(cp1x, cp1y, cp2x, cp2y, x, y)
+                &PathOp::BezierCurveTo((cp1_x, cp1_y), (cp2_x, cp2_y), (x, y)) => {
+                    ctx.bezier_curve_to(cp1_x, cp1_y, cp2_x, cp2_y, x, y)
                 }
             }
         }
@@ -214,10 +215,10 @@ impl Drawable<Polar> for Path<Polar> {
                     if magnitude > geometry.max() {
                         break;
                     }
-                    let (cp1x, cp1y) = geometry.coords(cp1_bearing, cp1_magnitude);
-                    let (cp2x, cp2y) = geometry.coords(cp2_bearing, cp2_magnitude);
+                    let (cp1_x, cp1_y) = geometry.coords(cp1_bearing, cp1_magnitude);
+                    let (cp2_x, cp2_y) = geometry.coords(cp2_bearing, cp2_magnitude);
                     let (x, y) = geometry.coords(bearing, magnitude);
-                    ctx.bezier_curve_to(cp1x, cp1y, cp2x, cp2y, x, y)
+                    ctx.bezier_curve_to(cp1_x, cp1_y, cp2_x, cp2_y, x, y)
                 }
             }
         }

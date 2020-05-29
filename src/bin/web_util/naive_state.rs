@@ -1,13 +1,14 @@
 use futures::future;
+use radar_search::search_data_sync::ClientSession;
 use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc, Mutex,
 };
 use warp::{reject, Filter};
-use radar_search::search_data_sync::ClientSession;
 
-pub fn with_session<S: Sync + Send + ClientSession>() -> impl Filter<Extract = (Arc<Mutex<S>>,), Error = reject::Rejection> + Clone {
+pub fn with_session<S: Sync + Send + ClientSession>(
+) -> impl Filter<Extract = (Arc<Mutex<S>>,), Error = reject::Rejection> + Clone {
     let container = Arc::new(SessionContainer::new());
     warp::query::<SessionKey>()
         .and_then(move |header| future::ready(container.session_filter(header)))
@@ -32,10 +33,7 @@ impl<S: ClientSession> SessionContainer<S> {
         }
     }
 
-    pub fn session_filter(
-        &self,
-        key: SessionKey,
-    ) -> Result<Arc<Mutex<S>>, reject::Rejection> {
+    pub fn session_filter(&self, key: SessionKey) -> Result<Arc<Mutex<S>>, reject::Rejection> {
         let mut map = self.map.lock().unwrap();
         let session_id = key.id.unwrap_or_else(|| self.new_session_id());
         let update_number = key.count.unwrap_or(0);
@@ -44,7 +42,10 @@ impl<S: ClientSession> SessionContainer<S> {
             .or_insert_with(|| Arc::new(Mutex::new(S::new(session_id))));
         let server_update_number = (*session.lock().unwrap()).update_number();
         if server_update_number != update_number {
-            eprintln!("session {} out of sync, client {}, server {} - resetting", session_id, update_number, server_update_number);
+            eprintln!(
+                "session {} out of sync, client {}, server {} - resetting",
+                session_id, update_number, server_update_number
+            );
             *session = Arc::new(Mutex::new(S::new(session_id)));
         }
         Ok(session.clone())
