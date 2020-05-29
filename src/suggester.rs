@@ -19,19 +19,22 @@ pub struct Suggester<T> {
     lowercase_words: TSTMap<HashSet<T>>,
 }
 
-impl<T: std::hash::Hash + Eq + Copy> Suggester<T> {
-    pub fn new() -> Suggester<T> {
+impl<T> Default for Suggester<T> {
+    fn default() -> Self {
         Suggester {
             lowercase_words: TSTMap::new(),
             exact: TSTMap::new(),
         }
     }
+}
+
+impl<T: std::hash::Hash + Eq + Copy> Suggester<T> {
+    pub fn new() -> Suggester<T> {
+        Default::default()
+    }
 
     pub fn insert(&mut self, key: &str, value: T) {
-        let v = self
-            .exact
-            .entry(key)
-            .or_insert(HashSet::new());
+        let v = self.exact.entry(key).or_insert(HashSet::new());
         v.insert(value);
 
         for word in key.split_whitespace() {

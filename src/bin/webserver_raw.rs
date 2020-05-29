@@ -27,8 +27,8 @@ fn day_time(date_time: chrono::DateTime<Utc>) -> (Day, Time) {
     (day, now)
 }
 
-fn filter_data<'r>(
-    data: &'r GTFSData,
+fn filter_data(
+    data: &GTFSData,
     station_name: String,
     options: RadarOptions,
     day: Day,
@@ -96,7 +96,7 @@ async fn filtered_data_handler(
         }
         Err(err) => {
             eprintln!("failed to decode route={:?}: {:?}", name, err);
-            return Err(warp::reject::reject());
+            Err(warp::reject::reject())
         }
     }
 }
@@ -127,12 +127,13 @@ fn filtered_data_route(
 #[tokio::main]
 async fn main() {
     let port = std::env::var("PORT")
-        .unwrap_or("8080".to_owned())
+        .unwrap_or_else(|_| "8080".to_owned())
         .parse()
         .unwrap();
-    let static_dir = std::env::var("STATIC_DIR").unwrap_or("seed-frontend".to_owned());
-    let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());
-    let line_colors_path = std::env::var("LINE_COLORS").unwrap_or("./Linienfarben.csv".to_owned());
+    let static_dir = std::env::var("STATIC_DIR").unwrap_or_else(|_| "seed-frontend".to_owned());
+    let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or_else(|_| "gtfs".to_owned());
+    let line_colors_path =
+        std::env::var("LINE_COLORS").unwrap_or_else(|_| "./Linienfarben.csv".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
 
     let colors = db::load_colors(Path::new(&line_colors_path)).expect(&line_colors_path);

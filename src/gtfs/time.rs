@@ -6,8 +6,7 @@ pub mod option_duration_format {
     where
         D: Deserializer<'de>,
     {
-        Option::<i32>::deserialize(deserializer)
-            .map(|option| option.map(|num| Duration::seconds(num)))
+        Option::<i32>::deserialize(deserializer).map(|option| option.map(Duration::seconds))
     }
 }
 

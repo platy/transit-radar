@@ -5,8 +5,8 @@ use radar_search::journey_graph;
 use radar_search::{search_data::*, time::*};
 use transit_radar::gtfs::db;
 
-fn lookup<'r>(
-    data: &'r GTFSData,
+fn lookup(
+    data: &GTFSData,
     station_name: String,
     options: RadarOptions,
     day: Day,
@@ -17,6 +17,7 @@ fn lookup<'r>(
     Ok(())
 }
 
+#[allow(unused_variables)]
 fn produce_tree_json<'r>(
     data: &'r GTFSData,
     station: StopId,
@@ -109,7 +110,7 @@ pub struct RadarOptions {
 }
 
 fn main() {
-    let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());
+    let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or_else(|_| "gtfs".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
 
     let data = db::load_data(

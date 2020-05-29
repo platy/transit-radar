@@ -5,7 +5,7 @@ use std::time::Instant;
 use transit_radar::gtfs::db;
 
 fn main() {
-    let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());
+    let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or_else(|_| "gtfs".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
 
     let now = Instant::now();

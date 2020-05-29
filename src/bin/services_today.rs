@@ -1,11 +1,11 @@
 use chrono::prelude::*;
 use std::path::Path;
 
-use radar_search::{search_data::*, time::*};
+use radar_search::search_data::*;
 use transit_radar::gtfs::db;
 
 fn main() {
-    let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());
+    let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or_else(|_| "gtfs".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
 
     let data = db::load_data(
@@ -16,7 +16,6 @@ fn main() {
     .unwrap();
 
     let date_time = chrono::Utc::now().with_timezone(&chrono_tz::Europe::Berlin);
-    let now = Time::from_hms(date_time.hour(), date_time.minute(), date_time.second());
     let day = match date_time.weekday() {
         Weekday::Mon => Day::Monday,
         Weekday::Tue => Day::Tuesday,
@@ -33,13 +32,7 @@ fn main() {
 
     let mut trips: Vec<_> = data
         .trips()
-        .filter(|trip| {
-            if trip.route.route_short_name == "U8" && services.contains(&trip.service_id) {
-                true
-            } else {
-                false
-            }
-        })
+        .filter(|trip| trip.route.route_short_name == "U8" && services.contains(&trip.service_id))
         .collect();
     trips.sort_unstable_by_key(|trip| trip.stop_times[0].departure_time);
     trips.sort_by_key(|trip| trip.service_id);

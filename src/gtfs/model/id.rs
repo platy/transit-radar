@@ -43,12 +43,12 @@ impl<'de> Deserialize<'de> for RouteId {
                 E: serde::de::Error,
             {
                 string
-                    .split("_")
+                    .split('_')
                     .next()
                     .unwrap()
                     .parse()
-                    .map(|v| RouteId(v))
-                    .map_err(|e| serde::de::Error::custom(e))
+                    .map(RouteId)
+                    .map_err(serde::de::Error::custom)
             }
 
             fn visit_u32<E>(self, num: u32) -> Result<Self::Value, E>
@@ -62,13 +62,13 @@ impl<'de> Deserialize<'de> for RouteId {
             where
                 E: serde::de::Error,
             {
-                self.visit_u32(v.try_into().map_err(|e| serde::de::Error::custom(e))?)
+                self.visit_u32(v.try_into().map_err(serde::de::Error::custom)?)
             }
             fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
             where
                 E: serde::de::Error,
             {
-                self.visit_u32(v.try_into().map_err(|e| serde::de::Error::custom(e))?)
+                self.visit_u32(v.try_into().map_err(serde::de::Error::custom)?)
             }
         }
 

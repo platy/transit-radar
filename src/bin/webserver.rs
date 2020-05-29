@@ -12,13 +12,13 @@ use transit_radar::gtfs::db;
 
 use geo::algorithm::bearing::Bearing;
 
-fn lookup<'r>(
-    data: &'r GTFSData,
+fn lookup(
+    data: &GTFSData,
     station_name: String,
     options: RadarOptions,
     day: Day,
     period: Period,
-) -> Result<FEData<'r>, db::SearchError> {
+) -> Result<FEData<'_>, db::SearchError> {
     let station = db::get_station_by_name(data, &station_name)?;
     let output = produce_tree_json(&data, station.stop_id, day, period, &options);
     println!(
@@ -105,7 +105,7 @@ fn produce_tree_json<'r>(
                 trip_id,
                 route_name,
                 route_type,
-                route_color,
+                route_color: _,
             } => {
                 let to = *stop_id_to_idx.get(&to_stop.station_id()).unwrap();
                 let from_stop_or_station_id = from_stop.station_id();
@@ -267,7 +267,7 @@ async fn json_tree_handler(
         },
         Err(err) => {
             eprintln!("dir: failed to decode route={:?}: {:?}", name, err);
-            return Err(warp::reject::reject());
+            Err(warp::reject::reject())
         }
     }
 }
@@ -295,11 +295,11 @@ fn json_tree_route(
 #[tokio::main]
 async fn main() {
     let port = std::env::var("PORT")
-        .unwrap_or("8085".to_owned())
+        .unwrap_or_else(|_| "8085".to_owned())
         .parse()
         .unwrap();
-    let static_dir = std::env::var("STATIC_DIR").unwrap_or("frontend/build".to_owned());
-    let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());
+    let static_dir = std::env::var("STATIC_DIR").unwrap_or_else(|_| "frontend/build".to_owned());
+    let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or_else(|_| "gtfs".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
 
     let data = Arc::new(db::load_data(&gtfs_dir, db::DayFilter::All, HashMap::new()).unwrap());

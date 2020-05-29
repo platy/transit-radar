@@ -12,7 +12,7 @@ fn print_record(record: &csv::StringRecord) {
 }
 
 fn mainr() -> Result<(), Box<dyn Error>> {
-    let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or("gtfs".to_owned());
+    let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or_else(|_| "gtfs".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
     let source = &GTFSSource::new(gtfs_dir);
 

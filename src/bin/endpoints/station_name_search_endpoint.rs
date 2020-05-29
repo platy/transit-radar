@@ -22,8 +22,7 @@ async fn station_search_handler(
     match decode(&query) {
         Ok(query) => {
             let mut result = Vec::new();
-            let mut count = 0;
-            for stop_id in station_search.search(&query) {
+            for (count, stop_id) in station_search.search(&query).into_iter().enumerate() {
                 if count > 20 {
                     break;
                 }
@@ -34,13 +33,12 @@ async fn station_search_handler(
                     stop_id,
                     name: &stop.stop_name,
                 });
-                count += 1;
             }
             Ok(warp::reply::json(&result))
         }
         Err(err) => {
             eprintln!("dir: failed to decode query={:?}: {:?}", &query, err);
-            return Err(warp::reject::not_found());
+            Err(warp::reject::not_found())
         }
     }
 }

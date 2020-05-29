@@ -59,10 +59,10 @@ fn color_for_type(route_type: RouteType) -> &'static str {
     }
 }
 
-pub fn load_data(
+pub fn load_data<S: std::hash::BuildHasher>(
     gtfs_dir: &Path,
     day_filter: DayFilter,
-    route_colors: HashMap<String, String>,
+    route_colors: HashMap<String, String, S>,
 ) -> Result<GTFSData, Box<dyn Error>> {
     let source = &GTFSSource::new(gtfs_dir);
 
@@ -140,12 +140,12 @@ pub fn load_data(
             .route_color
             .as_ref()
             .map(|s| Cow::Owned(format!("#{}", s)))
-            .or(route_colors.get(&route.route_short_name).map(Into::into))
-            .unwrap_or(color_for_type(route.route_type).into());
+            .or_else(|| route_colors.get(&route.route_short_name).map(Into::into))
+            .unwrap_or_else(|| color_for_type(route.route_type).into());
         builder.add_route(
             route.route_id.into_inner(),
             route.route_short_name,
-            route.route_type.into(),
+            route.route_type,
             route_color.into_owned(),
         );
     }
@@ -197,7 +197,7 @@ pub fn get_station_by_name<'r>(
             candidates.push(stop);
         }
     }
-    if candidates.len() == 0 {
+    if candidates.is_empty() {
         Err(SearchError::NotFound(exact_name.to_owned()))
     } else if candidates.len() > 1 {
         panic!("ambiguous search");
