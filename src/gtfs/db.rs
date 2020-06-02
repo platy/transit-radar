@@ -136,11 +136,9 @@ pub fn load_data<S: std::hash::BuildHasher>(
     let mut rdr = source.open_csv("routes.txt")?;
     for result in rdr.deserialize() {
         let route: gtfs::Route = result?;
-        let route_color: Cow<str> = route
-            .route_color
-            .as_ref()
-            .map(|s| Cow::Owned(format!("#{}", s)))
-            .or_else(|| route_colors.get(&route.route_short_name).map(Into::into))
+        let route_color: Cow<str> = route_colors
+            .get(&route.route_short_name)
+            .map(Into::into)
             .unwrap_or_else(|| color_for_type(route.route_type).into());
         builder.add_route(
             route.route_id.into_inner(),
@@ -256,13 +254,32 @@ impl fmt::Display for SearchError {
 
 pub fn load_colors(path: &Path) -> Result<HashMap<String, String>, csv::Error> {
     let mut colors = HashMap::new();
-    let reader = csv::ReaderBuilder::new().delimiter(b';').from_path(path)?;
-    for result in reader.into_byte_records() {
+    let mut reader = csv::ReaderBuilder::new()
+        .delimiter(b';')
+        .flexible(true)
+        .from_path(path)?;
+    let header = reader.headers().expect("headers expected in colors csv");
+    eprintln!("{:?}", header);
+    let route_name_idx = header
+        .iter()
+        .enumerate()
+        .find(|(_, header)| *header == "Name")
+        .expect("Header {Name}")
+        .0;
+    let colour_idx = header
+        .iter()
+        .enumerate()
+        .find(|(_, header)| *header == "Hex")
+        .expect("Header {Hex}")
+        .0;
+    for result in reader.into_records() {
         let br = result?;
-        colors.insert(
-            String::from_utf8_lossy(br.get(0).unwrap()).into_owned(),
-            String::from_utf8_lossy(br.get(10).unwrap()).into_owned(),
-        );
+        if let (Some(route_name), Some(colour)) = (
+            br.get(route_name_idx).filter(|s| !s.is_empty()),
+            br.get(colour_idx).filter(|s| !s.is_empty()),
+        ) {
+            colors.insert(route_name.to_owned(), colour.to_owned(), );
+        }
     }
     Ok(colors)
 }

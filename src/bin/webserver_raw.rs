@@ -133,7 +133,7 @@ async fn main() {
     let static_dir = std::env::var("STATIC_DIR").unwrap_or_else(|_| "seed-frontend".to_owned());
     let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or_else(|_| "gtfs".to_owned());
     let line_colors_path =
-        std::env::var("LINE_COLORS").unwrap_or_else(|_| "./Linienfarben.csv".to_owned());
+        std::env::var("LINE_COLORS").unwrap_or_else(|_| "./VBB_Colours.csv".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
 
     let colors = db::load_colors(Path::new(&line_colors_path)).expect(&line_colors_path);

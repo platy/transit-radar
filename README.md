@@ -145,7 +145,8 @@
 [x] Share autocomplete component
 [x] Fit on a mobile screen
 [x] Shareable routing
-[] Colour properly
+[x] Colour properly
+[] Use stroke dashes and stroke width from csv too
 [] Make sure it doesn't animate when not visible to save cpu
 [] New name (not colliding with translate.google.com) and description of what it does
 [] Show time and timetable time
