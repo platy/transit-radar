@@ -93,7 +93,12 @@ fn view(model: &Model) -> Node<Msg> {
             .map(|s| s.name.as_str())
             .unwrap_or_default()],
         controls::view(&model.controls).map_msg(Msg::ControlsMsg),
-        div![canvas![
+        canvas![
+            style! {
+                St::Display => "block",
+                St::Width => "100%",
+                St::MaxWidth => "100vh",
+            },
             &model.canvasser.el_ref(),
             attrs![
                 At::Width => px(2200),
@@ -102,7 +107,7 @@ fn view(model: &Model) -> Node<Msg> {
             style![
                 St::Width => "100%",
             ],
-        ]],
+        ],
         // if let Some(radar) = &model.radar {
         //     format!(
         //         "data processed for {}, {}. {} trips",

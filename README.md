@@ -147,7 +147,7 @@
 [x] Shareable routing
 [x] Colour properly
 [] Use stroke dashes and stroke width from csv too
-[] Make sure it doesn't animate when not visible to save cpu
+[] Make sure it doesn't animate when not visible to save cpu : based on FF task manager, it uses barely any cpu when off screen
 [] New name (not colliding with translate.google.com) and description of what it does
 [] Show time and timetable time
 [] Is there an analogy from quantum or analogue computing?
@@ -158,6 +158,7 @@
 [] Break up large loads into smaller parts to show something quicker and to avoid a long block while parsing
 [] more transfer efficient way of indexing / syncing the data
 [] Presearch stations in local data - show those results at the top
+[] WS
 ---
 [] Fade in/out
 [] Animate search change
