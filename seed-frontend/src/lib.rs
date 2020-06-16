@@ -94,18 +94,10 @@ fn view(model: &Model) -> Node<Msg> {
             .unwrap_or_default()],
         controls::view(&model.controls).map_msg(Msg::ControlsMsg),
         canvas![
-            style! {
-                St::Display => "block",
-                St::Width => "100%",
-                St::MaxWidth => "100vh",
-            },
             &model.canvasser.el_ref(),
             attrs![
                 At::Width => px(2200),
                 At::Height => px(2000),
-            ],
-            style![
-                St::Width => "100%",
             ],
         ],
         // if let Some(radar) = &model.radar {

@@ -7,6 +7,7 @@ pub struct Model {
     pub params: Params,
     station_autocomplete: autocomplete::Model<Msg, StationSuggestion>,
     station_input: String,
+    enable_url_routing: bool,
 }
 
 impl Default for Model {
@@ -17,17 +18,24 @@ impl Default for Model {
                 .on_selection(|_| Some(Msg::AStationSelected))
                 .on_input_change(|s| Some(Msg::StationInputChanged(s.to_owned()))),
             station_input: "".to_owned(),
+            enable_url_routing: false,
         }
     }
 }
 
 impl Model {
     pub fn init(mut url: Url, orders: &mut impl Orders<Msg>) -> Model {
-        let station_name = url.next_path_part();
-        if let Some(part) = station_name {
-            orders.perform_cmd(
-                request(format!("/searchStation/{}", part)).map(Msg::SuggestionsFetched),
-            );
+        let first_part = url.next_path_part();
+        let mut station_name = None;
+        let mut enable_url_routing = false;
+        if let Some(part) = first_part {
+            if !part.ends_with(".html") {
+                orders.perform_cmd(
+                    request(format!("/searchStation/{}", part)).map(Msg::SuggestionsFetched),
+                );
+                enable_url_routing = true;
+                station_name = Some(part);
+            }
         }
 
         Model {
@@ -36,6 +44,7 @@ impl Model {
                 .on_input_change(|s| Some(Msg::StationInputChanged(s.to_owned()))),
             station_input: station_name.unwrap_or_default().to_owned(),
             params: Params::from(&url),
+            enable_url_routing,
         }
     }
 }
@@ -59,11 +68,6 @@ impl Params {
 
 impl From<&Url> for Params {
     fn from(url: &Url) -> Self {
-        log!(
-            "Params::from",
-            url,
-            serde_urlencoded::from_str::<'_, Flags>(&url.search().to_string()),
-        );
         Params {
             flags: serde_urlencoded::from_str(&url.search().to_string()).unwrap_or_default(),
             station_selection: None,
@@ -75,8 +79,6 @@ impl From<&Url> for Params {
 #[serde(default = "Default::default")]
 #[allow(clippy::struct_excessive_bools)]
 pub struct Flags {
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub show_stations: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub animate: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -93,7 +95,6 @@ pub struct Flags {
 
 #[derive(Debug)]
 pub enum Msg {
-    SetShowStations(String),
     SetAnimate(String),
     SetShowSBahn(String),
     SetShowUBahn(String),
@@ -117,12 +118,6 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
                 At::Value => model.station_input,
             })
             .into_nodes(),
-        checkbox(
-            "show-stations",
-            "Show Stations",
-            model.params.flags.show_stations,
-            &Msg::SetShowStations
-        ),
         checkbox(
             "animate",
             "Animate",
@@ -167,7 +162,6 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) -> boo
     let mut params_changed = true;
     let params = &mut model.params;
     match msg {
-        Msg::SetShowStations(_value) => params.flags.show_stations = !params.flags.show_stations,
         Msg::SetAnimate(_value) => params.flags.animate = !params.flags.animate,
         Msg::SetShowSBahn(_value) => params.flags.show_sbahn = !params.flags.show_sbahn,
         Msg::SetShowUBahn(_value) => params.flags.show_ubahn = !params.flags.show_ubahn,
@@ -198,13 +192,14 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) -> boo
         Msg::SuggestionsFetched(Ok(suggestions)) => {
             params_changed = false;
             // automatically select a suggestion if it matches the url route
-            log!(Url::current().next_path_part(), suggestions);
-            if let Some(route_station) = Url::current().next_path_part() {
-                if let Some(matching_suggestion) =
-                    suggestions.iter().find(|s| s.name == route_station)
-                {
-                    params.station_selection = Some(matching_suggestion.clone());
-                    params_changed = true;
+            if model.enable_url_routing {
+                if let Some(route_station) = Url::current().next_path_part() {
+                    if let Some(matching_suggestion) =
+                        suggestions.iter().find(|s| s.name == route_station)
+                    {
+                        params.station_selection = Some(matching_suggestion.clone());
+                        params_changed = true;
+                    }
                 }
             }
             model.station_autocomplete.set_suggestions(suggestions);
@@ -228,13 +223,15 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) -> boo
         log!("params_changed", old_params, params);
         if !old_params.iter().any(|old_params| params == old_params) {
             // params changed, push to history
-            util::history()
-                .replace_state_with_url(
-                    &JsValue::from_serde(params).expect("Convert params to JS"),
-                    "",
-                    Some(&params.url()),
-                )
-                .expect("Problems pushing state");
+            if model.enable_url_routing {
+                util::history()
+                    .replace_state_with_url(
+                        &JsValue::from_serde(params).expect("Convert params to JS"),
+                        "",
+                        Some(&params.url()),
+                    )
+                    .expect("Problems pushing state");
+            }
         }
     }
     true

@@ -152,6 +152,7 @@
 [] Show time and timetable time
 [] Is there an analogy from quantum or analogue computing?
 [] Debug logging
+[] dotted lines are going to the second stop on a trip from the origin
 [] Preselect checkboxes
 ---
 [] Reduce size of wasm
@@ -161,6 +162,7 @@
 [] WS
 ---
 [] Fade in/out
+[] Walking transfer stations should not get closer
 [] Animate search change
 [] Geographical mode
 [] Change time
@@ -237,7 +239,7 @@ Deploy backend change (alpha):
 ```
 ssh root@s4.njk.onl /app/transit-radar/service-alpha.sh stop
 scp target/x86_64-unknown-linux-musl/release/webserver_raw root@s4.njk.onl:/app/transit-radar/transit-radar-alpha
-scp Linienfarben.csv root@s4.njk.onl:/app/transit-radar/
+scp VBB_Colours.csv root@s4.njk.onl:/app/transit-radar/
 ssh root@s4.njk.onl /app/transit-radar/service-alpha.sh start
 ```
 
