@@ -71,13 +71,13 @@ pub struct Builder<Ms: 'static, Mdl: 'static, GMs> {
     canvas_added: Option<fn() -> Ms>,
 }
 
-impl<Ms, Mdl: Default, GMs> Builder<Ms, Mdl, GMs> {
+impl<Ms, Mdl, GMs> Builder<Ms, Mdl, GMs> {
     pub fn canvas_added(mut self, f: fn() -> Ms) -> Self {
         self.canvas_added = Some(f);
         self
     }
 
-    pub fn build(self) -> App<Ms, Mdl, GMs> {
+    pub fn build(self, model: Mdl) -> App<Ms, Mdl, GMs> {
         App {
             cfg: Rc::new(AppCfg {
                 canvas: ElRef::new(),
@@ -87,7 +87,7 @@ impl<Ms, Mdl: Default, GMs> Builder<Ms, Mdl, GMs> {
                 canvas_added: self.canvas_added,
             }),
             data: Rc::new(AppData {
-                model: RefCell::new(Mdl::default()),
+                model: RefCell::new(model),
                 scheduled_render_handle: RefCell::new(AnimationFrameHandle::None),
                 after_next_render_callbacks: RefCell::new(Vec::new()),
                 next_frame_end_callbacks: RefCell::new(Vec::new()),

@@ -1,9 +1,8 @@
 //! Data fetching module which fetches required data based on requirements from the client, the server can send increments of the data required to meet the requirements.
 
-use super::canvasser::Orders;
 use futures::prelude::*;
 use radar_search::naive_sync::SyncData;
-use seed::{error, fetch};
+use seed::{error, fetch, prelude::*};
 use serde::{de::DeserializeOwned, Serialize};
 
 pub enum Msg<D, I> {

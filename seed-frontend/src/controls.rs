@@ -80,8 +80,6 @@ impl From<&Url> for Params {
 #[allow(clippy::struct_excessive_bools)]
 pub struct Flags {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
-    pub animate: bool,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub show_sbahn: bool,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub show_ubahn: bool,
@@ -95,7 +93,6 @@ pub struct Flags {
 
 #[derive(Debug)]
 pub enum Msg {
-    SetAnimate(String),
     SetShowSBahn(String),
     SetShowUBahn(String),
     SetShowBus(String),
@@ -118,12 +115,6 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
                 At::Value => model.station_input,
             })
             .into_nodes(),
-        checkbox(
-            "animate",
-            "Animate",
-            model.params.flags.animate,
-            &Msg::SetAnimate
-        ),
         checkbox(
             "show-sbahn",
             "Show SBahn",
@@ -162,7 +153,6 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) -> boo
     let mut params_changed = true;
     let params = &mut model.params;
     match msg {
-        Msg::SetAnimate(_value) => params.flags.animate = !params.flags.animate,
         Msg::SetShowSBahn(_value) => params.flags.show_sbahn = !params.flags.show_sbahn,
         Msg::SetShowUBahn(_value) => params.flags.show_ubahn = !params.flags.show_ubahn,
         Msg::SetShowBus(_value) => params.flags.show_bus = !params.flags.show_bus,

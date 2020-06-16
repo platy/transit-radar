@@ -1,64 +1,30 @@
-use enclose::enclose;
 use radar_search::journey_graph;
 use radar_search::search_data::*;
-use radar_search::search_data_sync::*;
 use radar_search::time::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::f64::consts::PI;
-
-mod scheduler;
+use std::rc::Rc;
 
 use super::canvasser;
 use super::controls;
-use super::sync;
 
-pub fn init() -> canvasser::App<CanvasMsg, CanvasModel> {
+pub fn init(radar: Rc<RefCell<Option<Radar>>>) -> canvasser::App<CanvasMsg, CanvasModel> {
     canvasser::App::builder(canvas_update, canvas_draw)
-        .canvas_added(|| CanvasMsg::CanvasAdded)
-        .build()
+        .canvas_added(|| CanvasMsg::AnimationFrame)
+        .build(CanvasModel {
+            radar,
+            frame_count: 0,
+        })
 }
 
 pub struct CanvasModel {
-    scheduler: RefCell<scheduler::Scheduler>,
-
-    sync: sync::Model<GTFSData>,
-    radar: Option<Radar>,
+    radar: Rc<RefCell<Option<Radar>>>,
     frame_count: u64,
-
-    controls: controls::Model,
-}
-
-impl Default for CanvasModel {
-    fn default() -> Self {
-        CanvasModel {
-            scheduler: RefCell::new(scheduler::Scheduler::new()),
-            sync: Default::default(),
-            radar: Default::default(),
-            frame_count: Default::default(),
-            controls: Default::default(),
-        }
-    }
-}
-
-fn schedule_msg<Ms, Mdl>(
-    scheduler: &scheduler::Scheduler,
-    app: canvasser::App<Ms, Mdl>,
-    timestamp: u64,
-    msg: Ms,
-) {
-    let f = enclose!((app => s) move || s.update(msg));
-    scheduler.schedule(timestamp, f);
 }
 
 pub enum CanvasMsg {
     AnimationFrame,
-    CanvasAdded,
-    SyncMsg(sync::Msg<GTFSData, GTFSSyncIncrement>),
-    Search,
-    SearchExpires,
-    ControlsChange(controls::Params),
-    LoadDataAhead(Time),
 }
 
 fn canvas_update(
@@ -67,138 +33,23 @@ fn canvas_update(
     orders: &mut impl canvasser::Orders<CanvasMsg>,
 ) {
     match msg {
-        CanvasMsg::CanvasAdded => {
-            if model.sync.never_requested() {
-                orders.send_msg(CanvasMsg::SyncMsg(sync::Msg::FetchData));
-            }
-        }
-        CanvasMsg::SyncMsg(msg) => {
-            let (_day, start_time) = day_time(&js_sys::Date::new_0());
-            sync_data(msg, model, orders, start_time);
-        }
-
-        CanvasMsg::LoadDataAhead(start_time) => {
-            sync_data(sync::Msg::FetchData, model, orders, start_time);
-        }
-
-        CanvasMsg::Search => {
-            if let Some(data) = model.sync.get() {
-                if let Some(origin) = model
-                    .controls
-                    .params
-                    .station_selection
-                    .as_ref()
-                    .and_then(|suggestion| data.get_stop(&suggestion.stop_id))
-                {
-                    let previous_expires_timestamp =
-                        model.radar.as_ref().map(|radar| radar.expires_timestamp);
-                    let result = search(data, origin, &model.controls.params);
-                    let expires_date = js_sys::Date::new_0();
-                    expires_date.set_time(result.expires_timestamp as f64);
-                    let next_search_time = day_time(&expires_date).1;
-                    if previous_expires_timestamp != Some(result.expires_timestamp) {
-                        let msg_mapper = orders.msg_mapper();
-                        schedule_msg(
-                            &model.scheduler.borrow_mut(),
-                            orders.clone_app(),
-                            result.expires_timestamp - 15_000,
-                            msg_mapper(CanvasMsg::LoadDataAhead(next_search_time)),
-                        );
-                        schedule_msg(
-                            &model.scheduler.borrow_mut(),
-                            orders.clone_app(),
-                            result.expires_timestamp,
-                            msg_mapper(CanvasMsg::SearchExpires),
-                        );
-                    }
-                    model.radar = Some(result);
-                }
-            }
-        }
-
-        CanvasMsg::SearchExpires => {
-            let date = js_sys::Date::new_0();
-            let radar = model.radar.as_mut().unwrap();
-            // check whether it is actually expired, it may have been updated before this message was scheduled
-            if date.value_of() as u64 > radar.expires_timestamp {
-                orders.send_msg(CanvasMsg::Search);
-            }
-        }
-
         CanvasMsg::AnimationFrame => {
-            if model.controls.params.flags.animate {
-                orders.next_frame_end(|_| CanvasMsg::AnimationFrame);
-            }
+            orders.next_frame_end(|_| CanvasMsg::AnimationFrame);
 
             model.frame_count += 1;
-            if model.radar.is_none() || model.frame_count % 6 != 0 {
+            if model.radar.borrow().is_none() || model.frame_count % 6 != 0 {
                 orders.skip();
             }
         }
-
-        CanvasMsg::ControlsChange(params) => {
-            if params.flags.animate && !model.controls.params.flags.animate {
-                orders.send_msg(CanvasMsg::AnimationFrame);
-            }
-            model.controls.params = params;
-            orders.send_msg(CanvasMsg::Search);
-            orders.send_msg(CanvasMsg::SyncMsg(sync::Msg::FetchData));
-        }
     }
 }
 
-#[derive(serde::Serialize)]
-#[allow(clippy::struct_excessive_bools)]
-struct Params {
-    ubahn: bool,
-    sbahn: bool,
-    bus: bool,
-    tram: bool,
-    regio: bool,
-    start_time: Time,
-    end_time: Time,
-}
-
-fn sync_data(
-    msg: sync::Msg<GTFSData, GTFSSyncIncrement>,
-    model: &mut CanvasModel,
-    orders: &mut impl canvasser::Orders<CanvasMsg>,
-    start_time: Time,
-) {
-    let params = &model.controls.params;
-    if let Some(station_selection) = &params.station_selection {
-        let query = serde_urlencoded::to_string(Params {
-            ubahn: params.flags.show_ubahn,
-            sbahn: params.flags.show_sbahn,
-            tram: params.flags.show_tram,
-            regio: params.flags.show_regional,
-            bus: params.flags.show_bus,
-            start_time,
-            end_time: start_time + Duration::minutes(40),
-        })
-        .unwrap();
-        let url = format!(
-            "/data/{}?{}",
-            station_selection.name.replace(" ", "%20"),
-            query
-        );
-        if sync::update(
-            msg,
-            &mut model.sync,
-            url,
-            &mut orders.proxy(CanvasMsg::SyncMsg),
-        ) {
-            orders.send_msg(CanvasMsg::Search);
-        }
-    }
-}
-
-struct Radar {
+pub struct Radar {
     geometry: RadarGeometry,
-    drawables: Vec<Box<dyn Drawable>>,
-    polar_drawables: Vec<Box<dyn Drawable<Polar>>>,
-    day: Day,
-    expires_timestamp: u64,
+    pub drawables: Vec<Box<dyn Drawable>>,
+    pub polar_drawables: Vec<Box<dyn Drawable<Polar>>>,
+    pub day: Day,
+    pub expires_timestamp: u64,
 }
 
 #[derive(Clone)]
@@ -340,7 +191,7 @@ impl RadarGeometry {
     }
 }
 
-fn day_time(date_time: &js_sys::Date) -> (Day, Time) {
+pub fn day_time(date_time: &js_sys::Date) -> (Day, Time) {
     let now = Time::from_hms(
         date_time.get_hours(),
         date_time.get_minutes(),
@@ -359,7 +210,7 @@ fn day_time(date_time: &js_sys::Date) -> (Day, Time) {
     (day, now)
 }
 
-fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Radar {
+pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Radar {
     // TODO don't use client time, instead start with the server time and increment using client clock, also this is local time
     let (day, start_time) = day_time(&js_sys::Date::new_0());
     let max_duration = Duration::minutes(30);
@@ -678,16 +529,17 @@ impl Drawable for RadarGeometry {
 }
 
 fn canvas_draw(model: &CanvasModel, ctx: &web_sys::CanvasRenderingContext2d) {
-    if model.radar.is_none() {
+    if model.radar.borrow().is_none() {
         return;
     }
+    let radar = model.radar.borrow();
     let Radar {
         day: _,
         expires_timestamp: _,
         geometry,
         drawables,
         polar_drawables,
-    } = model.radar.as_ref().unwrap();
+    } = radar.as_ref().unwrap();
 
     drawables.draw(ctx, &Cartesian);
     let now = js_sys::Date::new_0();
