@@ -105,11 +105,6 @@ impl<Ms: 'static, Mdl, GMs: 'static> Orders<Ms, GMs> for OrdersContainer<Ms, Mdl
         self
     }
 
-    fn schedule_msg(&mut self, timestamp: u64, msg: Ms) -> &mut Self {
-        self.app.schedule_msg(timestamp, msg);
-        self
-    }
-
     fn perform_cmd<MsU: 'static>(&mut self, cmd: impl Future<Output = MsU> + 'static) -> &mut Self {
         let app = self.app.clone();
 

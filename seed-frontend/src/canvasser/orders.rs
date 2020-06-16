@@ -71,8 +71,6 @@ pub trait Orders<Ms: 'static, GMs = UndefinedGMsg> {
     /// _Note:_: All `msg`s are pushed to the queue - i.e. `update` function is NOT called immediately.
     fn send_msg(&mut self, msg: Ms) -> &mut Self;
 
-    fn schedule_msg(&mut self, timestamp: u64, msg: Ms) -> &mut Self;
-
     /// Execute `cmd` and send its output (if it's `Msg`) to `update` function.
     ///
     /// Output has to be `Msg`, `Option<Msg>` or `()`.

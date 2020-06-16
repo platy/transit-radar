@@ -2,8 +2,8 @@ use seed::{prelude::*, *};
 
 mod canvasser;
 mod controls;
-mod sync;
 mod radar;
+mod sync;
 
 #[wasm_bindgen(start)]
 pub fn render() {
@@ -51,9 +51,9 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                 &mut model.controls,
                 &mut orders.proxy(Msg::ControlsMsg),
             ) {
-                model
-                    .canvasser
-                    .update(radar::CanvasMsg::ControlsChange(model.controls.params.clone()));
+                model.canvasser.update(radar::CanvasMsg::ControlsChange(
+                    model.controls.params.clone(),
+                ));
             }
         }
         Msg::Rendered => {

@@ -24,7 +24,6 @@ mod mailbox;
 mod message_mapper;
 mod orders;
 mod render_info;
-mod scheduler;
 
 pub use cmd_manager::CmdManager;
 pub use draw::Drawable;
@@ -90,7 +89,6 @@ impl<Ms, Mdl: Default, GMs> Builder<Ms, Mdl, GMs> {
             data: Rc::new(AppData {
                 model: RefCell::new(Mdl::default()),
                 scheduled_render_handle: RefCell::new(AnimationFrameHandle::None),
-                scheduler: RefCell::new(scheduler::Scheduler::new()),
                 after_next_render_callbacks: RefCell::new(Vec::new()),
                 next_frame_end_callbacks: RefCell::new(Vec::new()),
                 render_info: Cell::new(None),
@@ -164,12 +162,6 @@ impl<Ms, Mdl, GMs: 'static> App<Ms, Mdl, GMs> {
         let mut queue: VecDeque<Effect<Ms, GMs>> = VecDeque::new();
         queue.push_front(Effect::GMsg(g_msg));
         self.process_effect_queue(queue);
-    }
-
-    fn schedule_msg(&mut self, timestamp: u64, msg: Ms) -> &mut Self {
-        let f = enclose!((self => s) move || s.update(msg));
-        self.data.scheduler.borrow_mut().schedule(timestamp, f);
-        self
     }
 
     fn process_effect_queue(&self, mut queue: VecDeque<Effect<Ms, GMs>>) {
@@ -359,7 +351,6 @@ struct AppData<Ms: 'static, Mdl> {
     after_next_render_callbacks: RefCell<Vec<Box<dyn FnOnce(RenderInfo) -> Option<Ms>>>>,
     next_frame_end_callbacks: RefCell<Vec<Box<dyn FnOnce(Option<RenderInfo>) -> Option<Ms>>>>,
     render_info: Cell<Option<RenderInfo>>,
-    scheduler: RefCell<scheduler::Scheduler>,
 
     scheduled_render_handle: RefCell<AnimationFrameHandle>,
 }

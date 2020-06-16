@@ -1,27 +1,54 @@
+use enclose::enclose;
 use radar_search::journey_graph;
 use radar_search::search_data::*;
 use radar_search::search_data_sync::*;
 use radar_search::time::*;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
+mod scheduler;
+
 use super::canvasser;
-use super::sync;
 use super::controls;
+use super::sync;
 
 pub fn init() -> canvasser::App<CanvasMsg, CanvasModel> {
     canvasser::App::builder(canvas_update, canvas_draw)
-      .canvas_added(|| CanvasMsg::CanvasAdded)
-      .build()
+        .canvas_added(|| CanvasMsg::CanvasAdded)
+        .build()
 }
 
-#[derive(Default)]
 pub struct CanvasModel {
+    scheduler: RefCell<scheduler::Scheduler>,
+
     sync: sync::Model<GTFSData>,
     radar: Option<Radar>,
     frame_count: u64,
 
     controls: controls::Model,
+}
+
+impl Default for CanvasModel {
+    fn default() -> Self {
+        CanvasModel {
+            scheduler: RefCell::new(scheduler::Scheduler::new()),
+            sync: Default::default(),
+            radar: Default::default(),
+            frame_count: Default::default(),
+            controls: Default::default(),
+        }
+    }
+}
+
+fn schedule_msg<Ms, Mdl>(
+    scheduler: &scheduler::Scheduler,
+    app: canvasser::App<Ms, Mdl>,
+    timestamp: u64,
+    msg: Ms,
+) {
+    let f = enclose!((app => s) move || s.update(msg));
+    scheduler.schedule(timestamp, f);
 }
 
 pub enum CanvasMsg {
@@ -70,11 +97,19 @@ fn canvas_update(
                     expires_date.set_time(result.expires_timestamp as f64);
                     let next_search_time = day_time(&expires_date).1;
                     if previous_expires_timestamp != Some(result.expires_timestamp) {
-                        orders.schedule_msg(
+                        let msg_mapper = orders.msg_mapper();
+                        schedule_msg(
+                            &model.scheduler.borrow_mut(),
+                            orders.clone_app(),
                             result.expires_timestamp - 15_000,
-                            CanvasMsg::LoadDataAhead(next_search_time),
+                            msg_mapper(CanvasMsg::LoadDataAhead(next_search_time)),
                         );
-                        orders.schedule_msg(result.expires_timestamp, CanvasMsg::SearchExpires);
+                        schedule_msg(
+                            &model.scheduler.borrow_mut(),
+                            orders.clone_app(),
+                            result.expires_timestamp,
+                            msg_mapper(CanvasMsg::SearchExpires),
+                        );
                     }
                     model.radar = Some(result);
                 }
