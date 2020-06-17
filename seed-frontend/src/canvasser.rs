@@ -12,32 +12,18 @@ use seed::prelude::ElRef;
 use seed::util;
 use seed::util::ClosureNew;
 use std::cell::{Cell, RefCell};
-use std::collections::VecDeque;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use web_sys::HtmlCanvasElement;
 
-mod cmd_manager;
 pub mod draw;
-mod effects;
-mod mailbox;
-mod message_mapper;
-mod orders;
 mod render_info;
 
-pub use cmd_manager::CmdManager;
 pub use draw::Drawable;
-use effects::Effect;
-use mailbox::Mailbox;
-pub use message_mapper::MessageMapper;
-pub use orders::*;
 pub use render_info::RenderInfo;
 
-pub type UpdateFn<Ms, Mdl, GMs> = fn(Ms, &mut Mdl, &mut OrdersContainer<Ms, Mdl, GMs>);
-pub type SinkFn<Ms, Mdl, GMs> = fn(GMs, &mut Mdl, &mut OrdersContainer<Ms, Mdl, GMs>);
+pub type UpdateFn<Mdl> = fn(&mut Mdl) -> bool;
 pub type DrawFn<Mdl> = fn(&Mdl, &web_sys::CanvasRenderingContext2d);
-
-pub struct UndefinedGMsg;
 
 /// This gets added into the model of the seed app and referred to by the seed view
 /// ```
@@ -46,14 +32,14 @@ pub struct UndefinedGMsg;
 ///    canvas: App,
 /// }
 /// ```
-pub struct App<Ms: 'static, Mdl: 'static, GMs = UndefinedGMsg> {
+pub struct App<Mdl: 'static> {
     /// App configuration available for the entire application lifetime.
-    cfg: Rc<AppCfg<Ms, Mdl, GMs>>,
+    cfg: Rc<AppCfg<Mdl>>,
     /// Mutable app state.
-    data: Rc<AppData<Ms, Mdl>>,
+    data: Rc<AppData<Mdl>>,
 }
 
-impl<Ms, Mdl, GMs> Clone for App<Ms, Mdl, GMs> {
+impl<Mdl> Clone for App<Mdl> {
     fn clone(&self) -> Self {
         Self {
             cfg: Rc::clone(&self.cfg),
@@ -63,48 +49,33 @@ impl<Ms, Mdl, GMs> Clone for App<Ms, Mdl, GMs> {
 }
 
 /// Used to create and store initial app configuration, ie items passed by the app creator.
-pub struct Builder<Ms: 'static, Mdl: 'static, GMs> {
-    update: UpdateFn<Ms, Mdl, GMs>,
-    sink: Option<SinkFn<Ms, Mdl, GMs>>,
+pub struct Builder<Mdl: 'static> {
+    update: UpdateFn<Mdl>,
     view: DrawFn<Mdl>,
-
-    canvas_added: Option<fn() -> Ms>,
 }
 
-impl<Ms, Mdl, GMs> Builder<Ms, Mdl, GMs> {
-    pub fn canvas_added(mut self, f: fn() -> Ms) -> Self {
-        self.canvas_added = Some(f);
-        self
-    }
-
-    pub fn build(self, model: Mdl) -> App<Ms, Mdl, GMs> {
+impl<Mdl> Builder<Mdl> {
+    pub fn build(self, model: Mdl) -> App<Mdl> {
         App {
             cfg: Rc::new(AppCfg {
                 canvas: ElRef::new(),
                 update: self.update,
                 view: self.view,
-                sink: self.sink,
-                canvas_added: self.canvas_added,
             }),
             data: Rc::new(AppData {
                 model: RefCell::new(model),
                 scheduled_render_handle: RefCell::new(AnimationFrameHandle::None),
-                after_next_render_callbacks: RefCell::new(Vec::new()),
-                next_frame_end_callbacks: RefCell::new(Vec::new()),
                 render_info: Cell::new(None),
             }),
         }
     }
 }
 
-impl<Ms, Mdl, GMs: 'static> App<Ms, Mdl, GMs> {
-    pub fn builder(update: UpdateFn<Ms, Mdl, GMs>, view: DrawFn<Mdl>) -> Builder<Ms, Mdl, GMs> {
+impl<Mdl> App<Mdl> {
+    pub fn builder(update: UpdateFn<Mdl>, view: DrawFn<Mdl>) -> Builder<Mdl> {
         Builder {
             update,
-            sink: None,
             view,
-
-            canvas_added: None,
         }
     }
 
@@ -144,77 +115,8 @@ impl<Ms, Mdl, GMs: 'static> App<Ms, Mdl, GMs> {
     pub fn rendered(&mut self) {
         if self.cfg.canvas.get().is_some() {
             // canvas is present on page
-            if let Some(canvas_added) = self.cfg.canvas_added {
-                self.update(canvas_added());
-            }
+            self.schedule_render()
         }
-    }
-
-    /// calls the application's update function with this message and then any resulting messages,
-    /// then renders the view if necessary and not in an animation loop
-    pub fn update(&self, msg: Ms) {
-        let mut queue: VecDeque<Effect<Ms, GMs>> = VecDeque::new();
-        queue.push_front(Effect::Msg(msg));
-        self.process_effect_queue(queue);
-    }
-
-    pub fn sink(&self, g_msg: GMs) {
-        let mut queue: VecDeque<Effect<Ms, GMs>> = VecDeque::new();
-        queue.push_front(Effect::GMsg(g_msg));
-        self.process_effect_queue(queue);
-    }
-
-    fn process_effect_queue(&self, mut queue: VecDeque<Effect<Ms, GMs>>) {
-        while let Some(effect) = queue.pop_front() {
-            match effect {
-                Effect::Msg(msg) => {
-                    let mut new_effects = self.process_queue_message(msg);
-                    queue.append(&mut new_effects);
-                }
-                Effect::GMsg(g_msg) => {
-                    let mut new_effects = self.process_queue_global_message(g_msg);
-                    queue.append(&mut new_effects);
-                } // Effect::Notification(notification) => {
-                  //     let mut new_effects = self.process_queue_notification(&notification);
-                  //     queue.append(&mut new_effects);
-                  // }
-            }
-        }
-
-        if !self.data.next_frame_end_callbacks.borrow().is_empty() {
-            self.schedule_frame_end_callbacks();
-        }
-    }
-
-    fn process_queue_message(&self, message: Ms) -> VecDeque<Effect<Ms, GMs>> {
-        // for l in self.data.msg_listeners.borrow().iter() {
-        //     (l)(&message)
-        // }
-
-        let mut orders = OrdersContainer::new(self.clone());
-        (self.cfg.update)(message, &mut *self.data.model.borrow_mut(), &mut orders);
-
-        // self.patch_window_event_handlers();
-
-        if orders.should_render {
-            self.schedule_render();
-        }
-        orders.effects
-    }
-
-    fn process_queue_global_message(&self, g_message: GMs) -> VecDeque<Effect<Ms, GMs>> {
-        let mut orders = OrdersContainer::new(self.clone());
-
-        if let Some(sink) = self.cfg.sink {
-            sink(g_message, &mut *self.data.model.borrow_mut(), &mut orders);
-        }
-
-        // self.patch_window_event_handlers();
-
-        if orders.should_render {
-            self.schedule_render();
-        }
-        orders.effects
     }
 
     fn schedule_render(&self) {
@@ -224,25 +126,16 @@ impl<Ms, Mdl, GMs: 'static> App<Ms, Mdl, GMs> {
             scheduled_render_handle.take();
             let cb = Closure::new(enclose!((self => s) move |_| {
                 s.data.scheduled_render_handle.borrow_mut().take();
-                s.rerender();
+                s.schedule_render();
+                let should_draw = (s.cfg.update)(&mut *s.data.model.borrow_mut());
+
+                if should_draw {
+                    s.rerender();
+                }
             }));
 
             *scheduled_render_handle =
                 AnimationFrameHandle::Render(util::request_animation_frame(cb));
-        }
-    }
-
-    fn schedule_frame_end_callbacks(&self) {
-        let mut scheduled_render_handle = self.data.scheduled_render_handle.borrow_mut();
-
-        if scheduled_render_handle.is_none() {
-            let cb = Closure::new(enclose!((self => s) move |_| {
-                s.data.scheduled_render_handle.borrow_mut().take();
-                s.non_render_frame();
-            }));
-
-            *scheduled_render_handle =
-                AnimationFrameHandle::NoRender(util::request_animation_frame(cb));
         }
     }
 
@@ -306,50 +199,11 @@ impl<Ms, Mdl, GMs: 'static> App<Ms, Mdl, GMs> {
             },
         };
         self.data.render_info.set(Some(render_info));
-
-        self.process_effect_queue(
-            self.data
-                .after_next_render_callbacks
-                .replace(Vec::new())
-                .into_iter()
-                .filter_map(|callback| callback(render_info).map(Effect::Msg))
-                .chain(
-                    self.data
-                        .next_frame_end_callbacks
-                        .replace(Vec::new())
-                        .into_iter()
-                        .filter_map(|callback| callback(Some(render_info)).map(Effect::Msg)),
-                )
-                .collect(),
-        );
-    }
-
-    fn non_render_frame(&self) {
-        self.process_effect_queue(
-            self.data
-                .next_frame_end_callbacks
-                .replace(Vec::new())
-                .into_iter()
-                .filter_map(|callback| callback(None).map(Effect::Msg))
-                .collect(),
-        );
-    }
-
-    pub fn mailbox(&self) -> Mailbox<Ms> {
-        Mailbox::new(enclose!((self => s) move |option_message| {
-            if let Some(message) = option_message {
-                s.update(message);
-            } else {
-                s.rerender();
-            }
-        }))
     }
 }
 
-struct AppData<Ms: 'static, Mdl> {
+struct AppData<Mdl> {
     model: RefCell<Mdl>,
-    after_next_render_callbacks: RefCell<Vec<Box<dyn FnOnce(RenderInfo) -> Option<Ms>>>>,
-    next_frame_end_callbacks: RefCell<Vec<Box<dyn FnOnce(Option<RenderInfo>) -> Option<Ms>>>>,
     render_info: Cell<Option<RenderInfo>>,
 
     scheduled_render_handle: RefCell<AnimationFrameHandle>,
@@ -387,17 +241,12 @@ impl Default for AnimationFrameHandle {
     }
 }
 
-pub struct AppCfg<Ms, Mdl, GMs>
+pub struct AppCfg<Mdl>
 where
-    Ms: 'static,
     Mdl: 'static,
 {
-    update: UpdateFn<Ms, Mdl, GMs>,
+    update: UpdateFn<Mdl>,
     view: DrawFn<Mdl>,
-    sink: Option<SinkFn<Ms, Mdl, GMs>>,
 
     canvas: ElRef<HtmlCanvasElement>,
-
-    /// the update fn will be called with this each time that the canvas is added to the page
-    canvas_added: Option<fn() -> Ms>,
 }

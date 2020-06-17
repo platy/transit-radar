@@ -9,9 +9,8 @@ use std::rc::Rc;
 use super::canvasser;
 use super::controls;
 
-pub fn init(radar: Rc<RefCell<Option<Radar>>>) -> canvasser::App<CanvasMsg, CanvasModel> {
-    canvasser::App::builder(canvas_update, canvas_draw)
-        .canvas_added(|| CanvasMsg::AnimationFrame)
+pub fn init(radar: Rc<RefCell<Option<Radar>>>) -> canvasser::App<CanvasModel> {
+    canvasser::App::builder(should_draw, canvas_draw)
         .build(CanvasModel {
             radar,
             frame_count: 0,
@@ -23,33 +22,20 @@ pub struct CanvasModel {
     frame_count: u64,
 }
 
-pub enum CanvasMsg {
-    AnimationFrame,
-}
-
-fn canvas_update(
-    msg: CanvasMsg,
+fn should_draw(
     model: &mut CanvasModel,
-    orders: &mut impl canvasser::Orders<CanvasMsg>,
-) {
-    match msg {
-        CanvasMsg::AnimationFrame => {
-            orders.next_frame_end(|_| CanvasMsg::AnimationFrame);
-
-            model.frame_count += 1;
-            if model.radar.borrow().is_none() || model.frame_count % 6 != 0 {
-                orders.skip();
-            }
-        }
-    }
+) -> bool {
+    model.frame_count += 1;
+    model.radar.borrow().is_some() && model.frame_count % 6 == 0
 }
 
 pub struct Radar {
-    geometry: RadarGeometry,
+    pub geometry: RadarGeometry,
     pub drawables: Vec<Box<dyn Drawable>>,
     pub polar_drawables: Vec<Box<dyn Drawable<Polar>>>,
     pub day: Day,
     pub expires_timestamp: u64,
+    pub trip_count: usize,
 }
 
 #[derive(Clone)]
@@ -75,8 +61,8 @@ struct TripSegment {
 
 // needs to be cloneable for the view, could be avoided
 #[derive(Clone)]
-struct RadarGeometry {
-    start_time: Time,
+pub struct RadarGeometry {
+    pub start_time: Time,
     cartesian_origin: (f64, f64),
     geographic_origin: geo::Point<f64>,
     max_duration: Duration,
@@ -494,6 +480,7 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
         geometry,
         drawables,
         polar_drawables,
+        trip_count: trips.len(),
     }
 }
 
@@ -539,6 +526,7 @@ fn canvas_draw(model: &CanvasModel, ctx: &web_sys::CanvasRenderingContext2d) {
         geometry,
         drawables,
         polar_drawables,
+        trip_count: _,
     } = radar.as_ref().unwrap();
 
     drawables.draw(ctx, &Cartesian);

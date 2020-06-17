@@ -48,7 +48,7 @@ struct Model {
     sync: sync::Model<GTFSData>,
     radar: Rc<RefCell<Option<radar::Radar>>>,
 
-    canvasser: canvasser::App<radar::CanvasMsg, radar::CanvasModel>,
+    canvasser: canvasser::App<radar::CanvasModel>,
     controls: controls::Model,
 }
 
@@ -142,7 +142,6 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 }
 
 fn view(model: &Model) -> Node<Msg> {
-    // if let Some(data) = model.sync.get() {
     div![
         h2![&model
             .controls
@@ -159,20 +158,24 @@ fn view(model: &Model) -> Node<Msg> {
                 At::Height => px(2000),
             ],
         ],
-        // if let Some(radar) = &model.radar {
-        //     format!(
-        //         "data processed for {}, {}. {} trips",
-        //         radar.day,
-        //         radar.geometry.start_time,
-        //         radar.trips.len()
-        //     )
-        // } else {
-        //     format!("data received, {} stops", data.stops().count())
-        // }
+        if let Some(data) = model.sync.get() {
+            let radar = model.radar.borrow();
+            div![
+                if let Some(radar) = radar.as_ref() {
+                    format!(
+                        "data processed for {}, {}. {} trips",
+                        radar.day,
+                        radar.geometry.start_time,
+                        radar.trip_count,
+                    )
+                } else {
+                    format!("data received, {} stops", data.stops().count())
+                },
+            ]
+        } else {
+            div!["Data not loaded"]
+        }
     ]
-    // } else {
-    //     div!["Data not loaded"]
-    // }
 }
 
 fn schedule_msg<Ms, Mdl, INodes: IntoNodes<Ms> + 'static>(

@@ -149,7 +149,6 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
 }
 
 pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) -> bool {
-    log!("control", msg);
     let mut params_changed = true;
     let params = &mut model.params;
     match msg {
@@ -210,7 +209,6 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) -> boo
             .state()
             .ok()
             .and_then(|js_value| js_value.into_serde().ok());
-        log!("params_changed", old_params, params);
         if !old_params.iter().any(|old_params| params == old_params) {
             // params changed, push to history
             if model.enable_url_routing {
