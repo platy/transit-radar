@@ -1,28 +1,20 @@
-//! Canvas animation framework based on seed / elm
-//!
-//! Key differences:
-//! * if animation is switched on, the view is recalled on the frame loop and is not triggered by messages
-//! * output is not dom changes but things being drawn on a canvas
-//! * timing inputs will be provided to transitionable nodes to ease the animation of transitions
-//! * transition frames can be rendered without calling view if the canvas nodes support transitions
-//! * in animation mode, view function can be triggered by clock changes of different precisions, or fast as the browser allows
-
 use enclose::enclose;
-use seed::prelude::ElRef;
+use seed::prelude::*;
 use seed::util;
 use seed::util::ClosureNew;
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use wasm_bindgen::closure::Closure;
 use web_sys::HtmlCanvasElement;
 
-pub mod draw;
-mod render_info;
+#[derive(Copy, Clone, Debug)]
+struct RenderInfo {
+    pub timestamp: f64,
+    pub timestamp_delta: Option<f64>,
+}
 
-pub use draw::Drawable;
-pub use render_info::RenderInfo;
-
-pub type UpdateFn<Mdl> = fn(&mut Mdl) -> bool;
+pub type ShouldDrawFn<Mdl> = fn(&Mdl, u64) -> bool;
 pub type DrawFn<Mdl> = fn(&Mdl, &web_sys::CanvasRenderingContext2d);
 
 /// This gets added into the model of the seed app and referred to by the seed view
@@ -48,94 +40,56 @@ impl<Mdl> Clone for App<Mdl> {
     }
 }
 
-/// Used to create and store initial app configuration, ie items passed by the app creator.
-pub struct Builder<Mdl: 'static> {
-    update: UpdateFn<Mdl>,
-    view: DrawFn<Mdl>,
-}
-
-impl<Mdl> Builder<Mdl> {
-    pub fn build(self, model: Mdl) -> App<Mdl> {
+impl<Mdl> App<Mdl> {
+    pub fn new(update: ShouldDrawFn<Mdl>, view: DrawFn<Mdl>, model: Mdl) -> App<Mdl> {
         App {
             cfg: Rc::new(AppCfg {
                 canvas: ElRef::new(),
-                update: self.update,
-                view: self.view,
+                update,
+                view,
             }),
             data: Rc::new(AppData {
                 model: RefCell::new(model),
-                scheduled_render_handle: RefCell::new(AnimationFrameHandle::None),
+                scheduled_render_handle: RefCell::new(None),
                 render_info: Cell::new(None),
+                frame_count: AtomicU64::default(),
             }),
         }
     }
-}
 
-impl<Mdl> App<Mdl> {
-    pub fn builder(update: UpdateFn<Mdl>, view: DrawFn<Mdl>) -> Builder<Mdl> {
-        Builder {
-            update,
-            view,
-        }
+    pub fn model(&self) -> Ref<Mdl> {
+        self.data.model.borrow()
     }
 
-    /// Reference to be given to the canvas element in the seed view
-    /// ```
-    /// fn view(model: &Model) -> Node<Msg> {
-    ///     canvas![
-    ///         &model.canvas.el_ref(),
-    ///         attrs![
-    ///             At::Width => px(200),
-    ///             At::Height => px(200),
-    ///         ],
-    ///     ]
-    /// }
-    /// ```
-    pub fn el_ref(&self) -> ElRef<HtmlCanvasElement> {
-        self.cfg.canvas.clone()
+    pub fn model_mut(&mut self) -> RefMut<Mdl> {
+        self.data.model.borrow_mut()
     }
 
-    /// seed has rerendered the vdom - this may mean the canvas has been readded or removed and this needs to be checked
-    /// ```
-    /// enum Msg {
-    ///     /// When a user changes a control
-    ///     ControlsMsg(controls::Msg),
-    ///     /// After each render is completed
-    ///     Rendered,
-    /// }
-    /// fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
-    ///     match msg {
-    ///         Msg::Rendered => {
-    ///             model.canvasser.rendered();
-    ///             orders.after_next_render(|_| Msg::Rendered).skip();
-    ///         }
-    ///     }
-    /// }
-    /// ```
-    pub fn rendered(&mut self) {
-        if self.cfg.canvas.get().is_some() {
-            // canvas is present on page
-            self.schedule_render()
-        }
+    pub fn canvas_ref(&self) -> CanvasRef<Mdl> {
+        CanvasRef(self)
     }
 
     fn schedule_render(&self) {
         let mut scheduled_render_handle = self.data.scheduled_render_handle.borrow_mut();
 
-        if scheduled_render_handle.is_not_render() {
+        if scheduled_render_handle.is_none() {
             scheduled_render_handle.take();
             let cb = Closure::new(enclose!((self => s) move |_| {
+                // remove handle for this timer
                 s.data.scheduled_render_handle.borrow_mut().take();
-                s.schedule_render();
-                let should_draw = (s.cfg.update)(&mut *s.data.model.borrow_mut());
+                // stop the render loop if there is no canvas on the page
+                if s.cfg.canvas.get().is_some() {
+                    s.schedule_render();
+                    let frame_count = s.data.frame_count.fetch_add(1, Ordering::SeqCst);
+                    let should_draw = (s.cfg.update)(&mut *s.data.model.borrow_mut(), frame_count);
 
-                if should_draw {
-                    s.rerender();
+                    if should_draw {
+                        s.rerender();
+                    }
                 }
             }));
 
-            *scheduled_render_handle =
-                AnimationFrameHandle::Render(util::request_animation_frame(cb));
+            *scheduled_render_handle = Some(util::request_animation_frame(cb));
         }
     }
 
@@ -152,41 +106,7 @@ impl<Mdl> App<Mdl> {
         ctx.clear_rect(0., 0., canvas.width().into(), canvas.height().into());
         ctx.set_transform(2., 0., 0., 2., 0., 0.).unwrap();
 
-        // if let Some(radar) = &model.radar {
-        //     radar.geometry.start_time = time;
-        //     radar.geometry.draw(&ctx);
-
-        //     let data = model.sync.get().unwrap();
-
         (self.cfg.view)(&self.data.model.borrow(), &ctx);
-        // }
-
-        // // Create a new vdom: The top element, and all its children. Does not yet
-        // // have associated web_sys elements.
-        // let mut new = El::empty(Tag::Placeholder);
-        // new.children = (self.cfg.view)(self.data.model.borrow().as_ref().unwrap()).into_nodes();
-
-        // let old = self
-        //     .data
-        //     .main_el_vdom
-        //     .borrow_mut()
-        //     .take()
-        //     .expect("missing main_el_vdom");
-
-        // patch::patch_els(
-        //     &self.cfg.document,
-        //     &self.mailbox(),
-        //     &self.clone(),
-        //     &self.cfg.mount_point,
-        //     old.children.into_iter(),
-        //     new.children.iter_mut(),
-        // );
-
-        // // Now that we've re-rendered, replace our stored El with the new one;
-        // // it will be used as the old El next time.
-        // self.data.main_el_vdom.borrow_mut().replace(new);
-
-        // // Execute `after_next_render_callbacks`.
 
         let render_info = match self.data.render_info.take() {
             Some(old_render_info) => RenderInfo {
@@ -202,50 +122,29 @@ impl<Mdl> App<Mdl> {
     }
 }
 
+pub struct CanvasRef<'a, Mdl: 'static>(&'a App<Mdl>);
+
+impl<'a, Ms, Mdl> UpdateEl<Ms> for CanvasRef<'a, Mdl> {
+    /// Canvasser is added to the Seed VDom, once the render is finished we'll be connected to a canvas on the page and so should ensure the animation loop is started
+    fn update_el(self, el: &mut El<Ms>) {
+        self.0.cfg.canvas.clone().update_el(el);
+        self.0.schedule_render();
+    }
+}
+
 struct AppData<Mdl> {
     model: RefCell<Mdl>,
     render_info: Cell<Option<RenderInfo>>,
+    frame_count: AtomicU64,
 
-    scheduled_render_handle: RefCell<AnimationFrameHandle>,
-}
-
-enum AnimationFrameHandle {
-    None,
-    NoRender(util::RequestAnimationFrameHandle),
-    Render(util::RequestAnimationFrameHandle),
-}
-
-impl AnimationFrameHandle {
-    fn is_none(&self) -> bool {
-        match self {
-            Self::None => true,
-            _ => false,
-        }
-    }
-
-    fn is_not_render(&self) -> bool {
-        match self {
-            Self::Render(_) => false,
-            _ => true,
-        }
-    }
-
-    fn take(&mut self) -> Self {
-        std::mem::take(self)
-    }
-}
-
-impl Default for AnimationFrameHandle {
-    fn default() -> Self {
-        AnimationFrameHandle::None
-    }
+    scheduled_render_handle: RefCell<Option<util::RequestAnimationFrameHandle>>,
 }
 
 pub struct AppCfg<Mdl>
 where
     Mdl: 'static,
 {
-    update: UpdateFn<Mdl>,
+    update: ShouldDrawFn<Mdl>,
     view: DrawFn<Mdl>,
 
     canvas: ElRef<HtmlCanvasElement>,

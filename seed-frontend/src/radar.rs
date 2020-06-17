@@ -1,32 +1,21 @@
 use radar_search::journey_graph;
 use radar_search::search_data::*;
 use radar_search::time::*;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::f64::consts::PI;
-use std::rc::Rc;
 
 use super::canvasser;
 use super::controls;
 
-pub fn init(radar: Rc<RefCell<Option<Radar>>>) -> canvasser::App<CanvasModel> {
-    canvasser::App::builder(should_draw, canvas_draw)
-        .build(CanvasModel {
-            radar,
-            frame_count: 0,
-        })
+mod draw;
+use draw::*;
+
+pub fn init(radar: Option<Radar>) -> canvasser::App<Option<Radar>> {
+    canvasser::App::new(should_draw, canvas_draw, radar)
 }
 
-pub struct CanvasModel {
-    radar: Rc<RefCell<Option<Radar>>>,
-    frame_count: u64,
-}
-
-fn should_draw(
-    model: &mut CanvasModel,
-) -> bool {
-    model.frame_count += 1;
-    model.radar.borrow().is_some() && model.frame_count % 6 == 0
+fn should_draw(model: &Option<Radar>, frame_count: u64) -> bool {
+    model.is_some() && frame_count % 6 == 0
 }
 
 pub struct Radar {
@@ -484,8 +473,6 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
     }
 }
 
-use canvasser::draw::*;
-
 impl Drawable for RadarGeometry {
     fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d, _: &Cartesian) {
         let (origin_x, origin_y) = self.cartesian_origin;
@@ -515,11 +502,10 @@ impl Drawable for RadarGeometry {
     }
 }
 
-fn canvas_draw(model: &CanvasModel, ctx: &web_sys::CanvasRenderingContext2d) {
-    if model.radar.borrow().is_none() {
+fn canvas_draw(model: &Option<Radar>, ctx: &web_sys::CanvasRenderingContext2d) {
+    if model.is_none() {
         return;
     }
-    let radar = model.radar.borrow();
     let Radar {
         day: _,
         expires_timestamp: _,
@@ -527,7 +513,7 @@ fn canvas_draw(model: &CanvasModel, ctx: &web_sys::CanvasRenderingContext2d) {
         drawables,
         polar_drawables,
         trip_count: _,
-    } = radar.as_ref().unwrap();
+    } = model.as_ref().unwrap();
 
     drawables.draw(ctx, &Cartesian);
     let now = js_sys::Date::new_0();

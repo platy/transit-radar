@@ -4,7 +4,6 @@ use radar_search::search_data_sync::*;
 use radar_search::time::*;
 use seed::{prelude::*, *};
 use std::cell::RefCell;
-use std::rc::Rc;
 
 mod canvasser;
 mod controls;
@@ -20,35 +19,19 @@ pub fn render() {
 fn init(url: Url, orders: &mut impl Orders<Msg>) -> Model {
     orders.after_next_render(|_| Msg::FirstRender);
 
-    let radar = Rc::new(RefCell::new(None));
-
     Model {
         scheduler: RefCell::new(scheduler::Scheduler::new()),
         sync: Default::default(),
-        canvasser: radar::init(radar.clone()),
-        radar,
+        canvasser: radar::init(None),
         controls: controls::Model::init(url, &mut orders.proxy(Msg::ControlsMsg)),
     }
 }
 
-/// fn after_mount(_: Url, orders: &mut impl Orders<Msg>) -> AfterMount<Model> {
-///     orders.after_next_render(|_| Msg::Rendered);
-/// // ...
-///
-/// fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
-///     match msg {
-///         Msg::Rendered => {
-///             let canvas = canvas.get().expect("get canvas element");
-///             // ...
-///             orders.after_next_render(|_| Msg::Rendered).skip();
-///         }
-
 struct Model {
     scheduler: RefCell<scheduler::Scheduler>,
     sync: sync::Model<GTFSData>,
-    radar: Rc<RefCell<Option<radar::Radar>>>,
 
-    canvasser: canvasser::App<radar::CanvasModel>,
+    canvasser: canvasser::App<Option<radar::Radar>>,
     controls: controls::Model,
 }
 
@@ -77,7 +60,6 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         }
 
         Msg::FirstRender => {
-            model.canvasser.rendered();
             if model.sync.never_requested() {
                 orders.send_msg(Msg::SyncMsg(sync::Msg::FetchData));
             }
@@ -102,8 +84,8 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                     .and_then(|suggestion| data.get_stop(&suggestion.stop_id))
                 {
                     let previous_expires_timestamp = model
-                        .radar
-                        .borrow()
+                        .canvasser
+                        .model()
                         .as_ref()
                         .map(|radar| radar.expires_timestamp);
                     let result = radar::search(data, origin, &model.controls.params);
@@ -125,14 +107,14 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                             msg_mapper(Msg::SearchExpires),
                         );
                     }
-                    model.radar.replace(Some(result));
+                    model.canvasser.model_mut().replace(result);
                 }
             }
         }
 
         Msg::SearchExpires => {
             let date = js_sys::Date::new_0();
-            let expires_timestamp = model.radar.borrow().as_ref().unwrap().expires_timestamp;
+            let expires_timestamp = model.canvasser.model().as_ref().unwrap().expires_timestamp;
             // check whether it is actually expired, it may have been updated before this message was scheduled
             if date.value_of() as u64 > expires_timestamp {
                 orders.send_msg(Msg::Search);
@@ -152,26 +134,22 @@ fn view(model: &Model) -> Node<Msg> {
             .unwrap_or_default()],
         controls::view(&model.controls).map_msg(Msg::ControlsMsg),
         canvas![
-            &model.canvasser.el_ref(),
+            model.canvasser.canvas_ref(),
             attrs![
                 At::Width => px(2200),
                 At::Height => px(2000),
             ],
         ],
         if let Some(data) = model.sync.get() {
-            let radar = model.radar.borrow();
-            div![
-                if let Some(radar) = radar.as_ref() {
-                    format!(
-                        "data processed for {}, {}. {} trips",
-                        radar.day,
-                        radar.geometry.start_time,
-                        radar.trip_count,
-                    )
-                } else {
-                    format!("data received, {} stops", data.stops().count())
-                },
-            ]
+            let radar = model.canvasser.model();
+            div![if let Some(radar) = radar.as_ref() {
+                format!(
+                    "data processed for {}, {}. {} trips",
+                    radar.day, radar.geometry.start_time, radar.trip_count,
+                )
+            } else {
+                format!("data received, {} stops", data.stops().count())
+            },]
         } else {
             div!["Data not loaded"]
         }
