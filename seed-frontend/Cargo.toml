@@ -9,6 +9,10 @@ edition = "2018"
 crate-type = ["cdylib"]
 
 
+[features]
+storybook = []
+
+
 [dependencies]
 seed = { git = "https://github.com/seed-rs/seed", rev = "b25cf59" }
 wasm-bindgen = {version = "0.2.62", features = ["serde-serialize"]}

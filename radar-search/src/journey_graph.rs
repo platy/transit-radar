@@ -398,8 +398,7 @@ impl<'r> JourneyGraphPlotter<'r> {
         if self
             .stops
             .get(&stop_id)
-            .iter()
-            .all(|&&previous_earliest_arrival| new_arrival_time < previous_earliest_arrival)
+            .map_or(true, |&previous_earliest_arrival| new_arrival_time < previous_earliest_arrival)
         {
             self.stops.insert(stop_id, new_arrival_time);
             true

@@ -7,21 +7,28 @@ use std::f64::consts::PI;
 use super::canvasser;
 use super::controls;
 
-mod draw;
-use draw::*;
+use canvasser::draw::*;
+use canvasser::animate::*;
 
-pub fn init(radar: Option<Radar>) -> canvasser::App<Option<Radar>> {
-    canvasser::App::new(should_draw, canvas_draw, radar)
+pub fn init(radar: Option<Radar>) -> canvasser::App<Option<Radar>, f64> {
+    canvasser::App::new(should_draw, radar)
 }
 
-fn should_draw(model: &Option<Radar>, frame_count: u64) -> bool {
-    model.is_some() && frame_count % 6 == 0
+fn should_draw(model: &Option<Radar>, frame_count: u64, is_in_transition: bool) -> Option<f64> {
+    if model.is_some() && (is_in_transition || frame_count % 6 == 0) { // @todo switch speed when something is transitioning maybe?
+        let now = js_sys::Date::new_0();
+        let now = ((now.get_hours() * 60 + now.get_minutes()) * 60 + now.get_seconds()) as f64
+            + now.get_milliseconds() as f64 / 1000.;
+        Some(now)
+    } else {
+        None
+    }
 }
 
 pub struct Radar {
     pub geometry: RadarGeometry,
-    pub drawables: Vec<Box<dyn Drawable>>,
-    pub polar_drawables: Vec<Box<dyn Drawable<Polar>>>,
+    trip_drawables: HashMap<TripId, Path<Polar>>,
+    station_animatables: HashMap<StopId, Station<Polar>>,
     pub day: Day,
     pub expires_timestamp: u64,
     pub trip_count: usize,
@@ -34,6 +41,7 @@ struct Station<G: Geometry> {
 }
 
 struct RadarTrip {
+    trip_id: TripId,
     route_name: String,
     route_type: RouteType,
     route_color: String,
@@ -216,7 +224,8 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
     let mut expires_time = end_time;
     let mut trips: HashMap<TripId, RadarTrip> = HashMap::new();
 
-    let mut polar_drawables: Vec<Box<dyn Drawable<Polar>>> = vec![];
+    let mut station_animatables: HashMap<StopId, Station<Polar>> = HashMap::new();
+    let mut trip_drawables: HashMap<TripId, Path<Polar>> = HashMap::new();
     let geometry = RadarGeometry {
         cartesian_origin: (500., 500.),
         geographic_origin: origin.location,
@@ -237,7 +246,7 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
                     coords: (stop.location, earliest_arrival),
                     name: stop.stop_name.replace(" (Berlin)", ""),
                 };
-                polar_drawables.push(Box::new(station.to_polar(&geometry)));
+                assert!(station_animatables.insert(stop.station_id(), station.to_polar(&geometry)).is_none());
             }
             journey_graph::Item::JourneySegment {
                 departure_time: _,
@@ -291,6 +300,7 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
                 trips.insert(
                     trip_id,
                     RadarTrip {
+                        trip_id,
                         route_name: route_name.to_string(),
                         route_type,
                         route_color: route_color.to_owned(),
@@ -308,6 +318,7 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
     }
 
     for RadarTrip {
+        trip_id,
         connection,
         route_name: _,
         route_type,
@@ -328,10 +339,11 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
             path.set_stroke_style(route_color);
 
             let mut to = to;
-            if *from == geometry.geographic_origin {
-                // connection is from origin meaning no natural bearing for it, we use the bearing to the next stop
+            if *to == geometry.geographic_origin {
+                // connection is on origin meaning no natural bearing for it, we use the bearing to the next stop
                 to = &segments.first().expect("at least one segment in a trip").to;
             }
+            // done in reverse, it means the line moves into the origin rather than just erasing from the end
             path.move_to((
                 geometry.bearing(*to).unwrap(),
                 arrival_time.seconds_since_midnight() as f64,
@@ -340,7 +352,8 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
                 geometry.bearing(*from).unwrap_or_default(),
                 departure_time.seconds_since_midnight() as f64,
             ));
-            polar_drawables.push(Box::new(path));
+            // use random to make connection and trip unique in hashmap
+            trip_drawables.insert(1000000 + *trip_id, path);
         }
 
         let mut path = Path::begin_path();
@@ -440,7 +453,7 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
         } else if segments.len() == 1 {
             let segment = &segments[0];
             let to_bearing = geometry.bearing(segment.to).unwrap();
-            let from_bearing = geometry.bearing(segment.from).unwrap();
+            let from_bearing = geometry.bearing(segment.from).unwrap_or(to_bearing);
 
             path.move_to((
                 from_bearing,
@@ -451,24 +464,23 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
                 segment.arrival_time.seconds_since_midnight() as f64,
             ));
         }
-        polar_drawables.push(Box::new(path));
+        trip_drawables.insert(*trip_id, path);
     }
-
-    let drawables: Vec<Box<dyn Drawable>> = vec![Box::new(geometry.clone())];
 
     let expires_timestamp = js_sys::Date::new_0();
     expires_timestamp.set_hours(expires_time.hour() as u32);
     expires_timestamp.set_minutes(expires_time.minute() as u32);
     expires_timestamp.set_seconds(expires_time.second() as u32 + 1); // expire once this second is over
     expires_timestamp.set_milliseconds(0);
-    polar_drawables.reverse();
+    // trip_drawables.reverse();
+    // station_animatables.reverse();
 
     Radar {
         day,
         expires_timestamp: expires_timestamp.value_of() as u64,
         geometry,
-        drawables,
-        polar_drawables,
+        trip_drawables,
+        station_animatables,
         trip_count: trips.len(),
     }
 }
@@ -502,32 +514,41 @@ impl Drawable for RadarGeometry {
     }
 }
 
-fn canvas_draw(model: &Option<Radar>, ctx: &web_sys::CanvasRenderingContext2d) {
-    if model.is_none() {
-        return;
-    }
-    let Radar {
-        day: _,
-        expires_timestamp: _,
-        geometry,
-        drawables,
-        polar_drawables,
-        trip_count: _,
-    } = model.as_ref().unwrap();
+#[derive(Default)]
+pub struct RadarTransitionContext {
+    stations: HashMap<StopId, CartesianTransitionContext>,
+    trips: HashMap<TripId, PathTransitionContext>,
+}
 
-    drawables.draw(ctx, &Cartesian);
-    let now = js_sys::Date::new_0();
-    let now = ((now.get_hours() * 60 + now.get_minutes()) * 60 + now.get_seconds()) as f64
-        + now.get_milliseconds() as f64 / 1000.;
-    polar_drawables.draw(
-        ctx,
-        &Polar::new(
-            now,
+impl TransitionContext for RadarTransitionContext {
+    fn is_in_transition(&self) -> bool {
+        self.stations.values().any(TransitionContext::is_in_transition)
+    }
+}
+
+impl Animatable<f64> for Radar {
+    type TransitionContext = RadarTransitionContext;
+
+    fn draw_frame(&self, day_millis: &f64, transition_context: &mut RadarTransitionContext, canvas: &web_sys::CanvasRenderingContext2d, _: &Cartesian) {
+        let Radar {
+            day: _,
+            expires_timestamp: _,
+            geometry,
+            station_animatables,
+            trip_drawables,
+            trip_count: _,
+        } = self;
+    
+        geometry.draw(canvas, &Cartesian);
+        let polar_geometry = Polar::new(
+            *day_millis,
             geometry.max_duration.to_secs() as f64,
             geometry.cartesian_origin,
-            geometry.cartesian_origin.0, //hack
-        ),
-    );
+            f64::min(geometry.cartesian_origin.0, geometry.cartesian_origin.1),
+        );
+        trip_drawables.draw_frame(day_millis, &mut transition_context.trips, canvas, &polar_geometry,);
+        station_animatables.draw_frame(day_millis, &mut transition_context.stations, canvas, &polar_geometry);
+    }
 }
 
 impl Drawable for Station<Cartesian> {
@@ -562,5 +583,27 @@ impl Drawable<Polar> for Station<Polar> {
         let (cx, cy) = geometry.coords(bearing, magnitude);
         Circle::new((cx, cy), STOP_RADIUS).draw(ctx, &Cartesian);
         Text::new(cx + STOP_RADIUS + 6., cy + 4., self.name.clone()).draw(ctx, &Cartesian);
+    }
+}
+
+impl Animatable<f64, Polar> for Station<Polar> {
+    type TransitionContext = CartesianTransitionContext;
+
+    fn draw_frame(&self, time: &f64, transition_ctx: &mut CartesianTransitionContext, canvas: &web_sys::CanvasRenderingContext2d, geometry: &Polar) {
+        const STOP_RADIUS: f64 = 3.;
+        let (bearing, magnitude) = self.coords;
+        if magnitude > geometry.max() {
+            // not drawing so remove the context too
+            *transition_ctx = CartesianTransitionContext::None;
+            return;
+        }
+
+        // set the target
+        let new_target = geometry.coords(bearing, magnitude);
+        // position to acutally draw
+        let (cx, cy) = transition_ctx.or_start(geometry.coords(bearing, geometry.max())).process_transition_frame(new_target, *time, 1.);
+
+        Circle::new((cx, cy), STOP_RADIUS).draw(canvas, &Cartesian);
+        Text::new(cx + STOP_RADIUS + 6., cy + 4., self.name.clone()).draw(canvas, &Cartesian);
     }
 }

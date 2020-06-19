@@ -8,30 +8,34 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use wasm_bindgen::closure::Closure;
 use web_sys::HtmlCanvasElement;
 
+pub mod draw;
+pub mod animate;
+
+use animate::*;
+
 #[derive(Copy, Clone, Debug)]
 struct RenderInfo {
     pub timestamp: f64,
     pub timestamp_delta: Option<f64>,
 }
 
-pub type ShouldDrawFn<Mdl> = fn(&Mdl, u64) -> bool;
-pub type DrawFn<Mdl> = fn(&Mdl, &web_sys::CanvasRenderingContext2d);
+pub type ShouldDrawFn<Mdl, TCtx> = fn(&Mdl, u64, bool) -> Option<TCtx>;
 
 /// This gets added into the model of the seed app and referred to by the seed view
 /// ```
 /// #[derive(Default)]
 /// struct Model {
-///    canvas: App,
+///    canvas: App<DrawModel, TimingContext>,
 /// }
 /// ```
-pub struct App<Mdl: 'static> {
+pub struct App<Mdl: 'static + Animatable<TCtx>, TCtx> {
     /// App configuration available for the entire application lifetime.
-    cfg: Rc<AppCfg<Mdl>>,
+    cfg: Rc<AppCfg<Mdl, TCtx>>,
     /// Mutable app state.
-    data: Rc<AppData<Mdl>>,
+    data: Rc<AppData<Mdl, TCtx>>,
 }
 
-impl<Mdl> Clone for App<Mdl> {
+impl<Mdl: Animatable<TCtx>, TCtx> Clone for App<Mdl, TCtx> {
     fn clone(&self) -> Self {
         Self {
             cfg: Rc::clone(&self.cfg),
@@ -40,16 +44,17 @@ impl<Mdl> Clone for App<Mdl> {
     }
 }
 
-impl<Mdl> App<Mdl> {
-    pub fn new(update: ShouldDrawFn<Mdl>, view: DrawFn<Mdl>, model: Mdl) -> App<Mdl> {
+impl<Mdl: Animatable<TCtx>, TCtx: 'static> App<Mdl, TCtx>
+where Mdl::TransitionContext: TransitionContext + Default {
+    pub fn new(update: ShouldDrawFn<Mdl, TCtx>, model: Mdl) -> App<Mdl, TCtx> {
         App {
             cfg: Rc::new(AppCfg {
                 canvas: ElRef::new(),
                 update,
-                view,
             }),
             data: Rc::new(AppData {
                 model: RefCell::new(model),
+                transition_ctx: RefCell::new(Mdl::TransitionContext::default()),
                 scheduled_render_handle: RefCell::new(None),
                 render_info: Cell::new(None),
                 frame_count: AtomicU64::default(),
@@ -65,8 +70,12 @@ impl<Mdl> App<Mdl> {
         self.data.model.borrow_mut()
     }
 
-    pub fn canvas_ref(&self) -> CanvasRef<Mdl> {
+    pub fn canvas_ref(&self) -> CanvasRef<Mdl, TCtx> {
         CanvasRef(self)
+    }
+
+    pub fn is_in_transition(&self) -> bool {
+        self.data.transition_ctx.borrow().is_in_transition()
     }
 
     fn schedule_render(&self) {
@@ -81,10 +90,10 @@ impl<Mdl> App<Mdl> {
                 if s.cfg.canvas.get().is_some() {
                     s.schedule_render();
                     let frame_count = s.data.frame_count.fetch_add(1, Ordering::SeqCst);
-                    let should_draw = (s.cfg.update)(&mut *s.data.model.borrow_mut(), frame_count);
+                    let should_draw = (s.cfg.update)(&mut *s.data.model.borrow_mut(), frame_count, s.is_in_transition());
 
-                    if should_draw {
-                        s.rerender();
+                    if let Some(timing) = should_draw {
+                        s.rerender(timing);
                     }
                 }
             }));
@@ -93,7 +102,7 @@ impl<Mdl> App<Mdl> {
         }
     }
 
-    fn rerender(&self) {
+    fn rerender(&self, timing_ctx: TCtx) {
         let new_render_timestamp = util::window()
             .performance()
             .expect("get `Performance`")
@@ -101,12 +110,13 @@ impl<Mdl> App<Mdl> {
 
         let canvas = self.cfg.canvas.get().expect("get canvas element");
 
-        let ctx = seed::canvas_context_2d(&canvas);
-        ctx.set_global_composite_operation("source-over").unwrap();
-        ctx.clear_rect(0., 0., canvas.width().into(), canvas.height().into());
-        ctx.set_transform(2., 0., 0., 2., 0., 0.).unwrap();
+        let canvas_ctx = seed::canvas_context_2d(&canvas);
+        canvas_ctx.set_global_composite_operation("source-over").unwrap();
+        canvas_ctx.clear_rect(0., 0., canvas.width().into(), canvas.height().into());
+        canvas_ctx.set_transform(2., 0., 0., 2., 0., 0.).unwrap();
 
-        (self.cfg.view)(&self.data.model.borrow(), &ctx);
+        let mut transition_ctx = self.data.transition_ctx.borrow_mut();
+        self.data.model.borrow().draw_frame(&timing_ctx, &mut transition_ctx, &canvas_ctx, &draw::Cartesian);
 
         let render_info = match self.data.render_info.take() {
             Some(old_render_info) => RenderInfo {
@@ -122,9 +132,10 @@ impl<Mdl> App<Mdl> {
     }
 }
 
-pub struct CanvasRef<'a, Mdl: 'static>(&'a App<Mdl>);
+pub struct CanvasRef<'a, Mdl: Animatable<TCtx> + 'static, TCtx>(&'a App<Mdl, TCtx>);
 
-impl<'a, Ms, Mdl> UpdateEl<Ms> for CanvasRef<'a, Mdl> {
+impl<'a, Ms, Mdl: Animatable<TCtx>, TCtx: 'static> UpdateEl<Ms> for CanvasRef<'a, Mdl, TCtx>
+where Mdl::TransitionContext: TransitionContext + Default {
     /// Canvasser is added to the Seed VDom, once the render is finished we'll be connected to a canvas on the page and so should ensure the animation loop is started
     fn update_el(self, el: &mut El<Ms>) {
         self.0.cfg.canvas.clone().update_el(el);
@@ -132,20 +143,20 @@ impl<'a, Ms, Mdl> UpdateEl<Ms> for CanvasRef<'a, Mdl> {
     }
 }
 
-struct AppData<Mdl> {
+struct AppData<Mdl: Animatable<TCtx>, TCtx> {
     model: RefCell<Mdl>,
     render_info: Cell<Option<RenderInfo>>,
     frame_count: AtomicU64,
+    transition_ctx: RefCell<Mdl::TransitionContext>,
 
     scheduled_render_handle: RefCell<Option<util::RequestAnimationFrameHandle>>,
 }
 
-pub struct AppCfg<Mdl>
+pub struct AppCfg<Mdl, TCtx>
 where
     Mdl: 'static,
 {
-    update: ShouldDrawFn<Mdl>,
-    view: DrawFn<Mdl>,
+    update: ShouldDrawFn<Mdl, TCtx>,
 
     canvas: ElRef<HtmlCanvasElement>,
 }

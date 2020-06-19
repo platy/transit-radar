@@ -11,6 +11,7 @@ mod radar;
 mod scheduler;
 mod sync;
 
+#[cfg(not(feature = "storybook"))]
 #[wasm_bindgen(start)]
 pub fn render() {
     App::start("app", init, update, view);
@@ -31,7 +32,7 @@ struct Model {
     scheduler: RefCell<scheduler::Scheduler>,
     sync: sync::Model<GTFSData>,
 
-    canvasser: canvasser::App<Option<radar::Radar>>,
+    canvasser: canvasser::App<Option<radar::Radar>, f64>,
     controls: controls::Model,
 }
 
@@ -205,4 +206,10 @@ fn sync_data(
             orders.send_msg(Msg::Search);
         }
     }
+}
+
+#[cfg(feature = "storybook")]
+#[wasm_bindgen(start)]
+pub fn start_storybook() {
+    canvasser::animate::storybook::start();
 }

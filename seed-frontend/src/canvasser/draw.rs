@@ -79,11 +79,29 @@ impl Geometry for Polar {
     type Coords = (Bearing, f64);
 }
 
-pub trait Drawable<G = Cartesian> {
-    fn draw(&self, ctx: &CanvasRenderingContext2d, geometry: &G);
+pub trait Drawable<G = Cartesian>
+where Self: Sized {
+    fn draw(&self, canvas: &CanvasRenderingContext2d, geometry: &G);
+    fn as_cartesian(self, geometry: G) -> AsCartesian<G, Self> {
+        AsCartesian {
+            shape: self,
+            geometry,
+        }
+    }
 }
 
 impl<T, G> Drawable<G> for Vec<T>
+where
+    T: Drawable<G>,
+{
+    fn draw(&self, ctx: &CanvasRenderingContext2d, geometry: &G) {
+        for i in self {
+            i.draw(ctx, geometry);
+        }
+    }
+}
+
+impl<T, G> Drawable<G> for Option<T>
 where
     T: Drawable<G>,
 {
@@ -103,15 +121,23 @@ where
     }
 }
 
+pub struct AsCartesian<G, D: Drawable<G>> { pub shape: D, pub geometry: G }
+
+impl<G, D: Drawable<G>> Drawable<Cartesian> for AsCartesian<G, D> {
+    fn draw(&self, canvas: &CanvasRenderingContext2d, geometry: &Cartesian) {
+        self.shape.draw(canvas, &self.geometry)
+    }
+}
+
 pub struct Path<G: Geometry> {
-    line_width: f64,
-    line_dash: Vec<f64>,
-    stroke_style: Option<String>,
-    ops: Vec<PathOp<G>>,
+    pub line_width: f64,
+    pub line_dash: Vec<f64>,
+    pub stroke_style: Option<String>,
+    pub ops: Vec<PathOp<G>>,
 }
 
 #[allow(clippy::enum_variant_names)]
-enum PathOp<G: Geometry> {
+pub enum PathOp<G: Geometry> {
     MoveTo(G::Coords),
     LineTo(G::Coords),
     BezierCurveTo(G::Coords, G::Coords, G::Coords),
@@ -135,6 +161,7 @@ impl<G: Geometry> Path<G> {
         self.line_dash = line_dash.into();
     }
 
+    // todo cow
     pub fn set_stroke_style(&mut self, stroke_style: &str) {
         self.stroke_style = Some(stroke_style.to_owned());
     }
@@ -198,6 +225,7 @@ impl Drawable<Polar> for Path<Polar> {
                         break;
                     }
                     let (x, y) = geometry.coords(bearing, magnitude);
+                    seed::log!("move to", (x, y));
                     ctx.move_to(x, y)
                 }
                 &PathOp::LineTo((bearing, magnitude)) => {
@@ -205,6 +233,7 @@ impl Drawable<Polar> for Path<Polar> {
                         break;
                     }
                     let (x, y) = geometry.coords(bearing, magnitude);
+                    seed::log!("line to", (x, y));
                     ctx.line_to(x, y)
                 }
                 &PathOp::BezierCurveTo(
@@ -218,6 +247,7 @@ impl Drawable<Polar> for Path<Polar> {
                     let (cp1_x, cp1_y) = geometry.coords(cp1_bearing, cp1_magnitude);
                     let (cp2_x, cp2_y) = geometry.coords(cp2_bearing, cp2_magnitude);
                     let (x, y) = geometry.coords(bearing, magnitude);
+                    seed::log!("curve to", (x, y));
                     ctx.bezier_curve_to(cp1_x, cp1_y, cp2_x, cp2_y, x, y)
                 }
             }
