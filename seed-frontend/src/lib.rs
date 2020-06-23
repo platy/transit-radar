@@ -134,6 +134,20 @@ fn view(model: &Model) -> Node<Msg> {
             .map(|s| s.name.as_str())
             .unwrap_or_default()],
         controls::view(&model.controls).map_msg(Msg::ControlsMsg),
+        if let Some(data) = model.sync.get() {
+            let radar = model.canvasser.model();
+            p![if let Some(radar) = radar.as_ref() {
+                format!("
+                    The transit radar shows all the destinations you could reach within {} mins \
+                    using the selected transport modes from the selected station, departing \
+                    on a {} at {} and uses VBB's published timetables at {}.\
+                ", 30, radar.day, radar.geometry.start_time, data.timetable_start_date())
+            } else {
+                format!("data received, {} stops", data.stops().count())
+            },]
+        } else {
+            div!["Data not loaded"]
+        },
         canvas![
             model.canvasser.canvas_ref(),
             attrs![
@@ -141,19 +155,6 @@ fn view(model: &Model) -> Node<Msg> {
                 At::Height => px(2000),
             ],
         ],
-        if let Some(data) = model.sync.get() {
-            let radar = model.canvasser.model();
-            div![if let Some(radar) = radar.as_ref() {
-                format!(
-                    "data processed for {}, {}. {} trips",
-                    radar.day, radar.geometry.start_time, radar.trip_count,
-                )
-            } else {
-                format!("data received, {} stops", data.stops().count())
-            },]
-        } else {
-            div!["Data not loaded"]
-        }
     ]
 }
 

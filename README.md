@@ -149,10 +149,10 @@
 [] Use stroke dashes and stroke width from csv too
 [] Make sure it doesn't animate when not visible to save cpu : based on FF task manager, it uses barely any cpu when off screen
 [] New name (not colliding with translate.google.com) and description of what it does
-[] Show time and timetable time
+[x] Show time and timetable time
 [] Is there an analogy from quantum or analogue computing?
 [] Debug logging
-[] dotted lines are going to the second stop on a trip from the origin
+[x] dotted lines are going to the second stop on a trip from the origin
 [] Preselect checkboxes
 ---
 [] Reduce size of wasm
@@ -163,7 +163,7 @@
 ---
 [] Fade in/out
 [] Walking transfer stations should not get closer
-[] Animate search change
+[x] Animate search change
 [] Geographical mode
 [] Change time
 [] Use location and have initial walk to stations
@@ -218,12 +218,6 @@ cargo build --release --target x86_64-unknown-linux-musl
 
 Build frontend:
 ```
-cd frontend
-npm run build
-```
-
-Build alpha frontend:
-```
 cd seed-frontend
 cargo make compile_release
 ```
@@ -231,28 +225,21 @@ cargo make compile_release
 Deploy backend change:
 ```
 ssh root@s4.njk.onl /app/transit-radar/service.sh stop
-scp target/x86_64-unknown-linux-musl/release/webserver root@s4.njk.onl:/app/transit-radar/transit-radar
-ssh root@s4.njk.onl /app/transit-radar/service.sh start
-```
-
-Deploy backend change (alpha):
-```
-ssh root@s4.njk.onl /app/transit-radar/service-alpha.sh stop
-scp target/x86_64-unknown-linux-musl/release/webserver_raw root@s4.njk.onl:/app/transit-radar/transit-radar-alpha
+scp target/x86_64-unknown-linux-musl/release/webserver_raw root@s4.njk.onl:/app/transit-radar/transit-radar
 scp VBB_Colours.csv root@s4.njk.onl:/app/transit-radar/
-ssh root@s4.njk.onl /app/transit-radar/service-alpha.sh start
+ssh root@s4.njk.onl /app/transit-radar/service.sh start
 ```
 
 Deploy frontend change:
 ```
-scp -r frontend/build root@s4.njk.onl:/app/transit-radar/
 scp -r seed-frontend/pkg root@s4.njk.onl:/app/transit-radar/frontend-alpha/
+scp -r seed-frontend/static root@s4.njk.onl:/app/transit-radar/frontend-alpha/
 scp -r seed-frontend/index.html root@s4.njk.onl:/app/transit-radar/frontend-alpha/
 ```
 
 Deploy ops:
 ```
-scp run.sh service.sh run-alpha.sh service-alpha.sh update-timetables.sh root@s4.njk.onl:/app/transit-radar/
+scp run.sh service.sh update-timetables.sh root@s4.njk.onl:/app/transit-radar/
 scp transit-radar.conf root@s4.njk.onl:/etc/nginx/sites-available/transit-radar
 scp transit-radar-alpha.conf root@s4.njk.onl:/etc/nginx/sites-available/transit-radar-alpha
 ssh root@s4.njk.onl nginx -t && ssh root@s4.njk.onl nginx -s reload
@@ -281,5 +268,4 @@ ssh root@s4.njk.onl /app/transit-radar/service.sh restart
 Logs 
 ```
 ssh root@s4.njk.onl tail -f /var/log/transit-radar/log
-ssh root@s4.njk.onl tail -f /var/log/transit-radar/log-alpha
 ```
