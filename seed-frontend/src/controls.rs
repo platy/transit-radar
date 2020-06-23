@@ -10,24 +10,11 @@ pub struct Model {
     enable_url_routing: bool,
 }
 
-impl Default for Model {
-    fn default() -> Self {
-        Model {
-            params: Params::default(),
-            station_autocomplete: autocomplete::Model::new(Msg::StationSuggestions)
-                .on_selection(|_| Some(Msg::AStationSelected))
-                .on_input_change(|s| Some(Msg::StationInputChanged(s.to_owned()))),
-            station_input: "".to_owned(),
-            enable_url_routing: false,
-        }
-    }
-}
-
 impl Model {
     pub fn init(mut url: Url, orders: &mut impl Orders<Msg>) -> Model {
         let first_part = url.next_path_part();
         let mut station_name = None;
-        let mut enable_url_routing = false;
+        let enable_url_routing;
         if let Some(part) = first_part {
             if !part.ends_with(".html") {
                 orders.perform_cmd(
@@ -35,7 +22,11 @@ impl Model {
                 );
                 enable_url_routing = true;
                 station_name = Some(part);
+            } else {
+                enable_url_routing = false;
             }
+        } else {
+            enable_url_routing = true
         }
 
         Model {
