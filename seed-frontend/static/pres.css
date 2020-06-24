@@ -12,32 +12,22 @@ body {
   backdrop-filter: blur(10px); /* not enabled */
 }
 
+.slide h1 {
+  /* text-align: center; */
+}
+
 #app {
-  width: 1000px;
-  margin-left: 45px;
+  width: 700px;
+  /* margin-left: 45px; */
+}
+
+#app p {
+  font-size: 10pt;
 }
 
 #app canvas {
   display:block;
   width: 100%;
-}
-
-#code {
-  background-color: #111;
-  color: #EEE;
-}
-
-#code.future {
-  display: none;
-}
-
-#code.future.next {
-  display: block;
-}
-
-#rustweb {
-  background-color: #999;
-  color: #222;
 }
 
 #contact {

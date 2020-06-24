@@ -3,7 +3,7 @@ name = "transit-radar"
 version = "0.1.0"
 authors = ["Mike Bush <platy@njk.onl>"]
 edition = "2018"
-default-run = "webserver"
+default-run = "webserver_sync"
 
 [workspace]
 exclude = ["./seed-frontend"]

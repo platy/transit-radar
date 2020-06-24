@@ -12,21 +12,15 @@ pub struct Model {
 
 impl Model {
     pub fn init(mut url: Url, orders: &mut impl Orders<Msg>) -> Model {
-        let first_part = url.next_path_part();
         let mut station_name = None;
-        let enable_url_routing;
-        if let Some(part) = first_part {
-            if !part.ends_with(".html") {
+        let enable_url_routing = Self::should_enable_url_routing(url.clone());
+        if enable_url_routing {
+            station_name = url.next_path_part();
+            if let Some(station_name) = station_name {
                 orders.perform_cmd(
-                    request(format!("/searchStation/{}", part)).map(Msg::SuggestionsFetched),
+                    request(format!("/searchStation/{}", station_name)).map(Msg::SuggestionsFetched),
                 );
-                enable_url_routing = true;
-                station_name = Some(part);
-            } else {
-                enable_url_routing = false;
             }
-        } else {
-            enable_url_routing = true
         }
 
         Model {
@@ -36,6 +30,19 @@ impl Model {
             station_input: station_name.unwrap_or_default().to_owned(),
             params: Params::from(&url),
             enable_url_routing,
+        }
+    }
+
+    fn should_enable_url_routing(mut url: Url) -> bool {
+        let first_part = url.next_path_part();
+        if let Some(part) = first_part {
+            if !part.ends_with(".html") {
+                return true;
+            } else {
+                return false;
+            }
+        } else {
+            return true
         }
     }
 }
@@ -104,8 +111,7 @@ pub fn view(model: &Model) -> Vec<Node<Msg>> {
             .view()
             .with_input_attrs(attrs! {
                 At::Value => model.station_input,
-            })
-            .into_nodes(),
+            }),
         checkbox(
             "show-sbahn",
             "Show SBahn",
@@ -171,15 +177,11 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) -> boo
         }
         Msg::SuggestionsFetched(Ok(suggestions)) => {
             params_changed = false;
-            // automatically select a suggestion if it matches the url route
+            // automatically select a suggestion if it matches the url route (for a page load case where station is referenced and so a suggestion request is made for that initially)
             if model.enable_url_routing {
-                if let Some(route_station) = Url::current().next_path_part() {
-                    if let Some(matching_suggestion) =
-                        suggestions.iter().find(|s| s.name == route_station)
-                    {
-                        params.station_selection = Some(matching_suggestion.clone());
-                        params_changed = true;
-                    }
+                if let Some(pre_selection) = find_url_selection_in_suggestions(Url::current(), &suggestions) {
+                    params.station_selection = Some(pre_selection);
+                    params_changed = true;
                 }
             }
             model.station_autocomplete.set_suggestions(suggestions);
@@ -216,14 +218,28 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) -> boo
     true
 }
 
-fn checkbox<M>(
+/// Finds a suggestion in the vec whose name matches the first part of the url
+fn find_url_selection_in_suggestions(mut url: Url, suggestions: &Vec<StationSuggestion>) -> Option<StationSuggestion> {
+    if let Some(route_station) = url.next_path_part() {
+        if let Some(matching_suggestion) =
+            suggestions.iter().find(|s| s.name == route_station)
+        {
+            return Some(matching_suggestion.clone());
+        }
+    }
+    None
+}
+
+/// Build a checkbox
+fn checkbox<M, F>(
     name: &'static str,
     label: &'static str,
     value: bool,
-    event: &'static M,
-) -> Vec<Node<Msg>>
+    event: &'static F,
+) -> Vec<Node<M>>
 where
-    M: FnOnce(String) -> Msg + Copy,
+    F: FnOnce(String) -> M + Copy,
+    M: 'static,
 {
     vec![
         input![

@@ -225,7 +225,7 @@ cargo make compile_release
 Deploy backend change:
 ```
 ssh root@s4.njk.onl /app/transit-radar/service.sh stop
-scp target/x86_64-unknown-linux-musl/release/webserver_raw root@s4.njk.onl:/app/transit-radar/transit-radar
+scp target/x86_64-unknown-linux-musl/release/webserver_sync root@s4.njk.onl:/app/transit-radar/transit-radar
 scp VBB_Colours.csv root@s4.njk.onl:/app/transit-radar/
 ssh root@s4.njk.onl /app/transit-radar/service.sh start
 ```

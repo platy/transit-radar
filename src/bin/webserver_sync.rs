@@ -12,21 +12,6 @@ mod endpoints;
 mod web_util;
 use web_util::*;
 
-fn day_time(date_time: chrono::DateTime<Utc>) -> (Day, Time) {
-    let date_time = date_time.with_timezone(&chrono_tz::Europe::Berlin);
-    let now = Time::from_hms(date_time.hour(), date_time.minute(), date_time.second());
-    let day = match date_time.weekday() {
-        Weekday::Mon => Day::Monday,
-        Weekday::Tue => Day::Tuesday,
-        Weekday::Wed => Day::Wednesday,
-        Weekday::Thu => Day::Thursday,
-        Weekday::Fri => Day::Friday,
-        Weekday::Sat => Day::Saturday,
-        Weekday::Sun => Day::Sunday,
-    };
-    (day, now)
-}
-
 fn filter_data(
     data: &GTFSData,
     station_name: String,
@@ -99,6 +84,21 @@ async fn filtered_data_handler(
             Err(warp::reject::reject())
         }
     }
+}
+
+fn day_time(date_time: chrono::DateTime<Utc>) -> (Day, Time) {
+    let date_time = date_time.with_timezone(&chrono_tz::Europe::Berlin);
+    let now = Time::from_hms(date_time.hour(), date_time.minute(), date_time.second());
+    let day = match date_time.weekday() {
+        Weekday::Mon => Day::Monday,
+        Weekday::Tue => Day::Tuesday,
+        Weekday::Wed => Day::Wednesday,
+        Weekday::Thu => Day::Thursday,
+        Weekday::Fri => Day::Friday,
+        Weekday::Sat => Day::Saturday,
+        Weekday::Sun => Day::Sunday,
+    };
+    (day, now)
 }
 
 #[derive(Debug, serde::Deserialize)]
