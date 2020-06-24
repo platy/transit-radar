@@ -72,7 +72,7 @@ impl<'r> JourneyGraphPlotter<'r> {
     }
 
     /// Performs the whole search, producing a filtered search data object with only the stops and trips needed for the search
-    pub fn filtered_data(mut self) -> GTFSData {
+    pub fn filtered_data(mut self) -> RequiredData {
         let mut builder = self.data.build_from();
         loop {
             let items = self.next_block_raw();
@@ -85,9 +85,9 @@ impl<'r> JourneyGraphPlotter<'r> {
                     variant,
                 } in items
                 {
-                    builder.keep_stop(to_stop);
+                    builder.keep_stop(to_stop.stop_id);
                     if let Some(parent_id) = to_stop.parent_station() {
-                        builder.keep_stop_deferred(parent_id, &self.data.stops);
+                        builder.keep_stop(parent_id);
                     }
                     if let Some(trip_id) = variant.get_trip_id() {
                         builder.keep_trip(trip_id);
@@ -398,7 +398,9 @@ impl<'r> JourneyGraphPlotter<'r> {
         if self
             .stops
             .get(&stop_id)
-            .map_or(true, |&previous_earliest_arrival| new_arrival_time < previous_earliest_arrival)
+            .map_or(true, |&previous_earliest_arrival| {
+                new_arrival_time < previous_earliest_arrival
+            })
         {
             self.stops.insert(stop_id, new_arrival_time);
             true

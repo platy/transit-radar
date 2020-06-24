@@ -28,8 +28,6 @@ pub trait ClientSession {
     type Increment;
 
     fn new(session_id: u64) -> Self;
-    // adds data to the clients session, producing the sync data that needs to be sent to the client and updating the session stat
-    fn add_data(&mut self, data: Self::Data) -> SyncData<Self::Data, Self::Increment>;
     fn update_number(&self) -> u64;
 }
 
@@ -47,41 +45,60 @@ impl ClientSession for GTFSDataSession {
         }
     }
 
-    fn add_data(&mut self, data: GTFSData) -> SyncData<GTFSData, GTFSSyncIncrement> {
+    fn update_number(&self) -> u64 {
+        self.update_number
+    }
+}
+
+impl GTFSDataSession {
+    // adds data to the clients session, producing the sync data that needs to be sent to the client and updating the session stat
+    pub fn add_data(
+        &mut self,
+        data: RequiredData,
+        data_source: &GTFSData,
+    ) -> SyncData<GTFSData, GTFSSyncIncrement> {
+        let to_send_stops: HashMap<StopId, Stop> = data
+            .stops
+            .into_iter()
+            .map(|stop_id| (stop_id, data_source.get_stop(&stop_id).cloned().unwrap()))
+            .collect();
+
         if self.update_number == 0 {
-            self.trips = data.trips.keys().cloned().collect();
-            self.stops = data.stops.keys().cloned().collect();
+            self.trips = data.trips.iter().copied().collect();
+            self.stops = to_send_stops.keys().copied().collect();
             self.update_number = 1;
             SyncData::Initial {
                 session_id: self.session_id,
-                data,
+                data: GTFSData {
+                    services_by_day: data.services_by_day,
+                    timetable_start_date: data.timetable_start_date,
+                    stops: to_send_stops,
+                    trips: data
+                        .trips
+                        .into_iter()
+                        .map(|trip_id| (trip_id, data_source.trips.get(&trip_id).unwrap().clone()))
+                        .collect(),
+                },
                 update_number: 1,
             }
         } else {
             let mut trips = data.trips;
-            for id in self.trips.iter() {
-                trips.remove(&id);
-            }
-            for &id in trips.keys() {
-                self.trips.insert(id);
-            }
-            let mut stops = data.stops;
-            for id in self.stops.iter() {
-                stops.remove(&id);
-            }
-            for &id in stops.keys() {
-                self.stops.insert(id);
-            }
+            trips.retain(|trip_id| !self.trips.contains(trip_id));
+            self.trips.extend(&trips);
+
+            self.stops.extend(to_send_stops.keys());
             self.update_number += 1;
             SyncData::Increment {
-                increment: GTFSSyncIncrement { trips, stops },
+                increment: GTFSSyncIncrement {
+                    trips: trips
+                        .into_iter()
+                        .map(|trip_id| (trip_id, data_source.trips.get(&trip_id).unwrap().clone()))
+                        .collect(),
+                    stops: to_send_stops,
+                },
                 update_number: self.update_number,
                 session_id: self.session_id,
             }
         }
-    }
-
-    fn update_number(&self) -> u64 {
-        self.update_number
     }
 }

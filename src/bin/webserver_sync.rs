@@ -18,7 +18,7 @@ fn filter_data(
     options: RadarOptions,
     day: Day,
     period: Period,
-) -> Result<GTFSData, db::SearchError> {
+) -> Result<RequiredData, db::SearchError> {
     let station = db::get_station_by_name(data, &station_name)?;
     let mut plotter = journey_graph::JourneyGraphPlotter::new(day, period, data);
     let origin = data.get_stop(&station.stop_id).unwrap();
@@ -55,7 +55,7 @@ async fn filtered_data_handler(
 
     match decode(&name) {
         Ok(name) => {
-            let data =
+            let required_data =
                 filter_data(&data, name, options, day, period).map_err(warp::reject::custom)?;
             match session.lock() {
                 Ok(mut session) => {
@@ -63,9 +63,10 @@ async fn filtered_data_handler(
                     let mut serializer = rmp_serde::Serializer::new(&mut buf)
                         .with_struct_tuple()
                         .with_integer_variants();
+                    // let mut serializer = serde_json::Serializer::new(&mut buf);
 
                     session
-                        .add_data(data)
+                        .add_data(required_data, &data)
                         .serialize(&mut serializer)
                         .map_err(|err| {
                             eprintln!("failed to serialize data {:?}", err);

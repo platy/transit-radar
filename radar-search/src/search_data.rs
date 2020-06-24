@@ -74,8 +74,8 @@ pub struct GTFSData {
     pub(crate) stops: HashMap<StopId, Stop>,
 
     // all synced initially
-    services_by_day: HashMap<Day, HashSet<ServiceId>>,
-    timetable_start_date: String,
+    pub(crate) services_by_day: HashMap<Day, HashSet<ServiceId>>,
+    pub(crate) timetable_start_date: String,
 }
 
 impl<'r> GTFSData {
@@ -96,15 +96,14 @@ impl<'r> GTFSData {
         }
     }
 
-    pub fn build_from(&'r self) -> FilterBuilder<'r> {
+    pub fn build_from(&self) -> FilterBuilder {
         FilterBuilder {
-            new_data: GTFSData {
+            new_data: RequiredData {
                 services_by_day: self.services_by_day.clone(),
                 timetable_start_date: self.timetable_start_date.clone(),
-                stops: HashMap::new(),
-                trips: HashMap::new(),
+                trips: HashSet::new(),
+                stops: HashSet::new(),
             },
-            existing_data: &self,
         }
     }
 
@@ -368,41 +367,29 @@ pub struct Transfer {
     pub min_transfer_time: Option<Duration>,
 }
 
-pub struct FilterBuilder<'r> {
-    existing_data: &'r GTFSData,
-    new_data: GTFSData,
+pub struct RequiredData {
+    pub trips: HashSet<TripId>,
+    pub stops: HashSet<StopId>,
+
+    // all synced initially
+    pub services_by_day: HashMap<Day, HashSet<ServiceId>>,
+    pub timetable_start_date: String,
 }
 
-impl<'r> FilterBuilder<'r> {
-    pub fn keep_stop(&mut self, stop: &Stop) {
-        self.new_data
-            .stops
-            .entry(stop.stop_id)
-            .or_insert_with(|| stop.clone());
-    }
+pub struct FilterBuilder {
+    new_data: RequiredData,
+}
 
-    pub fn keep_stop_deferred(&mut self, stop_id: StopId, stops: &HashMap<StopId, Stop>) {
-        self.new_data
-            .stops
-            .entry(stop_id)
-            .or_insert_with(|| stops.get(&stop_id).unwrap().clone());
+impl<'r> FilterBuilder {
+    pub fn keep_stop(&mut self, stop_id: StopId) {
+        self.new_data.stops.insert(stop_id);
     }
 
     pub fn keep_trip(&mut self, trip_id: TripId) {
-        if !self.new_data.trips.contains_key(&trip_id) {
-            self.new_data.trips.insert(
-                trip_id,
-                self.existing_data
-                    .trips
-                    .get(&trip_id)
-                    .expect("trip to be in existing data")
-                    .clone(),
-            );
-        }
+        self.new_data.trips.insert(trip_id);
     }
 
-    pub fn build(self) -> GTFSData {
-        // self.new_data.stops = self.existing_data.stops.clone();
+    pub fn build(self) -> RequiredData {
         self.new_data
     }
 }

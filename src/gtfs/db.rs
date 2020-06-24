@@ -278,7 +278,7 @@ pub fn load_colors(path: &Path) -> Result<HashMap<String, String>, csv::Error> {
             br.get(route_name_idx).filter(|s| !s.is_empty()),
             br.get(colour_idx).filter(|s| !s.is_empty()),
         ) {
-            colors.insert(route_name.to_owned(), colour.to_owned(), );
+            colors.insert(route_name.to_owned(), colour.to_owned());
         }
     }
     Ok(colors)
