@@ -44,7 +44,7 @@ impl<'r> Iterator for JourneyGraphPlotter<'r> {
 impl<'r> JourneyGraphPlotter<'r> {
     pub fn new(day: Day, period: Period, data: &'r GTFSData) -> JourneyGraphPlotter<'r> {
         JourneyGraphPlotter {
-            period: period,
+            period,
             services: data.services_of_day(day),
             queue: BinaryHeap::new(),
             catch_up: VecDeque::new(),
@@ -52,7 +52,7 @@ impl<'r> JourneyGraphPlotter<'r> {
             slow_trips: HashMap::new(),
             stops: HashMap::new(),
             emitted_stations: HashSet::new(),
-            data: data,
+            data,
             route_types: HashSet::new(),
         }
     }
@@ -122,13 +122,13 @@ impl<'r> JourneyGraphPlotter<'r> {
     /// returns the next processed items in order, or empty if there are no more and the process halts
     fn next_block_raw(&mut self) -> Vec<QueueItem<'r>> {
         while let Some(item) = self.queue.pop() {
-            if !self.period.contains(item.arrival_time) {
-                return vec![]; // we ran out of the time period
-            } else {
+            if self.period.contains(item.arrival_time) {
                 let processed: Vec<QueueItem<'r>> = self.process_queue_item(item);
                 if !processed.is_empty() {
                     return processed;
                 }
+            } else  {
+                return vec![]; // we ran out of the time period
             }
         }
         vec![]
@@ -211,7 +211,7 @@ impl<'r> JourneyGraphPlotter<'r> {
                             + transfer.min_transfer_time.unwrap_or_default(),
                         variant: QueueItemVariant::Transfer {
                             from_stop: stop,
-                            departure_time: departure_time,
+                            departure_time,
                         },
                     });
                 }
@@ -239,7 +239,7 @@ impl<'r> JourneyGraphPlotter<'r> {
                                 + transfer.min_transfer_time.unwrap_or_default(),
                             variant: QueueItemVariant::Transfer {
                                 from_stop: station,
-                                departure_time: departure_time,
+                                departure_time,
                             },
                         });
                     }
@@ -261,7 +261,7 @@ impl<'r> JourneyGraphPlotter<'r> {
                     // immediately transfer to all the stops of this origin station
                     QueueItem {
                         to_stop: child_stop,
-                        arrival_time: arrival_time,
+                        arrival_time,
                         variant: QueueItemVariant::Transfer {
                             from_stop: stop,
                             departure_time: arrival_time,
@@ -296,8 +296,8 @@ impl<'r> JourneyGraphPlotter<'r> {
                     variant: QueueItemVariant::Connection {
                         trip_id,
                         route,
-                        from_stop: from_stop,
-                        departure_time: departure_time,
+                        from_stop,
+                        departure_time,
                     },
                 });
                 for window in stops.windows(2) {
@@ -395,13 +395,13 @@ impl<'r> JourneyGraphPlotter<'r> {
     }
 
     fn set_arrival_time(&mut self, stop_id: StopId, new_arrival_time: Time) -> bool {
-        if self
+        let new_arrival_is_earlier = self
             .stops
             .get(&stop_id)
             .map_or(true, |&previous_earliest_arrival| {
                 new_arrival_time < previous_earliest_arrival
-            })
-        {
+            });
+        if new_arrival_is_earlier {
             self.stops.insert(stop_id, new_arrival_time);
             true
         } else {
@@ -429,7 +429,9 @@ impl<'r> JourneyGraphPlotter<'r> {
                         self.enqueue_transfers_from_station(to_station, item.arrival_time);
                     }
                     // only emit if we got to a new station
-                    if !self.emitted_stations.contains(&item.to_stop.station_id()) {
+                    if self.emitted_stations.contains(&item.to_stop.station_id()) {
+                        vec![]
+                    } else {
                         // if this now made some slow stops on the trip relevant, they should be emitted as well
                         let slow_trip = self.slow_trips.remove(&trip_id);
                         if let Some(slow_trip) = slow_trip {
@@ -439,8 +441,6 @@ impl<'r> JourneyGraphPlotter<'r> {
                         } else {
                             vec![item]
                         }
-                    } else {
-                        vec![]
                     }
                 }
                 QueueItemVariant::Connection {

@@ -37,13 +37,9 @@ impl Model {
     fn should_enable_url_routing(mut url: Url) -> bool {
         let first_part = url.next_path_part();
         if let Some(part) = first_part {
-            if !part.ends_with(".html") {
-                return true;
-            } else {
-                return false;
-            }
+            !part.ends_with(".html")
         } else {
-            return true;
+            true
         }
     }
 }
@@ -283,7 +279,7 @@ pub enum LoadError {
 }
 
 impl From<fetch::FetchError> for LoadError {
-    fn from(error: fetch::FetchError) -> LoadError {
+    fn from(error: fetch::FetchError) -> Self {
         Self::FetchError(error)
     }
 }

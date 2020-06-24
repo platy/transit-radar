@@ -122,10 +122,7 @@ impl<'r> GTFSData {
 
     /// Get all the services which run on a particular day of the week
     pub fn services_of_day(&self, day: Day) -> HashSet<ServiceId> {
-        self.services_by_day
-            .get(&day)
-            .cloned()
-            .unwrap_or(HashSet::new())
+        self.services_by_day.get(&day).cloned().unwrap_or_default()
     }
 
     /// finds all trips leaving a stop within a time period, using the provided services, includes the stop time for that stop and all following stops
@@ -493,7 +490,7 @@ impl Builder {
                 route_id,
                 route_short_name,
                 route_type,
-                route_color: route_color.to_owned(),
+                route_color,
             },
         );
     }

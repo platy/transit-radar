@@ -20,8 +20,8 @@ pub struct Polar {
 }
 
 impl Polar {
-    pub fn new(origin: f64, max: f64, cartesian_offset: (f64, f64), cartesian_max: f64) -> Polar {
-        Polar {
+    pub fn new(origin: f64, max: f64, cartesian_offset: (f64, f64), cartesian_max: f64) -> Self {
+        Self {
             origin,
             max,
             cartesian_offset,
@@ -53,16 +53,16 @@ impl Polar {
 pub struct Bearing(f64);
 
 impl Bearing {
-    pub fn radians(radians: f64) -> Bearing {
-        Bearing(radians)
+    pub fn radians(radians: f64) -> Self {
+        Self(radians)
     }
 
-    pub fn degrees(degrees: f64) -> Bearing {
+    pub fn degrees(degrees: f64) -> Self {
         use std::f64::consts::PI;
-        Bearing(degrees * PI / 180.)
+        Self(degrees * PI / 180.)
     }
 
-    pub fn as_radians(&self) -> f64 {
+    pub fn as_radians(self) -> f64 {
         self.0
     }
 }
@@ -129,7 +129,7 @@ pub struct AsCartesian<G, D: Drawable<G>> {
 }
 
 impl<G, D: Drawable<G>> Drawable<Cartesian> for AsCartesian<G, D> {
-    fn draw(&self, canvas: &CanvasRenderingContext2d, geometry: &Cartesian) {
+    fn draw(&self, canvas: &CanvasRenderingContext2d, _geometry: &Cartesian) {
         self.shape.draw(canvas, &self.geometry)
     }
 }
@@ -141,7 +141,7 @@ pub struct Path<G: Geometry> {
     pub ops: Vec<PathOp<G>>,
 }
 
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::pub_enum_variant_names)]
 pub enum PathOp<G: Geometry> {
     MoveTo(G::Coords),
     LineTo(G::Coords),
@@ -149,8 +149,8 @@ pub enum PathOp<G: Geometry> {
 }
 
 impl<G: Geometry> Path<G> {
-    pub fn begin_path() -> Path<G> {
-        Path {
+    pub fn begin_path() -> Self {
+        Self {
             line_width: 1.,
             line_dash: vec![],
             stroke_style: None,
@@ -193,14 +193,14 @@ impl Drawable for Path<Cartesian> {
         ))
         .unwrap();
         if let Some(stroke_style) = &self.stroke_style {
-            ctx.set_stroke_style(&JsValue::from_str(&stroke_style));
+            ctx.set_stroke_style(&JsValue::from_str(stroke_style));
         }
 
         for op in &self.ops {
-            match op {
-                &PathOp::MoveTo((x, y)) => ctx.move_to(x, y),
-                &PathOp::LineTo((x, y)) => ctx.line_to(x, y),
-                &PathOp::BezierCurveTo((cp1_x, cp1_y), (cp2_x, cp2_y), (x, y)) => {
+            match *op {
+                PathOp::MoveTo((x, y)) => ctx.move_to(x, y),
+                PathOp::LineTo((x, y)) => ctx.line_to(x, y),
+                PathOp::BezierCurveTo((cp1_x, cp1_y), (cp2_x, cp2_y), (x, y)) => {
                     ctx.bezier_curve_to(cp1_x, cp1_y, cp2_x, cp2_y, x, y)
                 }
             }
@@ -220,12 +220,12 @@ impl Drawable<Polar> for Path<Polar> {
         ))
         .unwrap();
         if let Some(stroke_style) = &self.stroke_style {
-            ctx.set_stroke_style(&JsValue::from_str(&stroke_style));
+            ctx.set_stroke_style(&JsValue::from_str(stroke_style));
         }
 
         for op in &self.ops {
-            match op {
-                &PathOp::MoveTo((bearing, magnitude)) => {
+            match *op {
+                PathOp::MoveTo((bearing, magnitude)) => {
                     if magnitude > geometry.max() {
                         break;
                     }
@@ -233,7 +233,7 @@ impl Drawable<Polar> for Path<Polar> {
                     seed::log!("move to", (x, y));
                     ctx.move_to(x, y)
                 }
-                &PathOp::LineTo((bearing, magnitude)) => {
+                PathOp::LineTo((bearing, magnitude)) => {
                     if magnitude > geometry.max() {
                         break;
                     }
@@ -241,7 +241,7 @@ impl Drawable<Polar> for Path<Polar> {
                     seed::log!("line to", (x, y));
                     ctx.line_to(x, y)
                 }
-                &PathOp::BezierCurveTo(
+                PathOp::BezierCurveTo(
                     (cp1_bearing, cp1_magnitude),
                     (cp2_bearing, cp2_magnitude),
                     (bearing, magnitude),

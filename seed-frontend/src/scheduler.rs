@@ -22,15 +22,15 @@ impl SchedulerState {
         F: 'static + FnOnce() -> (),
     {
         match self {
-            SchedulerState::Empty => {
+            Self::Empty => {
                 let mut scheduled_wakes: BTreeMap<u64, Box<dyn FnOnce() -> ()>> = BTreeMap::new();
                 scheduled_wakes.insert(timestamp, Box::new(f));
-                *self = SchedulerState::Scheduled {
+                *self = Self::Scheduled {
                     next_timeout: Timeout::new(millis_to as u32, scheduler.waker()),
                     scheduled_wakes,
                 };
             }
-            SchedulerState::Scheduled {
+            Self::Scheduled {
                 ref mut next_timeout,
                 ref mut scheduled_wakes,
             } => {
@@ -44,8 +44,8 @@ impl SchedulerState {
 
     fn remove_elapsed(&mut self, scheduler: &Scheduler) -> Vec<Box<dyn FnOnce()>> {
         match self {
-            SchedulerState::Empty => panic!("unexpected wake on empty scheduler"),
-            SchedulerState::Scheduled {
+            Self::Empty => panic!("unexpected wake on empty scheduler"),
+            Self::Scheduled {
                 ref mut next_timeout,
                 ref mut scheduled_wakes,
             } => {
@@ -60,7 +60,7 @@ impl SchedulerState {
                     let millis_to = first_schedule - time;
                     *next_timeout = Timeout::new(millis_to as u32, scheduler.waker());
                 } else {
-                    *self = SchedulerState::Empty;
+                    *self = Self::Empty;
                 }
 
                 elapsed
@@ -70,8 +70,8 @@ impl SchedulerState {
 }
 
 impl Scheduler {
-    pub fn new() -> Scheduler {
-        Scheduler(Rc::new(RefCell::new(SchedulerState::Empty)))
+    pub fn new() -> Self {
+        Self(Rc::new(RefCell::new(SchedulerState::Empty)))
     }
 
     /// Schdules a function to be called or runs immediately if for a time in the past
@@ -81,11 +81,11 @@ impl Scheduler {
     {
         let millis_to = timestamp as i64 - (Date::now() as i64);
         if millis_to < 0 {
-            self.0.borrow_mut().schedule(0, timestamp, f, &self);
+            self.0.borrow_mut().schedule(0, timestamp, f, self);
         } else {
             self.0
                 .borrow_mut()
-                .schedule(millis_to as u32, timestamp, f, &self);
+                .schedule(millis_to as u32, timestamp, f, self);
         }
     }
 
@@ -97,7 +97,7 @@ impl Scheduler {
     }
 
     fn wake(&self) {
-        let elapsed = self.0.borrow_mut().remove_elapsed(&self);
+        let elapsed = self.0.borrow_mut().remove_elapsed(self);
         for f in elapsed {
             f();
         }

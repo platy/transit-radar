@@ -16,8 +16,8 @@ pub struct Model<D> {
 }
 
 impl<D> Default for Model<D> {
-    fn default() -> Model<D> {
-        Model {
+    fn default() -> Self {
+        Self {
             status: RequestStatus::Ready,
             sync: State::NotSynced,
         }
@@ -64,15 +64,12 @@ where
 {
     match msg {
         Msg::FetchData => {
-            match model.status {
-                RequestStatus::Ready => {
-                    orders.perform_cmd(request(model.url(url)).map(Msg::<D, I>::DataFetched));
-                    orders.skip();
-                    model.status = RequestStatus::InProgress;
-                }
-                _ => {
-                    model.status = RequestStatus::Invalidated;
-                }
+            if let RequestStatus::Ready = model.status {
+                orders.perform_cmd(request(model.url(url)).map(Msg::<D, I>::DataFetched));
+                orders.skip();
+                model.status = RequestStatus::InProgress;
+            } else {
+                model.status = RequestStatus::Invalidated;
             }
             false
         }
@@ -136,7 +133,7 @@ impl<D> Model<D> {
     }
 
     // todo check update numbers
-    pub fn receive<'de, I>(&mut self, sync_data: SyncData<D, I>) -> &D
+    pub fn receive<I>(&mut self, sync_data: SyncData<D, I>) -> &D
     where
         D: std::ops::AddAssign<I>,
     {
@@ -205,13 +202,13 @@ pub enum LoadError {
 }
 
 impl From<fetch::FetchError> for LoadError {
-    fn from(error: fetch::FetchError) -> LoadError {
+    fn from(error: fetch::FetchError) -> Self {
         Self::FetchError(error)
     }
 }
 
 impl From<rmp_serde::decode::Error> for LoadError {
-    fn from(error: rmp_serde::decode::Error) -> LoadError {
+    fn from(error: rmp_serde::decode::Error) -> Self {
         Self::RMPError(error)
     }
 }

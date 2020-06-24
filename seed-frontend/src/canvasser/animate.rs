@@ -71,7 +71,7 @@ where
     V: Animatable<TimingContext, G>,
     V::TransitionContext: Default, // Default context is provided when the item is added
 {
-    type TransitionContext = std::collections::HashMap<K, V::TransitionContext>;
+    type TransitionContext = HashMap<K, V::TransitionContext>;
 
     fn draw_frame(
         &self,
@@ -107,8 +107,8 @@ impl Animatable<f64, Polar> for Path<Polar> {
 
     fn draw_frame(
         &self,
-        &frame_time: &f64,
-        transition_ctx: &mut Self::TransitionContext,
+        _frame_time: &f64,
+        _transition_ctx: &mut Self::TransitionContext,
         canvas: &web_sys::CanvasRenderingContext2d,
         geometry: &Polar,
     ) {
@@ -200,9 +200,8 @@ impl TransitionContext for CartesianTransitionContext {
 
 impl CartesianTransitionContext {
     pub fn or_start(&mut self, position: (f64, f64)) -> &mut Self {
-        match self {
-            Self::None => *self = Self::Static { position },
-            _ => (),
+        if let Self::None = self {
+            *self = Self::Static { position };
         }
         self
     }
@@ -233,7 +232,7 @@ impl CartesianTransitionContext {
                     // set velocity and transition clock according to the last position, target, and animation function
                     let velocity = (dx / transition_duration, dy / transition_duration);
                     // calculate position for this frame
-                    let elapsed_time = 0.05f64; // just a random underestimate
+                    let elapsed_time = 0.05_f64; // just a random underestimate
                     let position = (
                         px + velocity.0 * elapsed_time,
                         py + velocity.1 * elapsed_time,
@@ -264,31 +263,34 @@ impl CartesianTransitionContext {
                 let (px, py) = *position;
                 let (tx, ty) = *target;
                 // has the target changed enough to reset the animation timer?
-                if (cx - tx) * (cx - tx) + (cy - ty) * (cy - ty) > 5. {
+                if (cx - tx).powi(2) + (cy - ty).powi(2) > 5. {
                     // add some time onto the transition clock
                     *target_time = frame_time + transition_duration;
                 }
                 // time until animation is complete
-                let transition_duration = *target_time as f64 - frame_time;
+                let transition_duration_remaining = *target_time as f64 - frame_time;
                 // time since last draw
                 let elapsed_time = frame_time - *previous_time as f64;
-                if transition_duration > elapsed_time {
+                if transition_duration_remaining > elapsed_time {
                     let (dx, dy) = (cx - px, cy - py);
                     // change velocity according to the last position, target, transition clock and animation function @todo should limit the impulse for each frame
-                    let velocity = (dx / transition_duration, dy / transition_duration);
+                    let velocity = (
+                        dx / transition_duration_remaining,
+                        dy / transition_duration_remaining,
+                    );
                     // calculate position for this frame
-                    let position = (
+                    let new_position = (
                         px + velocity.0 * elapsed_time,
                         py + velocity.1 * elapsed_time,
                     );
                     *self = Self::Transitioning {
-                        position,
+                        position: new_position,
                         time: frame_time,
                         velocity,
                         target: (cx, cy),
                         target_time: *target_time,
                     };
-                    position
+                    new_position
                 } else {
                     // just draw in the new position, transition is over
                     *self = Self::Static { position: (cx, cy) };
@@ -442,7 +444,7 @@ pub mod storybook {
         }
     }
 
-    fn should_draw<Mdl>(model: &Mdl, frame_count: u64, is_in_transition: bool) -> Option<f64> {
+    fn should_draw<Mdl>(_model: &Mdl, frame_count: u64, is_in_transition: bool) -> Option<f64> {
         if is_in_transition || frame_count % 10 == 0 {
             Some(js_sys::Date::now())
         } else {
@@ -485,7 +487,7 @@ pub mod storybook {
         ToggleAppearPath,
     }
 
-    fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
+    fn update(msg: Msg, model: &mut Model, _orders: &mut impl Orders<Msg>) {
         match msg {
             Msg::MoveTransition => {
                 let new_model = match *model.move_transition.model() {
@@ -509,7 +511,7 @@ pub mod storybook {
                         let appear_path_geo = Polar::new(0., 100., (0., 0.), 400.);
                         Some(appear_path.as_cartesian(appear_path_geo))
                     }
-                    Some(_model) => None,
+                    Some(_m) => None,
                 };
                 *model.appear_path.model_mut() = new_model;
             }
@@ -539,8 +541,7 @@ pub mod storybook {
                         .appear_path
                         .model()
                         .as_ref()
-                        .map(|_| "Disappear")
-                        .unwrap_or("Appear"),
+                        .map_or("Appear", |_| "Disappear"),
                     ev(Ev::Click, |_| Msg::ToggleAppearPath),
                 ],
                 canvas![

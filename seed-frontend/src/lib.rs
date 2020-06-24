@@ -11,7 +11,6 @@ mod radar;
 mod scheduler;
 mod sync;
 
-#[cfg(not(feature = "storybook"))]
 #[wasm_bindgen(start)]
 pub fn render() {
     App::start("app", init, update, view);
@@ -24,7 +23,7 @@ fn init(url: Url, orders: &mut impl Orders<Msg>) -> Model {
         scheduler: RefCell::new(scheduler::Scheduler::new()),
         sync: Default::default(),
         canvasser: radar::init(None),
-        controls: controls::Model::init(url, &mut orders.proxy(Msg::ControlsMsg)),
+        controls: controls::Model::init(url, &mut orders.proxy(Msg::ControlsComponent)),
     }
 }
 
@@ -38,10 +37,10 @@ struct Model {
 
 enum Msg {
     FirstRender,
-    /// When a user changes a control
-    ControlsMsg(controls::Msg),
+    /// Messages for the controls component
+    ControlsComponent(controls::Msg),
 
-    SyncMsg(sync::Msg<GTFSData, GTFSSyncIncrement>),
+    SyncComponent(sync::Msg<GTFSData, GTFSSyncIncrement>),
     Search,
     SearchExpires,
     LoadDataAhead(Time),
@@ -49,24 +48,24 @@ enum Msg {
 
 fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
-        Msg::ControlsMsg(msg) => {
+        Msg::ControlsComponent(msg) => {
             if controls::update(
                 msg,
                 &mut model.controls,
-                &mut orders.proxy(Msg::ControlsMsg),
+                &mut orders.proxy(Msg::ControlsComponent),
             ) {
                 orders.send_msg(Msg::Search);
-                orders.send_msg(Msg::SyncMsg(sync::Msg::FetchData));
+                orders.send_msg(Msg::SyncComponent(sync::Msg::FetchData));
             }
         }
 
         Msg::FirstRender => {
             if model.sync.never_requested() {
-                orders.send_msg(Msg::SyncMsg(sync::Msg::FetchData));
+                orders.send_msg(Msg::SyncComponent(sync::Msg::FetchData));
             }
         }
 
-        Msg::SyncMsg(msg) => {
+        Msg::SyncComponent(msg) => {
             let (_day, start_time) = radar::day_time(&js_sys::Date::new_0());
             sync_data(msg, model, orders, start_time);
         }
@@ -117,7 +116,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             let date = js_sys::Date::new_0();
             let expires_timestamp = model.canvasser.model().as_ref().unwrap().expires_timestamp;
             // check whether it is actually expired, it may have been updated before this message was scheduled
-            if date.value_of() as u64 > expires_timestamp {
+            if date.value_of() > expires_timestamp as f64 {
                 orders.send_msg(Msg::Search);
             }
         }
@@ -133,7 +132,7 @@ fn view(model: &Model) -> Node<Msg> {
             .as_ref()
             .map(|s| s.name.as_str())
             .unwrap_or_default()],
-        controls::view(&model.controls).map_msg(Msg::ControlsMsg),
+        controls::view(&model.controls).map_msg(Msg::ControlsComponent),
         p![if let Some(data) = model.sync.get() {
             let radar = model.canvasser.model();
             if let Some(radar) = radar.as_ref() {
@@ -209,7 +208,12 @@ fn sync_data(
             station_selection.name.replace(" ", "%20"),
             query
         );
-        if sync::update(msg, &mut model.sync, url, &mut orders.proxy(Msg::SyncMsg)) {
+        if sync::update(
+            msg,
+            &mut model.sync,
+            url,
+            &mut orders.proxy(Msg::SyncComponent),
+        ) {
             orders.send_msg(Msg::Search);
         }
     }

@@ -20,7 +20,7 @@ pub struct Duration {
 impl Duration {
     /// Construct a duration of a number of seconds
     pub fn seconds(seconds: i32) -> Duration {
-        Duration { seconds: seconds }
+        Duration { seconds }
     }
 
     /// Construct a duration of a number of minutes
@@ -31,12 +31,12 @@ impl Duration {
     }
 
     /// Convert to minutes
-    pub fn to_mins(&self) -> i32 {
+    pub fn to_mins(self) -> i32 {
         self.seconds / 60
     }
 
     /// Convert to seconds
-    pub fn to_secs(&self) -> i32 {
+    pub fn to_secs(self) -> i32 {
         self.seconds
     }
 }
@@ -99,7 +99,7 @@ impl Time {
         (self.seconds_since_midnight % 60).try_into().unwrap()
     }
 
-    pub fn seconds_since_midnight(&self) -> u32 {
+    pub fn seconds_since_midnight(self) -> u32 {
         self.seconds_since_midnight
     }
 }
@@ -184,29 +184,26 @@ impl Period {
     /// if start > end
     pub fn between(start: Time, end: Time) -> Period {
         assert!(start < end);
-        Period {
-            start: start,
-            end: end,
-        }
+        Period { start, end }
     }
 
     /// returns a new period with the same end and the new start
     /// # Panics
     /// if start > end
-    pub fn with_start(&self, start: Time) -> Period {
+    pub fn with_start(self, start: Time) -> Period {
         Self::between(start, self.end)
     }
 
     /// Containership, inclusive of start, exclusive of end
-    pub fn contains(&self, time: Time) -> bool {
+    pub fn contains(self, time: Time) -> bool {
         self.start <= time && time < self.end
     }
 
-    pub fn start(&self) -> Time {
+    pub fn start(self) -> Time {
         self.start
     }
 
-    pub fn duration(&self) -> Duration {
+    pub fn duration(self) -> Duration {
         self.end - self.start
     }
 }
@@ -238,6 +235,8 @@ impl std::str::FromStr for Time {
     type Err = TimeParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use std::str::from_utf8;
+        
         let s = s.as_bytes();
         let (hh, mm, ss) = if s.len() == 8 {
             if s[2] != b':' || s[5] != b':' {
@@ -252,12 +251,11 @@ impl std::str::FromStr for Time {
         } else {
             return Err(TimeParseError::InvalidFormat);
         };
-        use std::str::from_utf8;
         let hours: u32 = from_utf8(hh)?.parse()?;
         let minutes: u32 = from_utf8(mm)?.parse()?;
         let seconds: u32 = from_utf8(ss)?.parse()?;
         if seconds > 59 || minutes > 59 {
-            Err(TimeParseError::TooManySecondsOrMinutes)?;
+            return Err(TimeParseError::TooManySecondsOrMinutes);
         }
         Ok(Time {
             seconds_since_midnight: hours * 60 * 60 + minutes * 60 + seconds,

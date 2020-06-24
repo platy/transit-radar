@@ -27,7 +27,7 @@ fn should_draw(model: &Option<Radar>, frame_count: u64, is_in_transition: bool) 
 }
 
 pub struct Radar {
-    pub geometry: RadarGeometry,
+    pub geometry: Geo,
     trip_drawables: HashMap<TripId, Path<Polar>>,
     station_animatables: HashMap<StopId, Station<Polar>>,
     pub day: Day,
@@ -59,18 +59,18 @@ struct TripSegment {
 
 // needs to be cloneable for the view, could be avoided
 #[derive(Clone)]
-pub struct RadarGeometry {
+pub struct Geo {
     pub start_time: Time,
     cartesian_origin: (f64, f64),
     geographic_origin: geo::Point<f64>,
     max_duration: Duration,
 }
 
-impl Geometry for RadarGeometry {
+impl Geometry for Geo {
     type Coords = (geo::Point<f64>, Time);
 }
 
-impl RadarGeometry {
+impl Geo {
     fn bearing(&self, point: geo::Point<f64>) -> Option<Bearing> {
         if point == self.geographic_origin {
             None
@@ -146,8 +146,8 @@ impl RadarGeometry {
         let angle_to_next = (y2 - y3).atan2(x2 - x3);
         // things to adjust and improve
         let angle_to_tangent = (PI + angle_to_next + angle_to_prev) / 2.;
-        let cp2mag = -CPFRAC * ((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)).sqrt();
-        let cp3mag = CPFRAC * ((x2 - x3) * (x2 - x3) + (y2 - y3) * (y2 - y3)).sqrt();
+        let cp2mag = -CPFRAC * ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
+        let cp3mag = CPFRAC * ((x2 - x3).powi(2) + (y2 - y3).powi(2)).sqrt();
         // ^^ improve these
         let mut dx = angle_to_tangent.cos();
         let mut dy = angle_to_tangent.sin();
@@ -161,13 +161,13 @@ impl RadarGeometry {
             // the need to negate here is weird, maybe the above atan2 calls are the wrong way around
             (
                 Bearing::radians(-(cp2_y).atan2(cp2_x)),
-                (cp2_x * cp2_x + cp2_y * cp2_y).sqrt() * self.max_duration.to_secs() as f64
+                (cp2_x.powi(2) + cp2_y.powi(2)).sqrt() * self.max_duration.to_secs() as f64
                     / self.cartesian_origin.0
                     + self.start_time.seconds_since_midnight() as f64,
             ),
             (
                 Bearing::radians(-(cp3_y).atan2(cp3_x)),
-                (cp3_x * cp3_x + cp3_y * cp3_y).sqrt() * self.max_duration.to_secs() as f64
+                (cp3_x.powi(2) + cp3_y.powi(2)).sqrt() * self.max_duration.to_secs() as f64
                     / self.cartesian_origin.0
                     + self.start_time.seconds_since_midnight() as f64,
             ),
@@ -203,7 +203,7 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
     let mut plotter = journey_graph::JourneyGraphPlotter::new(
         day,
         Period::between(start_time, end_time + max_extra_search),
-        &data,
+        data,
     );
     plotter.add_origin_station(origin);
     if controls.flags.show_sbahn {
@@ -227,7 +227,7 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
 
     let mut station_animatables: HashMap<StopId, Station<Polar>> = HashMap::new();
     let mut trip_drawables: HashMap<TripId, Path<Polar>> = HashMap::new();
-    let geometry = RadarGeometry {
+    let geometry = Geo {
         cartesian_origin: (500., 500.),
         geographic_origin: origin.location,
         start_time,
@@ -329,7 +329,9 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
         segments,
     } in trips.values()
     {
-        use RouteType::*;
+        use RouteType::{
+            Rail, RailwayService, SuburbanRailway, UrbanRailway, WaterTransportService,
+        };
         {
             let TripSegment {
                 from,
@@ -356,7 +358,7 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
                 departure_time.seconds_since_midnight() as f64,
             ));
             // use random to make connection and trip unique in hashmap
-            trip_drawables.insert(1000000 + *trip_id, path);
+            trip_drawables.insert(1_000_000 + *trip_id, path);
         }
 
         let mut path = Path::begin_path();
@@ -375,97 +377,103 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
             path.set_line_width(1.);
         }
         path.set_line_dash(&[]);
-        path.set_stroke_style(&route_color);
-        if segments.len() > 1 {
-            let mut next_control_point = {
-                // first segment
-                let segment = &segments[0];
-                let to_bearing = geometry.bearing(segment.to).unwrap();
-                let from_bearing = geometry.bearing(segment.from).unwrap_or(to_bearing);
-                let from_mag = segment.departure_time.seconds_since_midnight() as f64;
-                let to_mag = segment.arrival_time.seconds_since_midnight() as f64;
-                path.move_to((from_bearing, from_mag));
-
-                let cp1 = geometry.initial_control_point(
-                    (segment.from, segment.departure_time),
-                    (segment.to, segment.arrival_time),
-                );
-                let (post_location, post_time) = if segments[1].from == segment.to {
-                    (segments[1].to, segments[1].arrival_time)
-                } else {
-                    (segments[1].from, segments[1].departure_time)
-                };
-                let post_bearing = geometry.bearing(post_location).unwrap();
-                let post_mag = post_time.seconds_since_midnight() as f64;
-
-                let (cp2, next_control_point) = geometry.control_points(
-                    (from_bearing, from_mag),
-                    (to_bearing, to_mag),
-                    (post_bearing, post_mag),
-                );
-                path.bezier_curve_to(cp1, cp2, (to_bearing, to_mag));
-                next_control_point
-            };
-            // all the connecting segments
-            for window in segments.windows(3) {
-                if let &[pre, segment, post] = &window {
+        path.set_stroke_style(route_color);
+        match segments.len().cmp(&1) {
+            std::cmp::Ordering::Greater => {
+                let mut next_control_point = {
+                    // first segment
+                    let segment = &segments[0];
                     let to_bearing = geometry.bearing(segment.to).unwrap();
                     let from_bearing = geometry.bearing(segment.from).unwrap_or(to_bearing);
                     let from_mag = segment.departure_time.seconds_since_midnight() as f64;
                     let to_mag = segment.arrival_time.seconds_since_midnight() as f64;
+                    path.move_to((from_bearing, from_mag));
 
-                    let pre_bearing = geometry.bearing(pre.to).unwrap();
-                    let pre_mag = pre.arrival_time.seconds_since_midnight() as f64;
-                    if pre_bearing != from_bearing && pre_mag != from_mag {
-                        // there is a gap in the route and so we move
-                        path.move_to((from_bearing, from_mag));
-                        next_control_point = geometry.initial_control_point(
-                            (segment.from, segment.departure_time),
-                            (segment.to, segment.arrival_time),
-                        );
-                    }
-                    let (post_location, post_time) = if post.from == segment.to {
-                        (post.to, post.arrival_time)
+                    let cp1 = geometry.initial_control_point(
+                        (segment.from, segment.departure_time),
+                        (segment.to, segment.arrival_time),
+                    );
+                    let (post_location, post_time) = if segments[1].from == segment.to {
+                        (segments[1].to, segments[1].arrival_time)
                     } else {
-                        (post.from, post.departure_time)
+                        (segments[1].from, segments[1].departure_time)
                     };
                     let post_bearing = geometry.bearing(post_location).unwrap();
                     let post_mag = post_time.seconds_since_midnight() as f64;
-                    let cp1 = next_control_point;
-                    let (cp2, next_control_point_tmp) = geometry.control_points(
+
+                    let (cp2, next_control_point) = geometry.control_points(
                         (from_bearing, from_mag),
                         (to_bearing, to_mag),
                         (post_bearing, post_mag),
                     );
                     path.bezier_curve_to(cp1, cp2, (to_bearing, to_mag));
-                    next_control_point = next_control_point_tmp;
-                } else {
-                    panic!("unusual window");
+                    next_control_point
+                };
+                // all the connecting segments
+                for window in segments.windows(3) {
+                    if let [pre, segment, post] = window {
+                        let to_bearing = geometry.bearing(segment.to).unwrap();
+                        let from_bearing = geometry.bearing(segment.from).unwrap_or(to_bearing);
+                        let from_mag = segment.departure_time.seconds_since_midnight() as f64;
+                        let to_mag = segment.arrival_time.seconds_since_midnight() as f64;
+
+                        let pre_bearing = geometry.bearing(pre.to).unwrap();
+                        let pre_mag = pre.arrival_time.seconds_since_midnight() as f64;
+                        if pre_bearing != from_bearing && pre_mag != from_mag {
+                            // there is a gap in the route and so we move
+                            path.move_to((from_bearing, from_mag));
+                            next_control_point = geometry.initial_control_point(
+                                (segment.from, segment.departure_time),
+                                (segment.to, segment.arrival_time),
+                            );
+                        }
+                        let (post_location, post_time) = if post.from == segment.to {
+                            (post.to, post.arrival_time)
+                        } else {
+                            (post.from, post.departure_time)
+                        };
+                        let post_bearing = geometry.bearing(post_location).unwrap();
+                        let post_mag = post_time.seconds_since_midnight() as f64;
+                        let cp1 = next_control_point;
+                        let (cp2, next_control_point_tmp) = geometry.control_points(
+                            (from_bearing, from_mag),
+                            (to_bearing, to_mag),
+                            (post_bearing, post_mag),
+                        );
+                        path.bezier_curve_to(cp1, cp2, (to_bearing, to_mag));
+                        next_control_point = next_control_point_tmp;
+                    } else {
+                        panic!("unusual window");
+                    }
+                }
+                {
+                    // draw the last curve
+                    let end = segments.last().unwrap();
+                    let to = (
+                        geometry.bearing(end.to).unwrap(),
+                        end.arrival_time.seconds_since_midnight() as f64,
+                    );
+                    let cp1 = next_control_point;
+                    path.bezier_curve_to(cp1, to, to);
                 }
             }
-            {
-                // draw the last curve
-                let end = segments.last().unwrap();
-                let to = (
-                    geometry.bearing(end.to).unwrap(),
-                    end.arrival_time.seconds_since_midnight() as f64,
-                );
-                let cp1 = next_control_point;
-                path.bezier_curve_to(cp1, to, to);
-            }
-        } else if segments.len() == 1 {
-            let segment = &segments[0];
-            let to_bearing = geometry.bearing(segment.to).unwrap();
-            let from_bearing = geometry.bearing(segment.from).unwrap_or(to_bearing);
+            std::cmp::Ordering::Equal => {
+                let segment = &segments[0];
+                let to_bearing = geometry.bearing(segment.to).unwrap();
+                let from_bearing = geometry.bearing(segment.from).unwrap_or(to_bearing);
 
-            path.move_to((
-                from_bearing,
-                segment.departure_time.seconds_since_midnight() as f64,
-            ));
-            path.line_to((
-                to_bearing,
-                segment.arrival_time.seconds_since_midnight() as f64,
-            ));
+                path.move_to((
+                    from_bearing,
+                    segment.departure_time.seconds_since_midnight() as f64,
+                ));
+                path.line_to((
+                    to_bearing,
+                    segment.arrival_time.seconds_since_midnight() as f64,
+                ));
+            }
+            std::cmp::Ordering::Less => {
+                // path is empty - ignore
+            }
         }
         trip_drawables.insert(*trip_id, path);
     }
@@ -488,7 +496,7 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
     }
 }
 
-impl Drawable for RadarGeometry {
+impl Drawable for Geo {
     fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d, _: &Cartesian) {
         let (origin_x, origin_y) = self.cartesian_origin;
         ctx.set_line_dash(&js_sys::Array::of2(&10_f64.into(), &10_f64.into()).into())
@@ -518,12 +526,12 @@ impl Drawable for RadarGeometry {
 }
 
 #[derive(Default)]
-pub struct RadarTransitionContext {
+pub struct TransitionCtx {
     stations: HashMap<StopId, CartesianTransitionContext>,
     trips: HashMap<TripId, PathTransitionContext>,
 }
 
-impl TransitionContext for RadarTransitionContext {
+impl TransitionContext for TransitionCtx {
     fn is_in_transition(&self) -> bool {
         self.stations
             .values()
@@ -532,16 +540,16 @@ impl TransitionContext for RadarTransitionContext {
 }
 
 impl Animatable<f64> for Radar {
-    type TransitionContext = RadarTransitionContext;
+    type TransitionContext = TransitionCtx;
 
     fn draw_frame(
         &self,
         day_millis: &f64,
-        transition_context: &mut RadarTransitionContext,
+        transition_context: &mut TransitionCtx,
         canvas: &web_sys::CanvasRenderingContext2d,
         _: &Cartesian,
     ) {
-        let Radar {
+        let Self {
             day: _,
             expires_timestamp: _,
             geometry,
@@ -581,8 +589,8 @@ impl Drawable for Station<Cartesian> {
     }
 }
 
-impl Station<RadarGeometry> {
-    fn to_polar(self, geometry: &RadarGeometry) -> Station<Polar> {
+impl Station<Geo> {
+    fn to_polar(self, geometry: &Geo) -> Station<Polar> {
         let (point, time) = self.coords;
         Station {
             coords: (
