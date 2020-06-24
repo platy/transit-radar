@@ -7,15 +7,16 @@ use std::f64::consts::PI;
 use super::canvasser;
 use super::controls;
 
-use canvasser::draw::*;
 use canvasser::animate::*;
+use canvasser::draw::*;
 
 pub fn init(radar: Option<Radar>) -> canvasser::App<Option<Radar>, f64> {
     canvasser::App::new(should_draw, radar)
 }
 
 fn should_draw(model: &Option<Radar>, frame_count: u64, is_in_transition: bool) -> Option<f64> {
-    if model.is_some() && (is_in_transition || frame_count % 6 == 0) { // @todo switch speed when something is transitioning maybe?
+    if model.is_some() && (is_in_transition || frame_count % 6 == 0) {
+        // @todo switch speed when something is transitioning maybe?
         let now = js_sys::Date::new_0();
         let now = ((now.get_hours() * 60 + now.get_minutes()) * 60 + now.get_seconds()) as f64
             + now.get_milliseconds() as f64 / 1000.;
@@ -246,7 +247,9 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
                     coords: (stop.location, earliest_arrival),
                     name: stop.stop_name.replace(" (Berlin)", ""),
                 };
-                assert!(station_animatables.insert(stop.station_id(), station.to_polar(&geometry)).is_none());
+                assert!(station_animatables
+                    .insert(stop.station_id(), station.to_polar(&geometry))
+                    .is_none());
             }
             journey_graph::Item::JourneySegment {
                 departure_time: _,
@@ -522,14 +525,22 @@ pub struct RadarTransitionContext {
 
 impl TransitionContext for RadarTransitionContext {
     fn is_in_transition(&self) -> bool {
-        self.stations.values().any(TransitionContext::is_in_transition)
+        self.stations
+            .values()
+            .any(TransitionContext::is_in_transition)
     }
 }
 
 impl Animatable<f64> for Radar {
     type TransitionContext = RadarTransitionContext;
 
-    fn draw_frame(&self, day_millis: &f64, transition_context: &mut RadarTransitionContext, canvas: &web_sys::CanvasRenderingContext2d, _: &Cartesian) {
+    fn draw_frame(
+        &self,
+        day_millis: &f64,
+        transition_context: &mut RadarTransitionContext,
+        canvas: &web_sys::CanvasRenderingContext2d,
+        _: &Cartesian,
+    ) {
         let Radar {
             day: _,
             expires_timestamp: _,
@@ -538,7 +549,7 @@ impl Animatable<f64> for Radar {
             trip_drawables,
             trip_count: _,
         } = self;
-    
+
         geometry.draw(canvas, &Cartesian);
         let polar_geometry = Polar::new(
             *day_millis,
@@ -546,8 +557,18 @@ impl Animatable<f64> for Radar {
             geometry.cartesian_origin,
             f64::min(geometry.cartesian_origin.0, geometry.cartesian_origin.1),
         );
-        trip_drawables.draw_frame(day_millis, &mut transition_context.trips, canvas, &polar_geometry,);
-        station_animatables.draw_frame(day_millis, &mut transition_context.stations, canvas, &polar_geometry);
+        trip_drawables.draw_frame(
+            day_millis,
+            &mut transition_context.trips,
+            canvas,
+            &polar_geometry,
+        );
+        station_animatables.draw_frame(
+            day_millis,
+            &mut transition_context.stations,
+            canvas,
+            &polar_geometry,
+        );
     }
 }
 
@@ -589,7 +610,13 @@ impl Drawable<Polar> for Station<Polar> {
 impl Animatable<f64, Polar> for Station<Polar> {
     type TransitionContext = CartesianTransitionContext;
 
-    fn draw_frame(&self, time: &f64, transition_ctx: &mut CartesianTransitionContext, canvas: &web_sys::CanvasRenderingContext2d, geometry: &Polar) {
+    fn draw_frame(
+        &self,
+        time: &f64,
+        transition_ctx: &mut CartesianTransitionContext,
+        canvas: &web_sys::CanvasRenderingContext2d,
+        geometry: &Polar,
+    ) {
         const STOP_RADIUS: f64 = 3.;
         let (bearing, magnitude) = self.coords;
         if magnitude > geometry.max() {
@@ -601,7 +628,9 @@ impl Animatable<f64, Polar> for Station<Polar> {
         // set the target
         let new_target = geometry.coords(bearing, magnitude);
         // position to acutally draw
-        let (cx, cy) = transition_ctx.or_start(geometry.coords(bearing, geometry.max())).process_transition_frame(new_target, *time, 1.);
+        let (cx, cy) = transition_ctx
+            .or_start(geometry.coords(bearing, geometry.max()))
+            .process_transition_frame(new_target, *time, 1.);
 
         Circle::new((cx, cy), STOP_RADIUS).draw(canvas, &Cartesian);
         Text::new(cx + STOP_RADIUS + 6., cy + 4., self.name.clone()).draw(canvas, &Cartesian);

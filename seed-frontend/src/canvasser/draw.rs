@@ -80,7 +80,9 @@ impl Geometry for Polar {
 }
 
 pub trait Drawable<G = Cartesian>
-where Self: Sized {
+where
+    Self: Sized,
+{
     fn draw(&self, canvas: &CanvasRenderingContext2d, geometry: &G);
     fn as_cartesian(self, geometry: G) -> AsCartesian<G, Self> {
         AsCartesian {
@@ -121,7 +123,10 @@ where
     }
 }
 
-pub struct AsCartesian<G, D: Drawable<G>> { pub shape: D, pub geometry: G }
+pub struct AsCartesian<G, D: Drawable<G>> {
+    pub shape: D,
+    pub geometry: G,
+}
 
 impl<G, D: Drawable<G>> Drawable<Cartesian> for AsCartesian<G, D> {
     fn draw(&self, canvas: &CanvasRenderingContext2d, geometry: &Cartesian) {

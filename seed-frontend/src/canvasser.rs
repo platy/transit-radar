@@ -8,8 +8,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use wasm_bindgen::closure::Closure;
 use web_sys::HtmlCanvasElement;
 
-pub mod draw;
 pub mod animate;
+pub mod draw;
 
 use animate::*;
 
@@ -45,7 +45,9 @@ impl<Mdl: Animatable<TCtx>, TCtx> Clone for App<Mdl, TCtx> {
 }
 
 impl<Mdl: Animatable<TCtx>, TCtx: 'static> App<Mdl, TCtx>
-where Mdl::TransitionContext: TransitionContext + Default {
+where
+    Mdl::TransitionContext: TransitionContext + Default,
+{
     pub fn new(update: ShouldDrawFn<Mdl, TCtx>, model: Mdl) -> App<Mdl, TCtx> {
         App {
             cfg: Rc::new(AppCfg {
@@ -111,12 +113,19 @@ where Mdl::TransitionContext: TransitionContext + Default {
         let canvas = self.cfg.canvas.get().expect("get canvas element");
 
         let canvas_ctx = seed::canvas_context_2d(&canvas);
-        canvas_ctx.set_global_composite_operation("source-over").unwrap();
+        canvas_ctx
+            .set_global_composite_operation("source-over")
+            .unwrap();
         canvas_ctx.clear_rect(0., 0., canvas.width().into(), canvas.height().into());
         canvas_ctx.set_transform(2., 0., 0., 2., 0., 0.).unwrap();
 
         let mut transition_ctx = self.data.transition_ctx.borrow_mut();
-        self.data.model.borrow().draw_frame(&timing_ctx, &mut transition_ctx, &canvas_ctx, &draw::Cartesian);
+        self.data.model.borrow().draw_frame(
+            &timing_ctx,
+            &mut transition_ctx,
+            &canvas_ctx,
+            &draw::Cartesian,
+        );
 
         let render_info = match self.data.render_info.take() {
             Some(old_render_info) => RenderInfo {
@@ -135,7 +144,9 @@ where Mdl::TransitionContext: TransitionContext + Default {
 pub struct CanvasRef<'a, Mdl: Animatable<TCtx> + 'static, TCtx>(&'a App<Mdl, TCtx>);
 
 impl<'a, Ms, Mdl: Animatable<TCtx>, TCtx: 'static> UpdateEl<Ms> for CanvasRef<'a, Mdl, TCtx>
-where Mdl::TransitionContext: TransitionContext + Default {
+where
+    Mdl::TransitionContext: TransitionContext + Default,
+{
     /// Canvasser is added to the Seed VDom, once the render is finished we'll be connected to a canvas on the page and so should ensure the animation loop is started
     fn update_el(self, el: &mut El<Ms>) {
         self.0.cfg.canvas.clone().update_el(el);

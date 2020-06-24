@@ -18,7 +18,8 @@ impl Model {
             station_name = url.next_path_part();
             if let Some(station_name) = station_name {
                 orders.perform_cmd(
-                    request(format!("/searchStation/{}", station_name)).map(Msg::SuggestionsFetched),
+                    request(format!("/searchStation/{}", station_name))
+                        .map(Msg::SuggestionsFetched),
                 );
             }
         }
@@ -42,7 +43,7 @@ impl Model {
                 return false;
             }
         } else {
-            return true
+            return true;
         }
     }
 }
@@ -106,12 +107,9 @@ pub enum Msg {
 pub fn view(model: &Model) -> Vec<Node<Msg>> {
     nodes![
         span!["Search a station in Berlin :"],
-        model
-            .station_autocomplete
-            .view()
-            .with_input_attrs(attrs! {
-                At::Value => model.station_input,
-            }),
+        model.station_autocomplete.view().with_input_attrs(attrs! {
+            At::Value => model.station_input,
+        }),
         checkbox(
             "show-sbahn",
             "Show SBahn",
@@ -179,7 +177,9 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) -> boo
             params_changed = false;
             // automatically select a suggestion if it matches the url route (for a page load case where station is referenced and so a suggestion request is made for that initially)
             if model.enable_url_routing {
-                if let Some(pre_selection) = find_url_selection_in_suggestions(Url::current(), &suggestions) {
+                if let Some(pre_selection) =
+                    find_url_selection_in_suggestions(Url::current(), &suggestions)
+                {
                     params.station_selection = Some(pre_selection);
                     params_changed = true;
                 }
@@ -219,11 +219,12 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) -> boo
 }
 
 /// Finds a suggestion in the vec whose name matches the first part of the url
-fn find_url_selection_in_suggestions(mut url: Url, suggestions: &Vec<StationSuggestion>) -> Option<StationSuggestion> {
+fn find_url_selection_in_suggestions(
+    mut url: Url,
+    suggestions: &Vec<StationSuggestion>,
+) -> Option<StationSuggestion> {
     if let Some(route_station) = url.next_path_part() {
-        if let Some(matching_suggestion) =
-            suggestions.iter().find(|s| s.name == route_station)
-        {
+        if let Some(matching_suggestion) = suggestions.iter().find(|s| s.name == route_station) {
             return Some(matching_suggestion.clone());
         }
     }

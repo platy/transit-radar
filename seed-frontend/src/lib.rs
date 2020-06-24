@@ -137,11 +137,17 @@ fn view(model: &Model) -> Node<Msg> {
         p![if let Some(data) = model.sync.get() {
             let radar = model.canvasser.model();
             if let Some(radar) = radar.as_ref() {
-                format!("
+                format!(
+                    "
                     The transit radar shows all the destinations you could reach within {} mins \
                     using the selected transport modes from the selected station, departing \
                     on a {} at {} and uses VBB's published timetables at {}.\
-                ", 30, radar.day, radar.geometry.start_time, data.timetable_start_date())
+                ",
+                    30,
+                    radar.day,
+                    radar.geometry.start_time,
+                    data.timetable_start_date()
+                )
             } else {
                 format!("data received, {} stops", data.stops().count())
             }
