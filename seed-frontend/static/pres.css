@@ -3,17 +3,14 @@ body {
 }
 
 .slide {
-  width: 800px;
-  height: 600px;
+  width: 600px;
+  height: 480px;
 }
 
-.slide.overlay {
+.overlay {
   background-color: #FFFE;
   backdrop-filter: blur(10px); /* not enabled */
-}
-
-.slide h1 {
-  /* text-align: center; */
+  padding: 20px;
 }
 
 #app {
