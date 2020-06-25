@@ -14,14 +14,12 @@ use web_util::*;
 
 fn filter_data(
     data: &GTFSData,
-    station_name: String,
+    origin: &Stop,
     options: RadarOptions,
     day: Day,
     period: Period,
 ) -> Result<RequiredData, db::SearchError> {
-    let station = db::get_station_by_name(data, &station_name)?;
     let mut plotter = journey_graph::JourneyGraphPlotter::new(day, period, data);
-    let origin = data.get_stop(&station.stop_id).unwrap();
     plotter.add_origin_station(origin);
     if options.ubahn {
         plotter.add_route_type(RouteType::UrbanRailway);
@@ -55,8 +53,9 @@ async fn filtered_data_handler(
 
     match decode(&name) {
         Ok(name) => {
+            let station = db::get_station_by_name(&data, &name).map_err(warp::reject::custom)?;
             let required_data =
-                filter_data(&data, name, options, day, period).map_err(warp::reject::custom)?;
+                filter_data(&data, station, options, day, period).map_err(warp::reject::custom)?;
             match session.lock() {
                 Ok(mut session) => {
                     let mut buf = Vec::<u8>::new();
@@ -64,6 +63,8 @@ async fn filtered_data_handler(
                         .with_struct_tuple()
                         .with_integer_variants();
                     // let mut serializer = serde_json::Serializer::new(&mut buf);
+
+                    session.record_search(station);
 
                     session
                         .add_data(required_data, &data)

@@ -2,7 +2,7 @@ use futures::future;
 use radar_search::search_data_sync::ClientSession;
 use std::collections::HashMap;
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicI64, Ordering},
     Arc, Mutex,
 };
 use warp::{reject, Filter};
@@ -15,13 +15,13 @@ pub fn with_session<S: Sync + Send + ClientSession>(
 }
 
 struct SessionContainer<S> {
-    map: Mutex<HashMap<u64, Arc<Mutex<S>>>>,
-    next_session_id: AtomicU64,
+    map: Mutex<HashMap<i64, Arc<Mutex<S>>>>,
+    next_session_id: AtomicI64,
 }
 
 #[derive(serde::Deserialize)]
 struct SessionKey {
-    id: Option<u64>,
+    id: Option<i64>,
     count: Option<u64>,
 }
 
@@ -29,7 +29,7 @@ impl<S: ClientSession> SessionContainer<S> {
     fn new() -> SessionContainer<S> {
         SessionContainer {
             map: Mutex::new(HashMap::new()),
-            next_session_id: AtomicU64::new(1000),
+            next_session_id: AtomicI64::new(chrono::Utc::now().timestamp()),
         }
     }
 
@@ -51,7 +51,7 @@ impl<S: ClientSession> SessionContainer<S> {
         Ok(session.clone())
     }
 
-    fn new_session_id(&self) -> u64 {
+    fn new_session_id(&self) -> i64 {
         self.next_session_id.fetch_add(1, Ordering::SeqCst)
     }
 }

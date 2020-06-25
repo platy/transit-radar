@@ -19,15 +19,16 @@ impl std::ops::AddAssign<GTFSSyncIncrement> for GTFSData {
 pub struct GTFSDataSession {
     trips: HashSet<TripId>,
     stops: HashSet<StopId>,
-    session_id: u64,
+    session_id: i64,
     update_number: u64,
+    last_origin: Option<StopId>,
 }
 
 pub trait ClientSession {
     type Data;
     type Increment;
 
-    fn new(session_id: u64) -> Self;
+    fn new(session_id: i64) -> Self;
     fn update_number(&self) -> u64;
 }
 
@@ -35,13 +36,14 @@ impl ClientSession for GTFSDataSession {
     type Data = GTFSData;
     type Increment = GTFSSyncIncrement;
 
-    fn new(session_id: u64) -> GTFSDataSession {
-        eprintln!("New session {}", session_id);
+    fn new(session_id: i64) -> GTFSDataSession {
+        eprintln!("{} {}: New session", chrono::Utc::now().to_rfc3339(), session_id);
         GTFSDataSession {
             trips: HashSet::new(),
             stops: HashSet::new(),
             session_id,
             update_number: 0,
+            last_origin: None,
         }
     }
 
@@ -99,6 +101,13 @@ impl GTFSDataSession {
                 update_number: self.update_number,
                 session_id: self.session_id,
             }
+        }
+    }
+
+    pub fn record_search(&mut self, stop: &Stop) {
+        if self.last_origin != Some(stop.stop_id) {
+            self.last_origin = Some(stop.stop_id);
+            eprintln!(r#"{} {}: New search "{}""#, chrono::Utc::now().to_rfc3339(), self.session_id, stop.stop_name);
         }
     }
 }
