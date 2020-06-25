@@ -177,7 +177,6 @@ pub enum CartesianTransitionContext {
     Transitioning {
         position: (f64, f64),
         time: f64,
-        velocity: (f64, f64),
         target: (f64, f64),
         target_time: f64,
     },
@@ -218,7 +217,6 @@ impl CartesianTransitionContext {
                 *self = Self::Static {
                     position: new_target,
                 };
-                log!(frame_time, "appear");
                 new_target
             }
             Self::Static { position } => {
@@ -226,7 +224,7 @@ impl CartesianTransitionContext {
                 let (px, py) = *position;
                 // how far away is the new target?
                 let (dx, dy) = (cx - px, cy - py);
-                let sq_distance_to_target = dx * dx + dy * dy;
+                let sq_distance_to_target = dx.powi(2) + dy.powi(2);
                 if sq_distance_to_target > 5. {
                     // start a transition
                     // set velocity and transition clock according to the last position, target, and animation function
@@ -240,7 +238,6 @@ impl CartesianTransitionContext {
                     *self = Self::Transitioning {
                         position,
                         time: frame_time,
-                        velocity,
                         target: (cx, cy),
                         target_time: frame_time + transition_duration,
                     };
@@ -254,7 +251,6 @@ impl CartesianTransitionContext {
             Self::Transitioning {
                 position,
                 time: previous_time,
-                velocity: _,
                 target,
                 ref mut target_time,
             } => {
@@ -285,7 +281,6 @@ impl CartesianTransitionContext {
                     *self = Self::Transitioning {
                         position: new_position,
                         time: frame_time,
-                        velocity,
                         target: (cx, cy),
                         target_time: *target_time,
                     };

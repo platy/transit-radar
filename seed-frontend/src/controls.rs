@@ -47,6 +47,12 @@ impl Model {
             true
         }
     }
+
+    fn selected_station(&self) -> Option<&StationSuggestion> {
+        self.params
+            .station_selection
+            .as_ref()
+    }
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]

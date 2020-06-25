@@ -48,17 +48,6 @@ enum Msg {
 
 fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
-        Msg::ControlsComponent(msg) => {
-            if controls::update(
-                msg,
-                &mut model.controls,
-                &mut orders.proxy(Msg::ControlsComponent),
-            ) {
-                orders.send_msg(Msg::Search);
-                orders.send_msg(Msg::SyncComponent(sync::Msg::FetchData));
-            }
-        }
-
         Msg::FirstRender => {
             if model.sync.never_requested() {
                 orders.send_msg(Msg::SyncComponent(sync::Msg::FetchData));
@@ -74,15 +63,24 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             sync_data(sync::Msg::FetchData, model, orders, start_time);
         }
 
+        Msg::ControlsComponent(msg) => {
+            if controls::update(
+                msg,
+                &mut model.controls,
+                &mut orders.proxy(Msg::ControlsComponent),
+            ) {
+                orders.send_msg(Msg::Search);
+                orders.send_msg(Msg::SyncComponent(sync::Msg::FetchData));
+            }
+        }
+
         Msg::Search => {
             if let Some(data) = model.sync.get() {
-                if let Some(origin) = model
+                let origin = model
                     .controls
-                    .params
-                    .station_selection
-                    .as_ref()
-                    .and_then(|suggestion| data.get_stop(&suggestion.stop_id))
-                {
+                    .selected_station()
+                    .and_then(|suggestion| data.get_stop(&suggestion.stop_id));
+                if let Some(origin) = origin {
                     let previous_expires_timestamp = model
                         .canvasser
                         .model()
@@ -124,14 +122,14 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
 }
 
 fn view(model: &Model) -> Node<Msg> {
+    let station_name = model
+        .controls
+        .selected_station()
+        .map(|s| s.name.as_str())
+        .unwrap_or_default();
+
     div![
-        h2![&model
-            .controls
-            .params
-            .station_selection
-            .as_ref()
-            .map(|s| s.name.as_str())
-            .unwrap_or_default()],
+        h2![&station_name],
         controls::view(&model.controls).map_msg(Msg::ControlsComponent),
         p![if let Some(data) = model.sync.get() {
             let radar = model.canvasser.model();
