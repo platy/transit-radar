@@ -230,7 +230,6 @@ impl Drawable<Polar> for Path<Polar> {
                         break;
                     }
                     let (x, y) = geometry.coords(bearing, magnitude);
-                    seed::log!("move to", (x, y));
                     ctx.move_to(x, y)
                 }
                 PathOp::LineTo((bearing, magnitude)) => {
@@ -238,7 +237,6 @@ impl Drawable<Polar> for Path<Polar> {
                         break;
                     }
                     let (x, y) = geometry.coords(bearing, magnitude);
-                    seed::log!("line to", (x, y));
                     ctx.line_to(x, y)
                 }
                 PathOp::BezierCurveTo(
@@ -252,7 +250,6 @@ impl Drawable<Polar> for Path<Polar> {
                     let (cp1_x, cp1_y) = geometry.coords(cp1_bearing, cp1_magnitude);
                     let (cp2_x, cp2_y) = geometry.coords(cp2_bearing, cp2_magnitude);
                     let (x, y) = geometry.coords(bearing, magnitude);
-                    seed::log!("curve to", (x, y));
                     ctx.bezier_curve_to(cp1_x, cp1_y, cp2_x, cp2_y, x, y)
                 }
             }

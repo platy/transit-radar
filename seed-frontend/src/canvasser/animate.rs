@@ -244,7 +244,6 @@ impl CartesianTransitionContext {
                         target: (cx, cy),
                         target_time: frame_time + transition_duration,
                     };
-                    log!(frame_time, "start transition");
                     position
                 } else {
                     // just draw in the new position, no transition needed
@@ -294,7 +293,6 @@ impl CartesianTransitionContext {
                 } else {
                     // just draw in the new position, transition is over
                     *self = Self::Static { position: (cx, cy) };
-                    log!(frame_time, "stop");
                     new_target
                 }
             }

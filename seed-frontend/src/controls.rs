@@ -12,24 +12,29 @@ pub struct Model {
 
 impl Model {
     pub fn init(mut url: Url, orders: &mut impl Orders<Msg>) -> Model {
-        let mut station_name = None;
+        let station_name: Option<String>;
+        let params;
         let enable_url_routing = Self::should_enable_url_routing(url.clone());
         if enable_url_routing {
-            station_name = url.next_path_part();
-            if let Some(station_name) = station_name {
+            station_name = url.next_path_part().map(str::to_owned);
+            if let Some(station_name) = &station_name {
                 orders.perform_cmd(
                     request(format!("/searchStation/{}", station_name))
                         .map(Msg::SuggestionsFetched),
                 );
             }
+            params = Params::from(&url);
+        } else {
+            params = Params::default();
+            station_name = None;
         }
 
         Model {
             station_autocomplete: autocomplete::Model::new(Msg::StationSuggestions)
                 .on_selection(|_| Some(Msg::AStationSelected))
                 .on_input_change(|s| Some(Msg::StationInputChanged(s.to_owned()))),
-            station_input: station_name.unwrap_or_default().to_owned(),
-            params: Params::from(&url),
+            station_input: station_name.unwrap_or_default(),
+            params,
             enable_url_routing,
         }
     }
