@@ -232,7 +232,7 @@ impl fmt::Display for Period {
 /// let time: Time = "23:59:59".parse().unwrap();
 /// let time: Time = "25:00:00".parse().unwrap();
 impl std::str::FromStr for Time {
-    type Err = TimeParseError;
+    type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use std::str::from_utf8;
@@ -240,22 +240,22 @@ impl std::str::FromStr for Time {
         let s = s.as_bytes();
         let (hh, mm, ss) = if s.len() == 8 {
             if s[2] != b':' || s[5] != b':' {
-                return Err(TimeParseError::InvalidFormat);
+                return Err(ParseError::InvalidFormat);
             }
             (&s[0..2], &s[3..5], &s[6..8])
         } else if s.len() == 7 {
             if s[1] != b':' || s[4] != b':' {
-                return Err(TimeParseError::InvalidFormat);
+                return Err(ParseError::InvalidFormat);
             }
             (&s[0..1], &s[2..4], &s[5..7])
         } else {
-            return Err(TimeParseError::InvalidFormat);
+            return Err(ParseError::InvalidFormat);
         };
         let hours: u32 = from_utf8(hh)?.parse()?;
         let minutes: u32 = from_utf8(mm)?.parse()?;
         let seconds: u32 = from_utf8(ss)?.parse()?;
         if seconds > 59 || minutes > 59 {
-            return Err(TimeParseError::TooManySecondsOrMinutes);
+            return Err(ParseError::TooManySecondsOrMinutes);
         }
         Ok(Time {
             seconds_since_midnight: hours * 60 * 60 + minutes * 60 + seconds,
@@ -264,28 +264,28 @@ impl std::str::FromStr for Time {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TimeParseError {
+pub enum ParseError {
     InvalidFormat,
     TooManySecondsOrMinutes,
     ParseIntError(std::num::ParseIntError),
 }
 
-impl From<std::num::ParseIntError> for TimeParseError {
-    fn from(err: std::num::ParseIntError) -> TimeParseError {
-        TimeParseError::ParseIntError(err)
+impl From<std::num::ParseIntError> for ParseError {
+    fn from(err: std::num::ParseIntError) -> ParseError {
+        ParseError::ParseIntError(err)
     }
 }
 
-impl std::convert::From<std::str::Utf8Error> for TimeParseError {
-    fn from(_err: std::str::Utf8Error) -> TimeParseError {
-        TimeParseError::InvalidFormat
+impl std::convert::From<std::str::Utf8Error> for ParseError {
+    fn from(_err: std::str::Utf8Error) -> ParseError {
+        ParseError::InvalidFormat
     }
 }
 
-impl fmt::Display for TimeParseError {
+impl fmt::Display for ParseError {
     #[inline(always)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use TimeParseError::*;
+        use ParseError::*;
         match self {
             InvalidFormat => write!(f, "Time should use format eg. 23:59:59"),
             TooManySecondsOrMinutes => write!(f, "Maximum minutes or seconds is 59"),
@@ -294,7 +294,7 @@ impl fmt::Display for TimeParseError {
     }
 }
 
-impl std::error::Error for TimeParseError {}
+impl std::error::Error for ParseError {}
 
 #[cfg(test)]
 mod test {

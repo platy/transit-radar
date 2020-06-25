@@ -37,7 +37,7 @@ enum RequestStatus {
 enum State<D> {
     NotSynced,
     Synced {
-        session_id: u64,
+        session_id: i64,
         update_count: u64,
         data: D,
     },
@@ -182,7 +182,7 @@ impl<D> Model<D> {
 
 #[derive(Serialize)]
 struct SyncParams {
-    id: u64,
+    id: i64,
     count: u64,
 }
 

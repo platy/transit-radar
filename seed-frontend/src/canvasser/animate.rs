@@ -211,7 +211,6 @@ impl CartesianTransitionContext {
         frame_time: f64,
         transition_duration: f64,
     ) -> (f64, f64) {
-        use seed::log;
         match self {
             Self::None => {
                 *self = Self::Static {

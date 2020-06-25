@@ -79,7 +79,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
                 let origin = model
                     .controls
                     .selected_station()
-                    .and_then(|suggestion| data.get_stop(&suggestion.stop_id));
+                    .and_then(|suggestion| data.get_stop(suggestion.stop_id));
                 if let Some(origin) = origin {
                     let previous_expires_timestamp = model
                         .canvasser

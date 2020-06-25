@@ -48,10 +48,8 @@ impl Model {
         }
     }
 
-    fn selected_station(&self) -> Option<&StationSuggestion> {
-        self.params
-            .station_selection
-            .as_ref()
+    pub fn selected_station(&self) -> Option<&StationSuggestion> {
+        self.params.station_selection.as_ref()
     }
 }
 
