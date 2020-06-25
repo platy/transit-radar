@@ -51,38 +51,30 @@ async fn filtered_data_handler(
     let (day, _now) = day_time(chrono::Utc::now());
     let period = Period::between(options.start_time, options.end_time);
 
-    match decode(&name) {
-        Ok(name) => {
-            let station = db::get_station_by_name(&data, &name).map_err(warp::reject::custom)?;
-            let required_data =
-                filter_data(&data, station, options, day, period).map_err(warp::reject::custom)?;
-            match session.lock() {
-                Ok(mut session) => {
-                    let mut buf = Vec::<u8>::new();
-                    let mut serializer = rmp_serde::Serializer::new(&mut buf)
-                        .with_struct_tuple()
-                        .with_integer_variants();
-                    // let mut serializer = serde_json::Serializer::new(&mut buf);
+    let station = db::get_station_by_name(&data, &name).map_err(warp::reject::custom)?;
+    let required_data =
+        filter_data(&data, station, options, day, period).map_err(warp::reject::custom)?;
 
-                    session.record_search(station);
+    match session.lock() {
+        Ok(mut session) => {
+            let mut buf = Vec::<u8>::new();
+            let mut serializer = rmp_serde::Serializer::new(&mut buf)
+                .with_struct_tuple()
+                .with_integer_variants();
 
-                    session
-                        .add_data(required_data, &data)
-                        .serialize(&mut serializer)
-                        .map_err(|err| {
-                            eprintln!("failed to serialize data {:?}", err);
-                            warp::reject::reject()
-                        })?;
-                    Ok(buf)
-                }
-                Err(lock_error) => {
-                    eprintln!("session corrupted new session : {:?}", lock_error);
-                    Err(warp::reject::reject())
-                }
-            }
+            session.record_search(station);
+
+            session
+                .add_data(required_data, &data)
+                .serialize(&mut serializer)
+                .map_err(|err| {
+                    eprintln!("failed to serialize data {:?}", err);
+                    warp::reject::reject()
+                })?;
+            Ok(buf)
         }
-        Err(err) => {
-            eprintln!("failed to decode route={:?}: {:?}", name, err);
+        Err(lock_error) => {
+            eprintln!("session corrupted new session : {:?}", lock_error);
             Err(warp::reject::reject())
         }
     }
@@ -119,11 +111,16 @@ fn filtered_data_route(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let cors = warp::cors().allow_any_origin();
     warp::path!("data" / String)
+        .and_then(url_decode_filter)
         .and(warp::query::<RadarOptions>())
         .and(with_data(data))
         .and(naive_state::with_session())
         .and_then(filtered_data_handler)
         .with(cors)
+}
+
+async fn url_decode_filter(encoded: String) -> Result<String, warp::reject::Rejection> {
+    decode(&encoded).map_err(|_err| warp::reject::reject())
 }
 
 #[tokio::main]

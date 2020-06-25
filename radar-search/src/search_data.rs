@@ -96,8 +96,8 @@ impl<'r> GTFSData {
         }
     }
 
-    pub fn build_from(&self) -> FilterBuilder {
-        FilterBuilder {
+    pub fn build_from(&self) -> RequiredDataBuilder {
+        RequiredDataBuilder {
             new_data: RequiredData {
                 services_by_day: self.services_by_day.clone(),
                 timetable_start_date: self.timetable_start_date.clone(),
@@ -147,8 +147,8 @@ impl<'r> GTFSData {
             .collect()
     }
 
-    pub fn get_stop(&self, id: &StopId) -> Option<&Stop> {
-        self.stops.get(id)
+    pub fn get_stop(&self, id: StopId) -> Option<&Stop> {
+        self.stops.get(&id)
     }
 
     /// Get all stops of the trip folling the departure referenced
@@ -373,11 +373,11 @@ pub struct RequiredData {
     pub timetable_start_date: String,
 }
 
-pub struct FilterBuilder {
+pub struct RequiredDataBuilder {
     new_data: RequiredData,
 }
 
-impl<'r> FilterBuilder {
+impl<'r> RequiredDataBuilder {
     pub fn keep_stop(&mut self, stop_id: StopId) {
         self.new_data.stops.insert(stop_id);
     }

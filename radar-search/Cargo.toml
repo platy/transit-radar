@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 geo = { version = "0.13.0", features = ["use-serde"] }
 serde = { version = "1", features = ["derive"] }
+chrono = "0.4"

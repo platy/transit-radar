@@ -37,7 +37,11 @@ impl ClientSession for GTFSDataSession {
     type Increment = GTFSSyncIncrement;
 
     fn new(session_id: i64) -> GTFSDataSession {
-        eprintln!("{} {}: New session", chrono::Utc::now().to_rfc3339(), session_id);
+        eprintln!(
+            "{} {}: New session",
+            chrono::Utc::now().to_rfc3339(),
+            session_id
+        );
         GTFSDataSession {
             trips: HashSet::new(),
             stops: HashSet::new(),
@@ -56,47 +60,42 @@ impl GTFSDataSession {
     // adds data to the clients session, producing the sync data that needs to be sent to the client and updating the session stat
     pub fn add_data(
         &mut self,
-        data: RequiredData,
+        required_data: RequiredData,
         data_source: &GTFSData,
     ) -> SyncData<GTFSData, GTFSSyncIncrement> {
-        let to_send_stops: HashMap<StopId, Stop> = data
-            .stops
-            .into_iter()
-            .map(|stop_id| (stop_id, data_source.get_stop(&stop_id).cloned().unwrap()))
-            .collect();
+        if self.is_new_session() {
+            let trips = Self::get_trips(&required_data.trips, data_source);
+            let stops = Self::get_stops(&required_data.stops, data_source);
 
-        if self.update_number == 0 {
-            self.trips = data.trips.iter().copied().collect();
-            self.stops = to_send_stops.keys().copied().collect();
+            self.trips = required_data.trips;
+            self.stops = required_data.stops;
             self.update_number = 1;
+
             SyncData::Initial {
                 session_id: self.session_id,
                 data: GTFSData {
-                    services_by_day: data.services_by_day,
-                    timetable_start_date: data.timetable_start_date,
-                    stops: to_send_stops,
-                    trips: data
-                        .trips
-                        .into_iter()
-                        .map(|trip_id| (trip_id, data_source.trips.get(&trip_id).unwrap().clone()))
-                        .collect(),
+                    services_by_day: required_data.services_by_day,
+                    timetable_start_date: required_data.timetable_start_date,
+                    stops,
+                    trips,
                 },
-                update_number: 1,
+                update_number: self.update_number,
             }
         } else {
-            let mut trips = data.trips;
+            let mut trips = required_data.trips;
             trips.retain(|trip_id| !self.trips.contains(trip_id));
-            self.trips.extend(&trips);
 
-            self.stops.extend(to_send_stops.keys());
+            let mut stops = required_data.stops;
+            stops.retain(|stop_id| !self.stops.contains(stop_id));
+
+            self.trips.extend(&trips);
+            self.stops.extend(&stops);
             self.update_number += 1;
+
             SyncData::Increment {
                 increment: GTFSSyncIncrement {
-                    trips: trips
-                        .into_iter()
-                        .map(|trip_id| (trip_id, data_source.trips.get(&trip_id).unwrap().clone()))
-                        .collect(),
-                    stops: to_send_stops,
+                    trips: Self::get_trips(&trips, data_source),
+                    stops: Self::get_stops(&stops, data_source),
                 },
                 update_number: self.update_number,
                 session_id: self.session_id,
@@ -104,10 +103,33 @@ impl GTFSDataSession {
         }
     }
 
+    fn get_trips(trip_ids: &HashSet<TripId>, data_source: &GTFSData) -> HashMap<TripId, Trip> {
+        trip_ids
+            .iter()
+            .map(|&trip_id| (trip_id, data_source.trips.get(&trip_id).unwrap().clone()))
+            .collect()
+    }
+
+    fn get_stops(stop_ids: &HashSet<StopId>, data_source: &GTFSData) -> HashMap<StopId, Stop> {
+        stop_ids
+            .iter()
+            .map(|&stop_id| (stop_id, data_source.get_stop(stop_id).cloned().unwrap()))
+            .collect()
+    }
+
     pub fn record_search(&mut self, stop: &Stop) {
         if self.last_origin != Some(stop.stop_id) {
             self.last_origin = Some(stop.stop_id);
-            eprintln!(r#"{} {}: New search "{}""#, chrono::Utc::now().to_rfc3339(), self.session_id, stop.stop_name);
+            eprintln!(
+                r#"{} {}: New search "{}""#,
+                chrono::Utc::now().to_rfc3339(),
+                self.session_id,
+                stop.stop_name
+            );
         }
+    }
+
+    fn is_new_session(&self) -> bool {
+        self.update_number == 0
     }
 }

@@ -127,7 +127,7 @@ impl<'r> JourneyGraphPlotter<'r> {
                 if !processed.is_empty() {
                     return processed;
                 }
-            } else  {
+            } else {
                 return vec![]; // we ran out of the time period
             }
         }
@@ -204,7 +204,7 @@ impl<'r> JourneyGraphPlotter<'r> {
         let mut to_add = vec![];
         for transfer in &stop.transfers {
             if !self.stops.contains_key(&transfer.to_stop_id) {
-                if let Some(to_stop) = self.data.get_stop(&transfer.to_stop_id) {
+                if let Some(to_stop) = self.data.get_stop(transfer.to_stop_id) {
                     to_add.push(QueueItem {
                         to_stop,
                         arrival_time: departure_time
@@ -226,12 +226,12 @@ impl<'r> JourneyGraphPlotter<'r> {
             if !self.stops.contains_key(&transfer.to_stop_id) {
                 // parent stations transfer to parents, so transfer to the children as well (but aybe they hav entries in transfer to use without this implicit transfer?)
                 // we ignore any missing stops in case this is a partial data set
-                let to_stop = self.data.get_stop(&transfer.to_stop_id);
+                let to_stop = self.data.get_stop(transfer.to_stop_id);
                 let iter = to_stop
                     .iter()
                     .map(|stop| &stop.stop_id)
                     .chain(to_stop.iter().map(|stop| stop.children()).flatten());
-                for to_stop_id in iter {
+                for &to_stop_id in iter {
                     if let Some(to_stop) = self.data.get_stop(to_stop_id) {
                         to_add.push(QueueItem {
                             to_stop,
@@ -252,12 +252,12 @@ impl<'r> JourneyGraphPlotter<'r> {
     fn enqueue_immediate_transfers_to_children_of(&mut self, stop: &'r Stop, arrival_time: Time) {
         let to_stop = self
             .data
-            .get_stop(&stop.stop_id)
+            .get_stop(stop.stop_id)
             .expect("Origin stop to exist");
         let origin_stops = Some(&to_stop.stop_id).into_iter().chain(to_stop.children());
         let to_add: Vec<QueueItem> = origin_stops
-            .filter_map(|stop_id| {
-                self.data.get_stop(&stop_id).map(|child_stop|
+            .filter_map(|&stop_id| {
+                self.data.get_stop(stop_id).map(|child_stop|
                     // immediately transfer to all the stops of this origin station
                     QueueItem {
                         to_stop: child_stop,
@@ -305,8 +305,8 @@ impl<'r> JourneyGraphPlotter<'r> {
                         if self.period.contains(to_stop.arrival_time) {
                             // these stops wont be there if this stoptime is going to be filtered out later anyway
                             if let (Some(to_stop_stop), Some(from_stop_stop)) = (
-                                self.data.get_stop(&to_stop.stop_id),
-                                self.data.get_stop(&from_stop.stop_id),
+                                self.data.get_stop(to_stop.stop_id),
+                                self.data.get_stop(from_stop.stop_id),
                             ) {
                                 trip_to_add.push(QueueItem {
                                     to_stop: to_stop_stop,
@@ -425,7 +425,7 @@ impl<'r> JourneyGraphPlotter<'r> {
                     if !item.to_stop.is_station() {
                         self.enqueue_transfers_from_stop(item.to_stop, item.arrival_time);
                     }
-                    if let Some(to_station) = self.data.get_stop(&item.to_stop.station_id()) {
+                    if let Some(to_station) = self.data.get_stop(item.to_stop.station_id()) {
                         self.enqueue_transfers_from_station(to_station, item.arrival_time);
                     }
                     // only emit if we got to a new station

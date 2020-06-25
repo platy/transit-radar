@@ -34,7 +34,7 @@ fn main() {
 
     let trips = data.trips_from(station, &services, period);
     eprintln!("{:?}", trips);
-    for child in station.children() {
+    for &child in station.children() {
         let stop = data.get_stop(child).unwrap();
         let trips = data.trips_from(&stop, &services, period);
         eprintln!("child {:?}", stop);

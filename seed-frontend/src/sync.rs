@@ -34,15 +34,6 @@ enum RequestStatus {
     Invalidated, //(u64),
 }
 
-// impl RequestStatus {
-//     fn request_allowed(&self) -> bool {
-//         match self {
-//             Self::Ready => true,
-//             Self::InProgress(request_made) =>
-//         }
-//     }
-// }
-
 enum State<D> {
     NotSynced,
     Synced {

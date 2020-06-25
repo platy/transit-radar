@@ -27,7 +27,7 @@ async fn station_search_handler(
                     break;
                 }
                 let stop = data
-                    .get_stop(&stop_id)
+                    .get_stop(stop_id)
                     .expect("to find stop referenced by search");
                 result.push(FEStationLookup {
                     stop_id,

@@ -40,7 +40,7 @@ fn produce_tree_json<'r>(
     options: &RadarOptions,
 ) -> FEData<'r> {
     let mut plotter = journey_graph::JourneyGraphPlotter::new(day, period, data);
-    let origin = data.get_stop(&station).unwrap();
+    let origin = data.get_stop(station).unwrap();
     plotter.add_origin_station(origin);
     if options.ubahn {
         plotter.add_route_type(RouteType::UrbanRailway);

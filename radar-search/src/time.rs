@@ -236,7 +236,7 @@ impl std::str::FromStr for Time {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use std::str::from_utf8;
-        
+
         let s = s.as_bytes();
         let (hh, mm, ss) = if s.len() == 8 {
             if s[2] != b':' || s[5] != b':' {
