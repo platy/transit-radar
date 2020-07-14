@@ -25,7 +25,6 @@ scp -r seed-frontend/static root@s4.njk.onl:/app/transit-radar/frontend-alpha/
 scp -r seed-frontend/index.html root@s4.njk.onl:/app/transit-radar/frontend-alpha/
 scp -r seed-frontend/storybook.html root@s4.njk.onl:/app/transit-radar/frontend-alpha/
 # presentation
-scp -r seed-frontend/pres.html root@s4.njk.onl:/app/transit-radar/frontend-alpha/
 ```
 
 Deploy ops:
