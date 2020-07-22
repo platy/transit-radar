@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: transit-radar-persistent
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transit-radar
+spec:
+  selector:
+    matchLabels:
+      app: transit-radar
+  template:
+    metadata:
+      labels:
+        app: transit-radar
+    spec:
+      containers:
+      - name: transit-radar
+        image: DOCKER_TAG
+        imagePullPolicy: Always
+        resources:
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+          requests:
+            memory: "512Mi"
+            cpu: "10m"
+        ports:
+        - containerPort: 80
+        volumeMounts:
+          - mountPath: "/volume"
+            name: persistent-volume
+        terminationMessagePolicy: FallbackToLogsOnError
+      initContainers:
+      - name: prepare-gtfs
+        image: rg.nl-ams.scw.cloud/njkonl/init-gtfs:0.4
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+          requests:
+            memory: "80Mi"
+            cpu: "10m"
+        volumeMounts:
+          - mountPath: "/volume"
+            name: persistent-volume
+        terminationMessagePolicy: FallbackToLogsOnError
+      imagePullSecrets:
+      - name: regcred
+      volumes:
+        - name: persistent-volume
+          persistentVolumeClaim:
+            claimName: transit-radar-persistent
+
+---
+
+apiVersion: v1  
+kind: Service
+metadata:
+  name: transit-radar
+spec:
+  selector:
+    app: transit-radar
+  ports:
+  - port: 80
+    targetPort: 80
+
+---
+
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: transit-radar
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  rules:
+  - host: radar.njk.onl
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: transit-radar
+          servicePort: 80
+  tls:
+  - hosts:
+    - radar.njk.onl
+    secretName: radar.njk.onl-cert
+
+---
+
+apiVersion: cert-manager.io/v1alpha2
+kind: Certificate
+metadata:
+  name: radar.njk.onl
+spec:
+  dnsNames:
+  - radar.njk.onl
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: letsencrypt-production
+  secretName: radar.njk.onl-cert

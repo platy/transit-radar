@@ -1,0 +1,87 @@
+[env]
+DOCKER_TAG = "rg.nl-ams.scw.cloud/njkonl/${CARGO_MAKE_CRATE_NAME}:${CARGO_MAKE_CRATE_VERSION}"
+INIT_DOCKER_TAG = "rg.nl-ams.scw.cloud/njkonl/init-gtfs:0.4"
+
+[tasks.pre-commit]
+dependencies = [
+  "test", 
+  "format", 
+  "clippy"
+]
+
+[tasks.build-docker-binary]
+workspace = false
+description = "Makes a release build for a linux docker container"
+command = "cargo"
+args = [
+  "build",
+  "--release",
+  "--all-features",
+  "--target",
+  "x86_64-unknown-linux-musl"
+]
+
+[tasks.build-frontend-release]
+workspace = false
+description = "Build the wasm pack of the frontend project"
+script = [
+  "cd seed-frontend",
+  "cargo make compile_release",
+]
+
+[tasks.build-docker]
+workspace = false
+description = "Build and tag the docker image"
+dependencies = ["build-docker-binary", "build-frontend-release"]
+command = "docker"
+args = [
+  "build",
+  "-t",
+  "${DOCKER_TAG}",
+  ".",
+]
+
+[tasks.push-docker]
+workspace = false
+description = "Push the docker image"
+command = "docker"
+args = [
+  "push",
+  "${DOCKER_TAG}",
+]
+
+[tasks.build-init-docker]
+workspace = false
+description = "Build and tag the init-gtfs docker image"
+command = "docker"
+args = [
+  "build",
+  "-t",
+  "${INIT_DOCKER_TAG}",
+  "-f",
+  "ops/init.dockerfile",
+  "ops",
+]
+
+[tasks.push-init-docker]
+workspace = false
+description = "Push the docker image"
+command = "docker"
+args = [
+  "push",
+  "${INIT_DOCKER_TAG}",
+]
+
+[tasks.deploy-k8s]
+workspace=false
+script = ["sed -E \"s|DOCKER_TAG|${DOCKER_TAG}|;s|INIT_DOCKER_TAG|${INIT_DOCKER_TAG}|\" deployment.yaml | kubectl apply -f-"]
+
+[tasks.deploy-flow]
+workspace = false
+dependencies = [
+  "build-init-docker",
+  "push-init-docker",
+  "build-docker",
+  "push-docker",
+  "deploy-k8s",
+]

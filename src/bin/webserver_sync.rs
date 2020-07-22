@@ -152,6 +152,6 @@ async fn main() {
             .or(warp::fs::file(format!("{}/index.html", &static_dir))) // for spa routing
             .with(log),
     )
-    .run(([127, 0, 0, 1], port))
+    .run(([0, 0, 0, 0], port))
     .await;
 }
