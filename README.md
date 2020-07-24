@@ -1,3 +1,12 @@
+# Run
+
+Get gtfs files, extract them in to `./gtfs` then run:
+```
+cargo make build-frontend
+cargo run
+```
+
+
 # Deploying
 
 Bump the version in `Cargo.toml`.

@@ -10,6 +10,8 @@ pub struct Scheduler(Rc<RefCell<SchedulerState>>);
 
 enum SchedulerState {
     Empty,
+    // these seem to be false positives with the `dead_code check
+    #[allow(dead_code)]
     Scheduled {
         next_timeout: Timeout,
         scheduled_wakes: BTreeMap<u64, Box<dyn FnOnce() -> ()>>,

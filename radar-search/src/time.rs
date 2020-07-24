@@ -19,43 +19,41 @@ pub struct Duration {
 
 impl Duration {
     /// Construct a duration of a number of seconds
-    pub fn seconds(seconds: i32) -> Duration {
-        Duration { seconds }
+    pub const fn seconds(seconds: i32) -> Self {
+        Self { seconds }
     }
 
     /// Construct a duration of a number of minutes
-    pub fn minutes(minutes: i32) -> Duration {
-        Duration {
+    pub const fn minutes(minutes: i32) -> Self {
+        Self {
             seconds: minutes * 60,
         }
     }
 
     /// Convert to minutes
-    pub fn to_mins(self) -> i32 {
+    pub const fn to_mins(self) -> i32 {
         self.seconds / 60
     }
 
     /// Convert to seconds
-    pub fn to_secs(self) -> i32 {
+    pub const fn to_secs(self) -> i32 {
         self.seconds
     }
 }
 
 impl AddAssign<Duration> for Duration {
     /// Add two `duration`s
-    #[inline(always)]
-    fn add_assign(&mut self, rhs: Duration) {
+    fn add_assign(&mut self, rhs: Self) {
         self.seconds += rhs.seconds;
     }
 }
 
 impl Div<i32> for Duration {
-    type Output = Duration;
+    type Output = Self;
 
     /// Add two `duration`s
-    #[inline(always)]
     fn div(self, rhs: i32) -> Self::Output {
-        Duration::seconds(self.seconds / rhs)
+        Self::seconds(self.seconds / rhs)
     }
 }
 
@@ -70,14 +68,14 @@ pub struct Time {
 }
 
 impl Time {
-    pub fn from_hms(hours: u32, minutes: u32, seconds: u32) -> Time {
-        Time {
+    pub const fn from_hms(hours: u32, minutes: u32, seconds: u32) -> Self {
+        Self {
             seconds_since_midnight: (hours * 60 + minutes) * 60 + seconds,
         }
     }
 
-    pub fn from_seconds_since_midnight(seconds: u32) -> Time {
-        Time {
+    pub const fn from_seconds_since_midnight(seconds: u32) -> Self {
+        Self {
             seconds_since_midnight: seconds,
         }
     }
@@ -99,7 +97,7 @@ impl Time {
         (self.seconds_since_midnight % 60).try_into().unwrap()
     }
 
-    pub fn seconds_since_midnight(self) -> u32 {
+    pub const fn seconds_since_midnight(self) -> u32 {
         self.seconds_since_midnight
     }
 }
@@ -114,27 +112,26 @@ impl ser::Serialize for Time {
 }
 
 impl<'de> de::Deserialize<'de> for Time {
-    fn deserialize<D>(deserializer: D) -> Result<Time, D::Error>
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: de::Deserializer<'de>,
     {
-        de::Deserialize::deserialize(deserializer).map(|seconds_since_midnight| Time {
+        de::Deserialize::deserialize(deserializer).map(|seconds_since_midnight| Self {
             seconds_since_midnight,
         })
     }
 }
 
 impl Add<Duration> for Time {
-    type Output = Time;
+    type Output = Self;
 
     /// Add a duration to a time, never rolls over
     /// # Panics
     /// if the duration is negative enough to roll over to yesterday
-    #[inline(always)]
     fn add(self, rhs: Duration) -> Self::Output {
         let time: i64 = self.seconds_since_midnight.into();
         let duration: i64 = rhs.seconds.into();
-        Time {
+        Self::Output {
             seconds_since_midnight: (time + duration)
                 .try_into()
                 .expect("duration not to be negative enough to roll over to yesterday"),
@@ -147,9 +144,10 @@ impl Sub<Time> for Time {
 
     /// Subtract two `Time`s, returning the `Duration` between. This assumes
     /// both `Time`s are in the same calendar day.
-    #[inline(always)]
     fn sub(self, rhs: Self) -> Self::Output {
-        Duration::seconds(self.seconds_since_midnight as i32 - rhs.seconds_since_midnight as i32)
+        let lhs: i32 = self.seconds_since_midnight.try_into().unwrap();
+        let rhs: i32 = rhs.seconds_since_midnight.try_into().unwrap();
+        Duration::seconds(lhs - rhs)
     }
 }
 
@@ -182,15 +180,15 @@ impl Period {
     /// Create a new period between these 2 times
     /// # Panics
     /// if start > end
-    pub fn between(start: Time, end: Time) -> Period {
+    pub fn between(start: Time, end: Time) -> Self {
         assert!(start < end);
-        Period { start, end }
+        Self { start, end }
     }
 
     /// returns a new period with the same end and the new start
     /// # Panics
     /// if start > end
-    pub fn with_start(self, start: Time) -> Period {
+    pub fn with_start(self, start: Time) -> Self {
         Self::between(start, self.end)
     }
 
@@ -199,7 +197,7 @@ impl Period {
         self.start <= time && time < self.end
     }
 
-    pub fn start(self) -> Time {
+    pub const fn start(self) -> Time {
         self.start
     }
 
@@ -257,7 +255,7 @@ impl std::str::FromStr for Time {
         if seconds > 59 || minutes > 59 {
             return Err(ParseError::TooManySecondsOrMinutes);
         }
-        Ok(Time {
+        Ok(Self {
             seconds_since_midnight: hours * 60 * 60 + minutes * 60 + seconds,
         })
     }
@@ -271,25 +269,23 @@ pub enum ParseError {
 }
 
 impl From<std::num::ParseIntError> for ParseError {
-    fn from(err: std::num::ParseIntError) -> ParseError {
-        ParseError::ParseIntError(err)
+    fn from(err: std::num::ParseIntError) -> Self {
+        Self::ParseIntError(err)
     }
 }
 
 impl std::convert::From<std::str::Utf8Error> for ParseError {
-    fn from(_err: std::str::Utf8Error) -> ParseError {
-        ParseError::InvalidFormat
+    fn from(_err: std::str::Utf8Error) -> Self {
+        Self::InvalidFormat
     }
 }
 
 impl fmt::Display for ParseError {
-    #[inline(always)]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use ParseError::*;
         match self {
-            InvalidFormat => write!(f, "Time should use format eg. 23:59:59"),
-            TooManySecondsOrMinutes => write!(f, "Maximum minutes or seconds is 59"),
-            ParseIntError(err) => err.fmt(f),
+            Self::InvalidFormat => write!(f, "Time should use format eg. 23:59:59"),
+            Self::TooManySecondsOrMinutes => write!(f, "Maximum minutes or seconds is 59"),
+            Self::ParseIntError(err) => err.fmt(f),
         }
     }
 }

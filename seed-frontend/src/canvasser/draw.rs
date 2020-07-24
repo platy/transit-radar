@@ -20,7 +20,12 @@ pub struct Polar {
 }
 
 impl Polar {
-    pub fn new(origin: f64, max: f64, cartesian_offset: (f64, f64), cartesian_max: f64) -> Self {
+    pub const fn new(
+        origin: f64,
+        max: f64,
+        cartesian_offset: (f64, f64),
+        cartesian_max: f64,
+    ) -> Self {
         Self {
             origin,
             max,
@@ -38,8 +43,8 @@ impl Polar {
             let x = h * bearing.as_radians().cos();
             let y = h * bearing.as_radians().sin();
             (
-                x * self.cartesian_max + self.cartesian_offset.0,
-                -y * self.cartesian_max + self.cartesian_offset.1,
+                x.mul_add(self.cartesian_max, self.cartesian_offset.0),
+                (-y).mul_add(self.cartesian_max, self.cartesian_offset.1),
             )
         }
     }
@@ -53,7 +58,7 @@ impl Polar {
 pub struct Bearing(f64);
 
 impl Bearing {
-    pub fn radians(radians: f64) -> Self {
+    pub const fn radians(radians: f64) -> Self {
         Self(radians)
     }
 
@@ -62,7 +67,7 @@ impl Bearing {
         Self(degrees * PI / 180.)
     }
 
-    pub fn as_radians(self) -> f64 {
+    pub const fn as_radians(self) -> f64 {
         self.0
     }
 }
@@ -266,8 +271,8 @@ pub struct Circle<G: Geometry> {
 }
 
 impl<G: Geometry> Circle<G> {
-    pub fn new(coords: G::Coords, r: f64) -> Circle<G> {
-        Circle { coords, r }
+    pub fn new(coords: G::Coords, r: f64) -> Self {
+        Self { coords, r }
     }
 }
 
@@ -288,8 +293,8 @@ pub struct Text {
 }
 
 impl Text {
-    pub fn new(x: f64, y: f64, text: String) -> Text {
-        Text { x, y, text }
+    pub const fn new(x: f64, y: f64, text: String) -> Self {
+        Self { x, y, text }
     }
 }
 

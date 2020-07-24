@@ -43,6 +43,7 @@ struct Station<G: Geometry> {
 
 struct RadarTrip {
     trip_id: TripId,
+    #[allow(dead_code)]
     route_name: String,
     route_type: RouteType,
     route_color: String,
@@ -155,8 +156,8 @@ impl Geo {
             dy = -dy;
             dx = -dx;
         }
-        let (cp2_x, cp2_y) = (x2 + (dx * cp2mag), y2 + (dy * cp2mag));
-        let (cp3_x, cp3_y) = (x2 + (dx * cp3mag), y2 + (dy * cp3mag));
+        let (cp2_x, cp2_y) = (dx.mul_add(cp2mag, x2), dy.mul_add(cp2mag, y2));
+        let (cp3_x, cp3_y) = (dx.mul_add(cp3mag, x2), dy.mul_add(cp3mag, y2));
         (
             // the need to negate here is weird, maybe the above atan2 calls are the wrong way around
             (
@@ -200,7 +201,7 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
     let max_duration = Duration::minutes(30);
     let end_time = start_time + max_duration;
     let max_extra_search = Duration::minutes(10);
-    let mut plotter = journey_graph::JourneyGraphPlotter::new(
+    let mut plotter = journey_graph::Plotter::new(
         day,
         Period::between(start_time, end_time + max_extra_search),
         data,
@@ -248,7 +249,7 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
                     name: stop.stop_name.replace(" (Berlin)", ""),
                 };
                 assert!(station_animatables
-                    .insert(stop.station_id(), station.to_polar(&geometry))
+                    .insert(stop.station_id(), station.into_polar(&geometry))
                     .is_none());
             }
             journey_graph::Item::JourneySegment {
@@ -419,7 +420,8 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
 
                         let pre_bearing = geometry.bearing(pre.to).unwrap();
                         let pre_mag = pre.arrival_time.seconds_since_midnight() as f64;
-                        if pre_bearing != from_bearing && pre_mag != from_mag {
+                        if pre_bearing != from_bearing && (pre_mag - from_mag).abs() > f64::EPSILON
+                        {
                             // there is a gap in the route and so we move
                             path.move_to((from_bearing, from_mag));
                             next_control_point = geometry.initial_control_point(
@@ -590,9 +592,9 @@ impl Drawable for Station<Cartesian> {
 }
 
 impl Station<Geo> {
-    fn to_polar(self, geometry: &Geo) -> Station<Polar> {
+    fn into_polar(self, geometry: &Geo) -> Station<Polar> {
         let (point, time) = self.coords;
-        Station {
+        Station::<Polar> {
             coords: (
                 geometry.bearing(point).unwrap_or_default(),
                 time.seconds_since_midnight() as f64,

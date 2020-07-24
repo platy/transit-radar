@@ -11,7 +11,7 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn init(mut url: Url, orders: &mut impl Orders<Msg>) -> Model {
+    pub fn init(mut url: Url, orders: &mut impl Orders<Msg>) -> Self {
         let station_name: Option<String>;
         let params;
         let enable_url_routing = Self::should_enable_url_routing(url.clone());
@@ -29,7 +29,7 @@ impl Model {
             station_name = None;
         }
 
-        Model {
+        Self {
             station_autocomplete: autocomplete::Model::new(Msg::StationSuggestions)
                 .on_selection(|_| Some(Msg::AStationSelected))
                 .on_input_change(|s| Some(Msg::StationInputChanged(s.to_owned()))),
@@ -72,7 +72,7 @@ impl Params {
 
 impl From<&Url> for Params {
     fn from(url: &Url) -> Self {
-        Params {
+        Self {
             flags: serde_urlencoded::from_str(&url.search().to_string()).unwrap_or_default(),
             station_selection: None,
         }
@@ -166,7 +166,7 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) -> boo
             params.station_selection = Some(station);
         }
         Msg::StationInputChanged(value) => {
-            if value.len() >= 3 {
+            if !value.is_empty() {
                 orders.perform_cmd(
                     request(format!("/searchStation/{}", &value)).map(Msg::SuggestionsFetched),
                 );
@@ -223,10 +223,10 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) -> boo
     true
 }
 
-/// Finds a suggestion in the vec whose name matches the first part of the url
+/// Finds a suggestion in the slice whose name matches the first part of the url
 fn find_url_selection_in_suggestions(
     mut url: Url,
-    suggestions: &Vec<StationSuggestion>,
+    suggestions: &[StationSuggestion],
 ) -> Option<StationSuggestion> {
     if let Some(route_station) = url.next_path_part() {
         if let Some(matching_suggestion) = suggestions.iter().find(|s| s.name == route_station) {

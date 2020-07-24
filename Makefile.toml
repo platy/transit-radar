@@ -3,10 +3,19 @@ DOCKER_TAG = "rg.nl-ams.scw.cloud/njkonl/${CARGO_MAKE_CRATE_NAME}:${CARGO_MAKE_C
 INIT_DOCKER_TAG = "rg.nl-ams.scw.cloud/njkonl/init-gtfs:0.4"
 
 [tasks.pre-commit]
+workspace = false
 dependencies = [
   "test", 
   "format", 
-  "clippy"
+  "clippy",
+  "frontend-pre-commit",
+]
+
+[tasks.frontend-pre-commit]
+workspace = false
+script = [
+  "cd seed-frontend",
+  "cargo make pre-commit",
 ]
 
 [tasks.build-docker-binary]
@@ -21,12 +30,20 @@ args = [
   "x86_64-unknown-linux-musl"
 ]
 
+[tasks.build-frontend]
+workspace = false
+description = "Build the wasm pack of the frontend project"
+script = [
+  "cd seed-frontend",
+  "cargo make build",
+]
+
 [tasks.build-frontend-release]
 workspace = false
 description = "Build the wasm pack of the frontend project"
 script = [
   "cd seed-frontend",
-  "cargo make compile_release",
+  "cargo make build_release",
 ]
 
 [tasks.build-docker]

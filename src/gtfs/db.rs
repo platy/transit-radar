@@ -206,12 +206,12 @@ pub fn get_station_by_name<'r>(
 }
 
 /// Build a word search suggester over station names
-pub fn build_station_word_index(data: &GTFSData) -> Suggester<StopId> {
+pub fn build_station_word_index(data: &GTFSData) -> Suggester<(StopId, usize)> {
     let mut suggester = Suggester::new();
 
     for stop in data.stops() {
         if stop.is_station() {
-            suggester.insert(&stop.stop_name, stop.stop_id);
+            suggester.insert(&stop.stop_name, (stop.stop_id, stop.importance(data)));
         }
     }
 

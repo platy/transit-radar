@@ -21,8 +21,8 @@ impl<D, I> SyncData<D, I> {
                 session_id,
                 update_number: _,
                 data: _,
-            } => *session_id,
-            Self::Increment {
+            }
+            | Self::Increment {
                 increment: _,
                 update_number: _,
                 session_id,

@@ -172,8 +172,10 @@ pub enum CartesianTransitionContext {
     /// the element is new
     None,
     /// the element is not moving
+    #[allow(dead_code)]
     Static { position: (f64, f64) },
     /// the element is in a transition
+    #[allow(dead_code)]
     Transitioning {
         position: (f64, f64),
         time: f64,
@@ -231,8 +233,8 @@ impl CartesianTransitionContext {
                     // calculate position for this frame
                     let elapsed_time = 0.05_f64; // just a random underestimate
                     let position = (
-                        px + velocity.0 * elapsed_time,
-                        py + velocity.1 * elapsed_time,
+                        velocity.0.mul_add(elapsed_time, px),
+                        velocity.1.mul_add(elapsed_time, py),
                     );
                     *self = Self::Transitioning {
                         position,
@@ -274,8 +276,8 @@ impl CartesianTransitionContext {
                     );
                     // calculate position for this frame
                     let new_position = (
-                        px + velocity.0 * elapsed_time,
-                        py + velocity.1 * elapsed_time,
+                        velocity.0.mul_add(elapsed_time, px),
+                        velocity.1.mul_add(elapsed_time, py),
                     );
                     *self = Self::Transitioning {
                         position: new_position,
@@ -294,6 +296,7 @@ impl CartesianTransitionContext {
     }
 }
 
+#[allow(dead_code)]
 pub enum PathTransitionContext {
     /// the path is new
     None,
@@ -313,6 +316,7 @@ impl Geometry for TransitioningCartesianGeometry {
     type Coords = TransitionCoords;
 }
 
+#[allow(dead_code)]
 pub struct TransitionCoords {
     current: (f64, f64),
     velocity: (f64, f64),

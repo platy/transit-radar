@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;
 use std::fmt;
 
-use crate::time::*;
+use crate::time::{Duration, Period, Time};
 
 pub type AgencyId = u16;
 pub type RouteId = u32;
@@ -31,13 +31,13 @@ pub enum Day {
 impl std::fmt::Display for Day {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Day::Monday => "mon",
-            Day::Tuesday => "tue",
-            Day::Wednesday => "wed",
-            Day::Thursday => "thu",
-            Day::Friday => "fri",
-            Day::Saturday => "sat",
-            Day::Sunday => "sun",
+            Self::Monday => "mon",
+            Self::Tuesday => "tue",
+            Self::Wednesday => "wed",
+            Self::Thursday => "thu",
+            Self::Friday => "fri",
+            Self::Saturday => "sat",
+            Self::Sunday => "sun",
         })
     }
 }
@@ -84,7 +84,7 @@ impl<'r> GTFSData {
         timetable_start_date: String,
     ) -> Builder {
         Builder {
-            data: GTFSData {
+            data: Self {
                 services_by_day,
                 timetable_start_date,
                 stops: HashMap::new(),
@@ -153,8 +153,7 @@ impl<'r> GTFSData {
 
     /// Get all stops of the trip folling the departure referenced
     fn stop_times(&self, &(trip_id, idx): &TripStopRef) -> &[StopTime] {
-        &self
-            .trips
+        self.trips
             .get(&trip_id)
             .map(|trip| &trip.stop_times[idx..])
             .unwrap_or_default()
@@ -236,13 +235,9 @@ impl Stop {
                 ref departures,
             } => departures
                 .range(period)
-                .map(|(_time, trip_stop_refs)| trip_stop_refs)
-                .flatten()
+                .flat_map(|(_time, trip_stop_refs)| trip_stop_refs)
                 .collect(),
-            StopStereoType::Station {
-                stops_or_platforms: _,
-            } => vec![],
-            StopStereoType::EntranceExit { station: _ } => vec![],
+            _ => vec![],
         }
     }
 
@@ -276,14 +271,10 @@ impl Stop {
 
     pub fn children(&self) -> impl Iterator<Item = &StopId> {
         match self.stereotype {
-            StopStereoType::StopOrPlatform {
-                station: _,
-                departures: _,
-            } => [].iter(),
             StopStereoType::Station {
                 ref stops_or_platforms,
             } => stops_or_platforms.iter(),
-            StopStereoType::EntranceExit { station: _ } => [].iter(),
+            _ => [].iter(),
         }
     }
 
@@ -299,6 +290,24 @@ impl Stop {
             } => true,
             StopStereoType::EntranceExit { station: _ } => false,
         }
+    }
+
+    pub fn importance(&self, data: &GTFSData) -> usize {
+        self.transfers.len()
+            + match &self.stereotype {
+                StopStereoType::StopOrPlatform {
+                    station: _,
+                    departures,
+                } => departures.len(),
+                StopStereoType::Station { stops_or_platforms } => stops_or_platforms
+                    .iter()
+                    .map(|&stop_id| {
+                        data.get_stop(stop_id)
+                            .map_or(0, |stop| stop.importance(data))
+                    })
+                    .sum(),
+                StopStereoType::EntranceExit { station: _ } => 0,
+            }
     }
 }
 
@@ -386,6 +395,7 @@ impl<'r> RequiredDataBuilder {
         self.new_data.trips.insert(trip_id);
     }
 
+    #[allow(clippy::missing_const_for_fn)]
     pub fn build(self) -> RequiredData {
         self.new_data
     }
@@ -407,9 +417,9 @@ impl Builder {
                 stop_name,
                 location,
                 stereotype: StopStereoType::Station {
-                    stops_or_platforms: Default::default(),
+                    stops_or_platforms: Vec::<StopId>::default(),
                 },
-                transfers: Default::default(),
+                transfers: Vec::<Transfer>::default(),
             },
         );
     }
@@ -429,9 +439,9 @@ impl Builder {
                 location,
                 stereotype: StopStereoType::StopOrPlatform {
                     station,
-                    departures: Default::default(),
+                    departures: BTreeMap::<Time, Vec<(u64, usize)>>::default(),
                 },
-                transfers: Default::default(),
+                transfers: Vec::<Transfer>::default(),
             },
         );
         if let Some(station) = station {
@@ -453,7 +463,7 @@ impl Builder {
                 stop_name,
                 location,
                 stereotype: StopStereoType::EntranceExit { station },
-                transfers: Default::default(),
+                transfers: std::vec::Vec::<Transfer>::default(),
             },
         );
         self.stop_children.entry(station).or_default().push(stop_id);
@@ -507,7 +517,7 @@ impl Builder {
                 trip_id,
                 route,
                 service_id,
-                stop_times: Default::default(),
+                stop_times: Vec::<StopTime>::default(),
             },
         );
     }

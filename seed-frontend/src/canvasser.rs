@@ -48,8 +48,8 @@ impl<Mdl: Animatable<TCtx>, TCtx: 'static> App<Mdl, TCtx>
 where
     Mdl::TransitionContext: TransitionContext + Default,
 {
-    pub fn new(update: ShouldDrawFn<Mdl, TCtx>, model: Mdl) -> App<Mdl, TCtx> {
-        App {
+    pub fn new(update: ShouldDrawFn<Mdl, TCtx>, model: Mdl) -> Self {
+        Self {
             cfg: Rc::new(AppCfg {
                 canvas: ElRef::new(),
                 update,

@@ -1,5 +1,5 @@
-use super::naive_sync::*;
-use super::search_data::*;
+use super::naive_sync::SyncData;
+use super::search_data::{GTFSData, RequiredData, Stop, StopId, Trip, TripId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -36,13 +36,13 @@ impl ClientSession for GTFSDataSession {
     type Data = GTFSData;
     type Increment = GTFSSyncIncrement;
 
-    fn new(session_id: i64) -> GTFSDataSession {
+    fn new(session_id: i64) -> Self {
         eprintln!(
             "{} {}: New session",
             chrono::Utc::now().to_rfc3339(),
             session_id
         );
-        GTFSDataSession {
+        Self {
             trips: HashSet::new(),
             stops: HashSet::new(),
             session_id,
@@ -129,7 +129,7 @@ impl GTFSDataSession {
         }
     }
 
-    fn is_new_session(&self) -> bool {
+    const fn is_new_session(&self) -> bool {
         self.update_number == 0
     }
 }

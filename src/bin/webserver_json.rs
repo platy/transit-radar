@@ -39,7 +39,7 @@ fn produce_tree_json<'r>(
     period: Period,
     options: &RadarOptions,
 ) -> FEData<'r> {
-    let mut plotter = journey_graph::JourneyGraphPlotter::new(day, period, data);
+    let mut plotter = journey_graph::Plotter::new(day, period, data);
     let origin = data.get_stop(station).unwrap();
     plotter.add_origin_station(origin);
     if options.ubahn {

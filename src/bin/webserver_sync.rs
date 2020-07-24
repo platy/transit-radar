@@ -19,7 +19,7 @@ fn filter_data(
     day: Day,
     period: Period,
 ) -> Result<RequiredData, db::SearchError> {
-    let mut plotter = journey_graph::JourneyGraphPlotter::new(day, period, data);
+    let mut plotter = journey_graph::Plotter::new(day, period, data);
     plotter.add_origin_station(origin);
     if options.ubahn {
         plotter.add_route_type(RouteType::UrbanRailway);

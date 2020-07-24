@@ -6,7 +6,7 @@ use seed::{error, fetch, prelude::*};
 use serde::{de::DeserializeOwned, Serialize};
 
 pub enum Msg<D, I> {
-    DataFetched(Result<SyncData<D, I>, LoadError>),
+    DataFetched(Result<Box<SyncData<D, I>>, LoadError>),
     FetchData,
 }
 
@@ -66,7 +66,7 @@ where
         }
 
         Msg::DataFetched(Ok(data)) => {
-            model.receive(data);
+            model.receive(*data);
             match model.status {
                 RequestStatus::Ready => {
                     panic!("unexpected response data");

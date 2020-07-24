@@ -3,6 +3,14 @@
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = "true"
 PORT = "8000"
 
+
+[tasks.pre-commit]
+dependencies = [
+  # "test",
+  "format", 
+  "clippy"
+]
+
 # ---- BUILD & CREATE WASMS ----
 [tasks.compile]
 description = "Build"
@@ -82,7 +90,7 @@ clear = true
 workspace = false
 install_crate = { rustup_component_name = "clippy", binary = "cargo-clippy", test_arg = "--help" }
 command = "cargo"
-args = ["clippy", "--all-features", "--", "--deny", "warnings", "--deny", "clippy::pedantic", "--deny", "clippy::nursery"]
+args = ["clippy", "--all-features", "--", "--deny", "warnings", "--deny", "clippy::nursery", "--allow", "clippy::use_self"]#, "--deny", "clippy::pedantic", "--allow", "clippy::must_use_candidate"]
 
 [tasks.fmt]
 description = "Format with rustfmt"
