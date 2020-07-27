@@ -1,6 +1,6 @@
 [package]
 name = "transit-radar"
-version = "0.7.0"
+version = "0.7.1"
 authors = ["Mike Bush <platy@njk.onl>"]
 edition = "2018"
 default-run = "webserver_sync"
