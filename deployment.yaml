@@ -41,6 +41,7 @@ spec:
         volumeMounts:
           - mountPath: "/volume"
             name: persistent-volume
+            readOnly: true
         terminationMessagePolicy: FallbackToLogsOnError
       initContainers:
       - name: prepare-gtfs
@@ -60,8 +61,7 @@ spec:
       - name: regcred
       volumes:
         - name: persistent-volume
-          persistentVolumeClaim:
-            claimName: transit-radar-persistent
+          emptyDir: {}
 
 ---
 
