@@ -45,7 +45,7 @@ spec:
         terminationMessagePolicy: FallbackToLogsOnError
       initContainers:
       - name: prepare-gtfs
-        image: rg.nl-ams.scw.cloud/njkonl/init-gtfs:0.4
+        image: INIT_DOCKER_TAG
         resources:
           limits:
             memory: "128Mi"

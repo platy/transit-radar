@@ -39,7 +39,7 @@
 [x] Allow connections to several trips of the same station and route (eg different directions), currently it is filtered to one
 [x] Replace arena with a map of trips
 [] Station search more forgiving with umlauts etc. maybe find crate to build a linguistic index / search map
-[] Reload GTFS data each day
+[x] Reload GTFS data each day
 [] Count + number clients based on IP address + log anonymised when a new client connects
 [] Sub count clients by hash of user agent
 [] Record logging session per client and log statistical info every minute, every hour and every day + immediate info if enabled by env var
@@ -90,16 +90,17 @@
 [x] Connect with curves
 [x] Trip start control point to reduce curve into the origin
 [x] Start bearing toward next stop to avoid curve into the origin
-[] Rewrite in rust/wasm
-[] Add text description to svg
-[] Save button
+[x] Rewrite in rust/wasm
+[] Make it an SVG again - ideally the whole page
+[] Hide controls when printing
 [] Add key with emphasis highlighting
 [] Show station names on hover
 
 # Both
 
 [x] Filters for buses, trams, etc
-[] Shareable Uris
+[x] Shareable Uris
+[] Pregenerate the SVG on the backend, add the controls after
 [] Start from coords
 [] Incoming radar
 [] Show only important stations to reduce the number shown

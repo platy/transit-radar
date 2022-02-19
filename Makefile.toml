@@ -1,6 +1,6 @@
 [env]
 DOCKER_TAG = "rg.nl-ams.scw.cloud/njkonl/${CARGO_MAKE_CRATE_NAME}:${CARGO_MAKE_CRATE_VERSION}"
-INIT_DOCKER_TAG = "rg.nl-ams.scw.cloud/njkonl/init-gtfs:0.4"
+INIT_DOCKER_TAG = "rg.nl-ams.scw.cloud/njkonl/init-gtfs:0.5"
 
 [tasks.pre-commit]
 workspace = false
@@ -91,7 +91,7 @@ args = [
 
 [tasks.deploy-k8s]
 workspace=false
-script = ["sed -E \"s|DOCKER_TAG|${DOCKER_TAG}|;s|INIT_DOCKER_TAG|${INIT_DOCKER_TAG}|\" deployment.yaml | kubectl apply -f-"]
+script = ["sed -E \"s|INIT_DOCKER_TAG|${INIT_DOCKER_TAG}|;s|DOCKER_TAG|${DOCKER_TAG}|\" deployment.yaml | kubectl apply -f-"]
 
 [tasks.deploy-flow]
 workspace = false
