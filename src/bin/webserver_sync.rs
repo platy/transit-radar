@@ -1,3 +1,7 @@
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 use chrono::prelude::*;
 use serde::Serialize;
 use std::path::Path;
@@ -125,10 +129,17 @@ async fn url_decode_filter(encoded: String) -> Result<String, warp::reject::Reje
 
 #[tokio::main]
 async fn main() {
+    #[cfg(feature = "dhat-heap")]
+    let profiler = dhat::Profiler::builder()
+        .file_name("dhat-heap-setup.json")
+        .build();
+
     let port = std::env::var("PORT")
-        .unwrap_or_else(|_| "8080".to_owned())
-        .parse()
-        .unwrap();
+        .ok()
+        .map(|s| s.parse())
+        .transpose()
+        .unwrap()
+        .unwrap_or(8080);
     let static_dir = std::env::var("STATIC_DIR").unwrap_or_else(|_| "seed-frontend".to_owned());
     let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or_else(|_| "gtfs".to_owned());
     let line_colors_path =
@@ -137,11 +148,12 @@ async fn main() {
 
     let colors = db::load_colors(Path::new(&line_colors_path)).expect(&line_colors_path);
     let data =
-        Arc::new(db::load_data(&gtfs_dir, db::DayFilter::All, colors).expect("gtfs data to load"));
+        Arc::new(db::load_data(gtfs_dir, db::DayFilter::All, colors).expect("gtfs data to load"));
     let station_name_index = Arc::new(db::build_station_word_index(&*data));
 
     eprintln!("Starting web server on port {}", port);
     let log = warp::log("api");
+    #[cfg(not(feature = "dhat-heap"))]
     warp::serve(
         warp::fs::dir(static_dir.clone())
             .or(filtered_data_route(data.clone()))
@@ -154,4 +166,7 @@ async fn main() {
     )
     .run(([0, 0, 0, 0], port))
     .await;
+
+    #[cfg(feature = "dhat-heap")]
+    drop(profiler)
 }

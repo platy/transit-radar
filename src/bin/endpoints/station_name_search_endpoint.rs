@@ -12,7 +12,7 @@ use super::with_data;
 
 #[derive(Serialize)]
 struct FEStationLookup<'s> {
-    stop_id: u64,
+    stop_id: StopId,
     name: &'s str,
 }
 

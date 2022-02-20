@@ -20,7 +20,7 @@ fn lookup(
     period: Period,
 ) -> Result<FEData<'_>, db::SearchError> {
     let station = db::get_station_by_name(data, &station_name)?;
-    let output = produce_tree_json(&data, station.stop_id, day, period, &options);
+    let output = produce_tree_json(data, station.stop_id, day, period, &options);
     println!(
         "Search for '{}' {:?} produced {} stations, {} trips and {} connections",
         station.stop_name,
@@ -302,7 +302,7 @@ async fn main() {
     let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or_else(|_| "gtfs".to_owned());
     let gtfs_dir = Path::new(&gtfs_dir);
 
-    let data = Arc::new(db::load_data(&gtfs_dir, db::DayFilter::All, HashMap::new()).unwrap());
+    let data = Arc::new(db::load_data(gtfs_dir, db::DayFilter::All, HashMap::new()).unwrap());
     let station_name_index = Arc::new(db::build_station_word_index(&*data));
 
     eprintln!("Starting web server on port {}", port);

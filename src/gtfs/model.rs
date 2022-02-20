@@ -92,9 +92,9 @@ pub struct StopTime {
     /// Identifies the serviced stop. All stops serviced during a trip must have a record in stop_times.txt. Referenced locations must be stops, not stations or station entrances. A stop may be serviced multiple times in the same trip, and multiple trips and routes may service the same stop.
     pub stop_id: StopId,
     /// Order of stops for a particular trip. The values must increase along the trip but do not need to be consecutive.
-    pub stop_sequence: u32,
-    pickup_type: u16,
-    drop_off_type: u16,
+    pub stop_sequence: u8,
+    // pickup_type: u16,
+    // drop_off_type: u16,
     // stop_headsign: Option<String>,
 }
 
@@ -157,14 +157,14 @@ pub struct Transfer {
     /// Amount of time, in seconds, that must be available to permit a transfer between routes at the specified stops. The min_transfer_time should be sufficient to permit a typical rider to move between the two stops, including buffer time to allow for schedule variance on each route.
     #[serde(with = "crate::gtfs::time::option_duration_format")]
     pub min_transfer_time: Option<Duration>,
-    /// Non standard VBB field
-    from_route_id: Option<RouteId>,
-    /// Non standard VBB field
-    to_route_id: Option<RouteId>,
-    /// Non standard VBB field
-    from_trip_id: Option<TripId>,
-    /// Non standard VBB field
-    to_trip_id: Option<TripId>,
+    // /// Non standard VBB field
+    // from_route_id: Option<RouteId>,
+    // /// Non standard VBB field
+    // to_route_id: Option<RouteId>,
+    // /// Non standard VBB field
+    // from_trip_id: Option<TripId>,
+    // /// Non standard VBB field
+    // to_trip_id: Option<TripId>,
 }
 
 impl Stop {

@@ -2,20 +2,21 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;
 use std::fmt;
+use std::num::{NonZeroU32, NonZeroU64};
 
 use crate::time::{Duration, Period, Time};
 
 pub type AgencyId = u16;
 pub type RouteId = u32;
-pub type TripId = u64;
-pub type StopId = u64;
+pub type TripId = NonZeroU32; // 27bits
+pub type StopId = NonZeroU64;
 pub type ShapeId = u16;
 // type BlockId = String;
 pub type ServiceId = u16;
 // type ZoneId = String;
 
 /// Refers to a specific stop of a specific trip (an arrival / departure)
-pub type TripStopRef = (TripId, usize); // usize refers to the index of the stop in the trip, should probably instead use stop sequence
+pub type TripStopRef = (TripId, u8); // usize refers to the index of the stop in the trip, should probably instead use stop sequence
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Clone, Copy, Serialize, Deserialize)]
 pub enum Day {
@@ -93,6 +94,7 @@ impl<'r> GTFSData {
             stop_children: HashMap::new(),
             routes: HashMap::new(),
             departure_count: 0,
+            assert_last_trip: None,
         }
     }
 
@@ -131,7 +133,7 @@ impl<'r> GTFSData {
         stop: &Stop,
         services: &HashSet<ServiceId>,
         period: Period,
-    ) -> Vec<(&Trip, &[StopTime])> {
+    ) -> Vec<(&Trip, impl Iterator<Item = &StopTime>)> {
         let departures = stop.departures(period);
         departures
             .into_iter()
@@ -152,11 +154,12 @@ impl<'r> GTFSData {
     }
 
     /// Get all stops of the trip folling the departure referenced
-    fn stop_times(&self, &(trip_id, idx): &TripStopRef) -> &[StopTime] {
+    fn stop_times(&self, &(trip_id, idx): &TripStopRef) -> impl Iterator<Item = &StopTime> {
         self.trips
             .get(&trip_id)
-            .map(|trip| &trip.stop_times[idx..])
+            .map(|trip| &trip.stop_times[(idx as usize)..])
             .unwrap_or_default()
+            .iter()
     }
 
     pub fn stops(&self) -> impl Iterator<Item = &Stop> {
@@ -355,12 +358,12 @@ pub struct Trip {
 pub struct StopTime {
     /// Arrival time at a specific stop for a specific trip on a route. If there are not separate times for arrival and departure at a stop, enter the same value for arrival_time and departure_time. For times occurring after midnight on the service day, enter the time as a value greater than 24:00:00 in HH:MM:SS local time for the day on which the trip schedule begins.
     /// Scheduled stops where the vehicle strictly adheres to the specified arrival and departure times are timepoints. If this stop is not a timepoint, it is recommended to provide an estimated or interpolated time. If this is not available, arrival_time can be left empty. Further, indicate that interpolated times are provided with timepoint=0. If interpolated times are indicated with timepoint=0, then time points must be indicated with timepoint=1. Provide arrival times for all stops that are time points. An arrival time must be specified for the first and the last stop in a trip.
-    pub arrival_time: Time,
+    pub arrival_time: Time, // ~ 17bits
     /// Departure time from a specific stop for a specific trip on a route. For times occurring after midnight on the service day, enter the time as a value greater than 24:00:00 in HH:MM:SS local time for the day on which the trip schedule begins. If there are not separate times for arrival and departure at a stop, enter the same value for arrival_time and departure_time. See the arrival_time description for more details about using timepoints correctly.
     /// The departure_time field should specify time values whenever possible, including non-binding estimated or interpolated times between timepoints.
-    pub departure_time: Time,
+    pub departure_time: Time, // maybe 10 bits
     /// Identifies the serviced stop. All stops serviced during a trip must have a record in stop_times.txt. Referenced locations must be stops, not stations or station entrances. A stop may be serviced multiple times in the same trip, and multiple trips and routes may service the same stop.
-    pub stop_id: StopId,
+    pub stop_id: StopId, // ~27bits needed
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -406,6 +409,7 @@ pub struct Builder {
     stop_children: HashMap<StopId, Vec<StopId>>,
     routes: HashMap<RouteId, Route>,
     departure_count: u64,
+    assert_last_trip: Option<TripId>, // for asserting that stoptimes are parsed in the expected order
 }
 
 impl Builder {
@@ -439,7 +443,7 @@ impl Builder {
                 location,
                 stereotype: StopStereoType::StopOrPlatform {
                     station,
-                    departures: BTreeMap::<Time, Vec<(u64, usize)>>::default(),
+                    departures: BTreeMap::<Time, Vec<TripStopRef>>::default(),
                 },
                 transfers: Vec::<Transfer>::default(),
             },
@@ -534,7 +538,9 @@ impl Builder {
             .trips
             .get_mut(&trip_id)
             .expect("stop time added to be of added trip");
-        let stop_ref = (trip_id, trip.stop_times.len());
+        self.assert_last_trip = Some(trip_id);
+
+        let stop_ref = (trip_id, trip.stop_times.len() as u8);
         trip.stop_times.push(StopTime {
             arrival_time,
             departure_time,
@@ -589,6 +595,17 @@ impl Builder {
             self.data.trips.len(),
             self.data.stops.len()
         );
+
+        for trip in self.data.trips.values_mut() {
+            trip.stop_times.shrink_to_fit();
+        }
+        for stop in self.data.stops.values_mut() {
+            if let StopStereoType::StopOrPlatform { departures, .. } = &mut stop.stereotype {
+                for departure_route in departures.values_mut() {
+                    departure_route.shrink_to_fit();
+                }
+            }
+        }
 
         self.data
     }

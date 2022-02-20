@@ -70,7 +70,7 @@ impl<T: std::hash::Hash + Eq + Copy> Suggester<T> {
                 Box::new(|_| true)
             };
             results = Some(
-                self.prefix_iter(&part)
+                self.prefix_iter(part)
                     .map(|(_, s)| s)
                     .flatten()
                     .copied()

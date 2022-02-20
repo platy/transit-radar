@@ -9,7 +9,7 @@ fn main() {
     let gtfs_dir = Path::new(&gtfs_dir);
 
     let data = db::load_data(
-        &gtfs_dir,
+        gtfs_dir,
         db::DayFilter::All,
         std::collections::HashMap::new(),
     )

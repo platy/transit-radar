@@ -27,3 +27,11 @@ chrono = "0.4"
 chrono-tz = "0.5"
 serde_test = "1.0.106"
 lazysort = "0.2.1"
+
+dhat = { version = "0.3", optional = true }
+
+[features]
+dhat-heap = ["dhat"]
+
+[profile.release]
+debug = 1

@@ -209,3 +209,42 @@ Changes to do for this:
 [] Use search algorithm on frontend
 [] Build a 2 stage renderer 1 converts the search result into a sort of DOM and accepts display parameters (and can be switched) and another that renders the DOM to canvas, and implements transitions
 [] Diff filtered data on backend and sync to frontend
+
+
+## Memory usage reduction (which may speed up startup too)
+
+2022-02-20
+
+Currently, when the backend starts up, it is using about half a gig of ram, there is a lot of data to store (the gtfs dir is 477MB) but it could surely be used more efficiently and maybe save 100/200MB and make the start up quicker.
+Activity monitor reports 526MB used, real memory 578MB, Virtual 34GB Private 525MB.
+
+DHAT profiling with `time cargo run --features dhat-heap --release` reports that after loading the data, 179MB is allocated for `radar-search/src/search_data.rs:556:18` which is `departures.entry(departure_time).or_default().push(stop_ref)` and 126MB is allocated in `radar-search/src/search_data.rs:538:9` which is `trip.stop_times.push(StopTime {`. These are both pushing to vecs. My first thought is that it's likely that these Vecs have spare capacity at the end, so we could free the unused parts once the load is done. But that freeing would likely leave very fragmented memory  (the first ends up with 2.5 Million blocks allocated) so it might not be useful, so it might make sense to find another way to store this data without using dynamically-growing vecs, this might also speed up the load. Also, I might be able to find a more compact representation.
+
+```
+5524942 departures of 239248 trips, leaving from 41833 stops
+built station name index of 9448 words
+Starting web server on port 8080
+dhat: Total:     718,419,242 bytes in 4,918,433 blocks
+dhat: At t-gmax: 521,567,452 bytes in 4,065,985 blocks
+dhat: At t-end:  521,567,452 bytes in 4,065,985 blocks
+
+real    0m21.349s
+```
+
+Running `shrink_to_fit` on both at the end of the load results in activity monitor reporting less virtual memory used but more real memory. DHAT reports 30M less allocated at the end.
+```5524942 departures of 239248 trips, leaving from 41833 stops
+built station name index of 9448 words
+Starting web server on port 8080
+dhat: Total:     875,689,898 bytes in 7,568,659 blocks
+dhat: At t-gmax: 507,960,913 bytes in 3,837,773 blocks
+dhat: At t-end:  392,525,148 bytes in 4,065,985 blocks
+dhat: The data has been saved to dhat-heap-setup.json, and is viewable with dhat/dh_view.html
+
+real    0m29.830s
+```
+
+I saved 50MB first by halving the size of the `TripStopRef`.
+
+It would be nice to save some of the memory fragmentation by storing all the stoptimes contiguously in memory and then splitting them up between the trips. But these types also need to handle being serialized to the client, so it is a little tricky.
+
+Going beyond these savings would most likely need to involve not loading everything into memory.

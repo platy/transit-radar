@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 use std::fmt;
+use std::iter::FromIterator;
 
 use crate::search_data::{
     Day, GTFSData, RequiredData, Route, RouteType, ServiceId, Stop, StopId, TripId,
@@ -286,6 +287,7 @@ impl<'r> Plotter<'r> {
             &self.services,
             self.period.with_start(item.arrival_time),
         ) {
+            let stops = Vec::from_iter(stops);
             let trip_id = trip.trip_id;
             let mut trip_to_add = vec![];
             // check that route type is allowed

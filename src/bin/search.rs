@@ -13,13 +13,13 @@ fn lookup(
     period: Period,
 ) -> Result<(), db::SearchError> {
     let station = db::get_station_by_name(data, &station_name)?;
-    produce_tree_json(&data, station.stop_id, day, period, &options);
+    produce_tree_json(data, station.stop_id, day, period, &options);
     Ok(())
 }
 
 #[allow(unused_variables)]
-fn produce_tree_json<'r>(
-    data: &'r GTFSData,
+fn produce_tree_json(
+    data: &GTFSData,
     station: StopId,
     day: Day,
     period: Period,
@@ -114,7 +114,7 @@ fn main() {
     let gtfs_dir = Path::new(&gtfs_dir);
 
     let data = db::load_data(
-        &gtfs_dir,
+        gtfs_dir,
         db::DayFilter::All,
         std::collections::HashMap::new(),
     )
