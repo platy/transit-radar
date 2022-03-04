@@ -1,41 +1,24 @@
+use chrono::Duration;
+use chrono::prelude::*;
+use chrono_tz::Tz;
 use radar_search::journey_graph;
 use radar_search::search_data::*;
 use radar_search::time::*;
 use std::collections::HashMap;
 use std::f64::consts::PI;
+use std::io;
+use std::num::NonZeroU32;
 
-use super::canvasser;
-use super::controls;
+use crate::write_xml_element;
 
-use canvasser::animate::*;
-use canvasser::draw::*;
-
-pub fn init(radar: Option<Radar>) -> canvasser::App<Option<Radar>, f64> {
-    canvasser::App::new(should_draw, radar)
-}
-
-fn should_draw(model: &Option<Radar>, frame_count: u64, is_in_transition: bool) -> Option<f64> {
-    if model.is_some() && (is_in_transition || frame_count % 6 == 0) {
-        // @todo switch speed when something is transitioning maybe?
-        let now = js_sys::Date::new_0();
-        let now = ((now.get_hours() * 60 + now.get_minutes()) * 60 + now.get_seconds()) as f64
-            + now.get_milliseconds() as f64 / 1000.;
-        Some(now)
-    } else {
-        None
-    }
-}
+use super::geometry::*;
 
 pub struct Radar {
-    pub geometry: Geo,
-    trip_drawables: HashMap<TripId, Path<Polar>>,
-    station_animatables: HashMap<StopId, Station<Polar>>,
-    pub day: Day,
-    pub expires_timestamp: u64,
-    pub trip_count: usize,
+    geometry: Geo,
+    trips: HashMap<TripId, Path<FlattenedTimeCone>>,
+    stations: HashMap<StopId, Station<FlattenedTimeCone>>,
 }
 
-#[derive(Clone)]
 struct Station<G: Geometry> {
     coords: G::Coords,
     name: String,
@@ -58,13 +41,10 @@ struct TripSegment {
     arrival_time: Time,
 }
 
-// needs to be cloneable for the view, could be avoided
-#[derive(Clone)]
+// Geographical flattened time cone geometry, the bearing is calculated from an origin position.
 pub struct Geo {
-    pub start_time: Time,
-    cartesian_origin: (f64, f64),
+    time_cone_geometry: FlattenedTimeCone,
     geographic_origin: geo::Point<f64>,
-    max_duration: Duration,
 }
 
 impl Geometry for Geo {
@@ -87,11 +67,15 @@ impl Geo {
         &self,
         (start_point, start_time): (geo::Point<f64>, Time),
         (end_point, end_time): (geo::Point<f64>, Time),
-    ) -> (Bearing, f64) {
+    ) -> (Bearing, DateTime<Tz>) {
         assert!(end_time >= start_time);
 
         // this is here because the calculation is not independent of start_time, this means that the animation will be an approximation and will distort :(
-        let origin = self.start_time.seconds_since_midnight() as f64;
+        let origin = self
+            .time_cone_geometry
+            .origin()
+            .time()
+            .num_seconds_from_midnight() as f64;
 
         let start_bearing = self.bearing(start_point);
         let end_bearing = self.bearing(end_point).unwrap();
@@ -116,28 +100,26 @@ impl Geo {
                 let cp_bearing = start_bearing.as_radians() - bearing_difference / 3.;
                 return (
                     Bearing::radians(cp_bearing),
-                    origin + start_mag / (bearing_difference / 3.).cos(),
+                    self.time_cone_geometry.origin()
+                        + Duration::seconds((start_mag / (bearing_difference / 3.).cos()) as i64),
                 );
             }
         }
-        (start_bearing.unwrap_or(end_bearing), origin + start_mag)
+        (
+            start_bearing.unwrap_or(end_bearing),
+            self.time_cone_geometry.origin() + Duration::seconds(start_mag as i64),
+        )
     }
 
     fn control_points(
         &self,
-        (bearing1, magnitude1): (Bearing, f64),
-        (bearing2, magnitude2): (Bearing, f64),
-        (bearing3, magnitude3): (Bearing, f64),
-    ) -> ((Bearing, f64), (Bearing, f64)) {
+        (bearing1, magnitude1): (Bearing, DateTime<Tz>),
+        (bearing2, magnitude2): (Bearing, DateTime<Tz>),
+        (bearing3, magnitude3): (Bearing, DateTime<Tz>),
+    ) -> ((Bearing, DateTime<Tz>), (Bearing, DateTime<Tz>)) {
         const CPFRAC: f64 = 0.3;
-        // using a fake geometry to calculate these in cartsian space as I can't figure out the trigonometry from polar
-        // what happens as the start time changes? does it skew weirdly?
-        let polar = Polar::new(
-            self.start_time.seconds_since_midnight() as f64,
-            self.max_duration.to_secs() as f64,
-            (0., 0.),
-            self.cartesian_origin.0,
-        );
+        // calculate these in cartesian space as I can't figure out the trigonometry from polar
+        let polar = &self.time_cone_geometry;
 
         let (x1, y1) = polar.coords(bearing1, magnitude1);
         let (x2, y2) = polar.coords(bearing2, magnitude2);
@@ -156,48 +138,61 @@ impl Geo {
             dy = -dy;
             dx = -dx;
         }
-        let (cp2_x, cp2_y) = (dx.mul_add(cp2mag, x2), dy.mul_add(cp2mag, y2));
-        let (cp3_x, cp3_y) = (dx.mul_add(cp3mag, x2), dy.mul_add(cp3mag, y2));
+        let (cp2_x, cp2_y) = (dx.mul_add(cp2mag, *x2), dy.mul_add(cp2mag, *y2));
+        let (cp3_x, cp3_y) = (dx.mul_add(cp3mag, *x2), dy.mul_add(cp3mag, *y2));
+
         (
             // the need to negate here is weird, maybe the above atan2 calls are the wrong way around
             (
                 Bearing::radians(-(cp2_y).atan2(cp2_x)),
-                (cp2_x.powi(2) + cp2_y.powi(2)).sqrt() * self.max_duration.to_secs() as f64
-                    / self.cartesian_origin.0
-                    + self.start_time.seconds_since_midnight() as f64,
+                polar.origin()
+                    + Duration::milliseconds(
+                        (polar.max_duration().num_milliseconds() as f64
+                            * ((cp2_x.powi(2) + cp2_y.powi(2)).sqrt() / polar.max_points()))
+                            as i64,
+                    ),
             ),
             (
                 Bearing::radians(-(cp3_y).atan2(cp3_x)),
-                (cp3_x.powi(2) + cp3_y.powi(2)).sqrt() * self.max_duration.to_secs() as f64
-                    / self.cartesian_origin.0
-                    + self.start_time.seconds_since_midnight() as f64,
+                polar.origin()
+                    + Duration::milliseconds(
+                        (polar.max_duration().num_milliseconds() as f64
+                            * ((cp3_x.powi(2) + cp3_y.powi(2)).sqrt() / polar.max_points()))
+                            as i64,
+                    ),
             ),
         )
     }
 }
 
-pub fn day_time(date_time: &js_sys::Date) -> (Day, Time) {
-    let now = Time::from_hms(
-        date_time.get_hours(),
-        date_time.get_minutes(),
-        date_time.get_seconds(),
-    );
-    let day = match date_time.get_day() {
-        1 => Day::Monday,
-        2 => Day::Tuesday,
-        3 => Day::Wednesday,
-        4 => Day::Thursday,
-        5 => Day::Friday,
-        6 => Day::Saturday,
-        0 => Day::Sunday,
-        x => panic!("Unknown day : {}", x),
+#[derive(Default, Debug, Clone, Eq, PartialEq)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct Flags {
+    pub show_sbahn: bool,
+    pub show_ubahn: bool,
+    pub show_bus: bool,
+    pub show_tram: bool,
+    pub show_regional: bool,
+}
+
+pub fn day_time<Tz: TimeZone>(date_time: DateTime<Tz>) -> (Day, Time) {
+    let now = Time::from_seconds_since_midnight(date_time.num_seconds_from_midnight());
+    let day = match date_time.weekday() {
+        chrono::Weekday::Mon => Day::Monday,
+        chrono::Weekday::Tue => Day::Tuesday,
+        chrono::Weekday::Wed => Day::Wednesday,
+        chrono::Weekday::Thu => Day::Thursday,
+        chrono::Weekday::Fri => Day::Friday,
+        chrono::Weekday::Sat => Day::Saturday,
+        chrono::Weekday::Sun => Day::Sunday,
     };
     (day, now)
 }
 
-pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Radar {
-    // TODO don't use client time, instead start with the server time and increment using client clock, also this is local time
-    let (day, start_time) = day_time(&js_sys::Date::new_0());
+pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
+    let departure_time = Utc::now().with_timezone(&chrono_tz::Europe::Berlin);
+    let departure_date = departure_time.date();
+    let (day, start_time) = day_time(departure_time);
     let max_duration = Duration::minutes(30);
     let end_time = start_time + max_duration;
     let max_extra_search = Duration::minutes(10);
@@ -207,32 +202,34 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
         data,
     );
     plotter.add_origin_station(origin);
-    if controls.flags.show_sbahn {
+    if flags.show_sbahn {
         plotter.add_route_type(RouteType::SuburbanRailway)
     }
-    if controls.flags.show_ubahn {
+    if flags.show_ubahn {
         plotter.add_route_type(RouteType::UrbanRailway)
     }
-    if controls.flags.show_bus {
+    if flags.show_bus {
         plotter.add_route_type(RouteType::BusService);
         plotter.add_route_type(RouteType::Bus)
     }
-    if controls.flags.show_tram {
+    if flags.show_tram {
         plotter.add_route_type(RouteType::TramService)
     }
-    if controls.flags.show_regional {
+    if flags.show_regional {
         plotter.add_route_type(RouteType::RailwayService)
     }
     let mut expires_time = end_time;
     let mut trips: HashMap<TripId, RadarTrip> = HashMap::new();
 
-    let mut station_animatables: HashMap<StopId, Station<Polar>> = HashMap::new();
-    let mut trip_drawables: HashMap<TripId, Path<Polar>> = HashMap::new();
+    let mut station_animatables: HashMap<StopId, Station<FlattenedTimeCone>> = HashMap::new();
+    let mut trip_drawables: HashMap<TripId, Path<FlattenedTimeCone>> = HashMap::new();
     let geometry = Geo {
-        cartesian_origin: (500., 500.),
+        time_cone_geometry: FlattenedTimeCone::new(
+            departure_time,
+            max_duration,
+            Pixels::new(500.),
+        ),
         geographic_origin: origin.location,
-        start_time,
-        max_duration,
     };
 
     for item in plotter {
@@ -333,6 +330,7 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
         use RouteType::{
             Rail, RailwayService, SuburbanRailway, UrbanRailway, WaterTransportService,
         };
+        let time_to_datetime = |time: Time| departure_date.and_time(time.into()).unwrap();
         {
             let TripSegment {
                 from,
@@ -342,7 +340,7 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
             } = connection;
             let mut path = Path::begin_path();
             path.set_line_dash(&[2., 4.]);
-            path.set_stroke_style(route_color);
+            path.set_stroke_style(route_color.clone());
 
             let mut to = to;
             if *to == geometry.geographic_origin {
@@ -352,14 +350,14 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
             // done in reverse, it means the line moves into the origin rather than just erasing from the end
             path.move_to((
                 geometry.bearing(*to).unwrap(),
-                arrival_time.seconds_since_midnight() as f64,
+                time_to_datetime(*arrival_time),
             ));
             path.line_to((
                 geometry.bearing(*from).unwrap_or_default(),
-                departure_time.seconds_since_midnight() as f64,
+                time_to_datetime(*departure_time),
             ));
             // use random to make connection and trip unique in hashmap
-            trip_drawables.insert(1_000_000 + *trip_id, path);
+            trip_drawables.insert(NonZeroU32::new(1_000_000 + trip_id.get()).unwrap(), path);
         }
 
         let mut path = Path::begin_path();
@@ -378,7 +376,7 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
             path.set_line_width(1.);
         }
         path.set_line_dash(&[]);
-        path.set_stroke_style(route_color);
+        path.set_stroke_style(route_color.clone());
         match segments.len().cmp(&1) {
             std::cmp::Ordering::Greater => {
                 let mut next_control_point = {
@@ -386,8 +384,8 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
                     let segment = &segments[0];
                     let to_bearing = geometry.bearing(segment.to).unwrap();
                     let from_bearing = geometry.bearing(segment.from).unwrap_or(to_bearing);
-                    let from_mag = segment.departure_time.seconds_since_midnight() as f64;
-                    let to_mag = segment.arrival_time.seconds_since_midnight() as f64;
+                    let from_mag = time_to_datetime(segment.departure_time);
+                    let to_mag = time_to_datetime(segment.arrival_time);
                     path.move_to((from_bearing, from_mag));
 
                     let cp1 = geometry.initial_control_point(
@@ -400,7 +398,7 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
                         (segments[1].from, segments[1].departure_time)
                     };
                     let post_bearing = geometry.bearing(post_location).unwrap();
-                    let post_mag = post_time.seconds_since_midnight() as f64;
+                    let post_mag = time_to_datetime(post_time);
 
                     let (cp2, next_control_point) = geometry.control_points(
                         (from_bearing, from_mag),
@@ -415,15 +413,14 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
                     if let [pre, segment, post] = window {
                         let to_bearing = geometry.bearing(segment.to).unwrap();
                         let from_bearing = geometry.bearing(segment.from).unwrap_or(to_bearing);
-                        let from_mag = segment.departure_time.seconds_since_midnight() as f64;
-                        let to_mag = segment.arrival_time.seconds_since_midnight() as f64;
+                        let from_mag = segment.departure_time;
+                        let to_mag = segment.arrival_time;
 
                         let pre_bearing = geometry.bearing(pre.to).unwrap();
-                        let pre_mag = pre.arrival_time.seconds_since_midnight() as f64;
-                        if pre_bearing != from_bearing && (pre_mag - from_mag).abs() > f64::EPSILON
-                        {
+                        let pre_mag = pre.arrival_time;
+                        if pre_bearing != from_bearing && pre_mag != from_mag {
                             // there is a gap in the route and so we move
-                            path.move_to((from_bearing, from_mag));
+                            path.move_to((from_bearing, time_to_datetime(from_mag)));
                             next_control_point = geometry.initial_control_point(
                                 (segment.from, segment.departure_time),
                                 (segment.to, segment.arrival_time),
@@ -435,14 +432,14 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
                             (post.from, post.departure_time)
                         };
                         let post_bearing = geometry.bearing(post_location).unwrap();
-                        let post_mag = post_time.seconds_since_midnight() as f64;
+                        let post_mag = post_time;
                         let cp1 = next_control_point;
                         let (cp2, next_control_point_tmp) = geometry.control_points(
-                            (from_bearing, from_mag),
-                            (to_bearing, to_mag),
-                            (post_bearing, post_mag),
+                            (from_bearing, time_to_datetime(from_mag)),
+                            (to_bearing, time_to_datetime(to_mag)),
+                            (post_bearing, time_to_datetime(post_mag)),
                         );
-                        path.bezier_curve_to(cp1, cp2, (to_bearing, to_mag));
+                        path.bezier_curve_to(cp1, cp2, (to_bearing, time_to_datetime(to_mag)));
                         next_control_point = next_control_point_tmp;
                     } else {
                         panic!("unusual window");
@@ -453,7 +450,7 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
                     let end = segments.last().unwrap();
                     let to = (
                         geometry.bearing(end.to).unwrap(),
-                        end.arrival_time.seconds_since_midnight() as f64,
+                        time_to_datetime(end.arrival_time),
                     );
                     let cp1 = next_control_point;
                     path.bezier_curve_to(cp1, to, to);
@@ -464,14 +461,8 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
                 let to_bearing = geometry.bearing(segment.to).unwrap();
                 let from_bearing = geometry.bearing(segment.from).unwrap_or(to_bearing);
 
-                path.move_to((
-                    from_bearing,
-                    segment.departure_time.seconds_since_midnight() as f64,
-                ));
-                path.line_to((
-                    to_bearing,
-                    segment.arrival_time.seconds_since_midnight() as f64,
-                ));
+                path.move_to((from_bearing, time_to_datetime(segment.departure_time)));
+                path.line_to((to_bearing, time_to_datetime(segment.arrival_time)));
             }
             std::cmp::Ordering::Less => {
                 // path is empty - ignore
@@ -480,169 +471,107 @@ pub fn search(data: &GTFSData, origin: &Stop, controls: &controls::Params) -> Ra
         trip_drawables.insert(*trip_id, path);
     }
 
-    let expires_timestamp = js_sys::Date::new_0();
-    expires_timestamp.set_hours(expires_time.hour() as u32);
-    expires_timestamp.set_minutes(expires_time.minute() as u32);
-    expires_timestamp.set_seconds(expires_time.second() as u32 + 1); // expire once this second is over
-    expires_timestamp.set_milliseconds(0);
-    // trip_drawables.reverse();
-    // station_animatables.reverse();
-
     Radar {
-        day,
-        expires_timestamp: expires_timestamp.value_of() as u64,
         geometry,
-        trip_drawables,
-        station_animatables,
-        trip_count: trips.len(),
+        trips: trip_drawables,
+        stations: station_animatables,
     }
 }
 
-impl Drawable for Geo {
-    fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d, _: &Cartesian) {
-        let (origin_x, origin_y) = self.cartesian_origin;
-        ctx.set_line_dash(&js_sys::Array::of2(&10_f64.into(), &10_f64.into()).into())
-            .unwrap();
-        ctx.set_stroke_style(&"lightgray".into());
-        ctx.set_line_width(1.);
-        ctx.begin_path();
-        ctx.arc(origin_x, origin_y, 500. / 3., 0., 2. * std::f64::consts::PI)
-            .unwrap();
-        ctx.stroke();
-        ctx.begin_path();
-        ctx.arc(
-            origin_x,
-            origin_y,
-            500. * 2. / 3.,
-            0.,
-            2. * std::f64::consts::PI,
-        )
-        .unwrap();
-        ctx.stroke();
-        ctx.begin_path();
-        ctx.arc(origin_x, origin_y, 500., 0., 2. * std::f64::consts::PI)
-            .unwrap();
-        ctx.stroke();
-        ctx.set_line_dash(&js_sys::Array::new().into()).unwrap();
+
+
+impl Geo {
+    fn write_svg_fragment_to(&self, w: &mut dyn io::Write) -> io::Result<()> {
+        let (origin_x, origin_y) = (0., 0.);
+
+        write!(
+            w,
+            r#"<g stroke-dasharray="10,10" stroke="lightgray" stroke-width="1" fill="none">"#
+        )?;
+        write_xml_element!(w, <circle cx={origin_x} cy={origin_y} r={500. / 3.} />)?;
+        write_xml_element!(w, <circle cx={origin_x} cy={origin_y} r={500. * 2. / 3.} />)?;
+        write_xml_element!(w, <circle cx={origin_x} cy={origin_y} r={500} />)?;
+        write!(w, r#"</g>"#)?;
+
+        Ok(())
     }
 }
 
-#[derive(Default)]
-pub struct TransitionCtx {
-    stations: HashMap<StopId, CartesianTransitionContext>,
-    trips: HashMap<TripId, PathTransitionContext>,
-}
-
-impl TransitionContext for TransitionCtx {
-    fn is_in_transition(&self) -> bool {
-        self.stations
-            .values()
-            .any(TransitionContext::is_in_transition)
-    }
-}
-
-impl Animatable<f64> for Radar {
-    type TransitionContext = TransitionCtx;
-
-    fn draw_frame(
-        &self,
-        day_millis: &f64,
-        transition_context: &mut TransitionCtx,
-        canvas: &web_sys::CanvasRenderingContext2d,
-        _: &Cartesian,
-    ) {
+impl Radar {
+    pub fn write_svg_to(&self, w: &mut dyn io::Write) -> io::Result<()> {
         let Self {
-            day: _,
-            expires_timestamp: _,
             geometry,
-            station_animatables,
-            trip_drawables,
-            trip_count: _,
+            stations: station_animatables,
+            trips: trip_drawables,
         } = self;
 
-        geometry.draw(canvas, &Cartesian);
-        let polar_geometry = Polar::new(
-            *day_millis,
-            geometry.max_duration.to_secs() as f64,
-            geometry.cartesian_origin,
-            f64::min(geometry.cartesian_origin.0, geometry.cartesian_origin.1),
-        );
-        trip_drawables.draw_frame(
-            day_millis,
-            &mut transition_context.trips,
-            canvas,
-            &polar_geometry,
-        );
-        station_animatables.draw_frame(
-            day_millis,
-            &mut transition_context.stations,
-            canvas,
-            &polar_geometry,
-        );
+        writeln!(
+            w,
+            r#"<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100%" height="100%" viewBox="-512 -512 1024 1024">
+    <title>Transit Radar</title>
+    <desc>Departure tree.</desc>
+         "#
+        )?;
+
+        geometry.write_svg_fragment_to(w)?;
+        for trip in trip_drawables.values() {
+            trip.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;
+        }
+        for station in station_animatables.values() {
+            station.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;
+        }
+        writeln!(w, "</svg>")
     }
 }
 
-impl Drawable for Station<Cartesian> {
-    fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d, _: &Cartesian) {
-        const STOP_RADIUS: f64 = 3.;
-        let (cx, cy) = self.coords;
-        Circle::new((cx, cy), STOP_RADIUS).draw(ctx, &Cartesian);
-        Text::new(cx + STOP_RADIUS + 6., cy + 4., self.name.clone()).draw(ctx, &Cartesian);
-    }
-}
+// impl Drawable for Station<Cartesian> {
+//     fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d, _: &Cartesian) {
+//         const STOP_RADIUS: f64 = 3.;
+//         let (cx, cy) = self.coords;
+//         Circle::new((cx, cy), STOP_RADIUS).draw(ctx, &Cartesian);
+//         Text::new(cx + STOP_RADIUS + 6., cy + 4., self.name.clone()).draw(ctx, &Cartesian);
+//     }
+// }
 
 impl Station<Geo> {
-    fn into_polar(self, geometry: &Geo) -> Station<Polar> {
+    fn into_polar(self, geometry: &Geo) -> Station<FlattenedTimeCone> {
         let (point, time) = self.coords;
-        Station::<Polar> {
+        Station::<FlattenedTimeCone> {
             coords: (
                 geometry.bearing(point).unwrap_or_default(),
-                time.seconds_since_midnight() as f64,
+                geometry
+                    .time_cone_geometry
+                    .origin()
+                    .date()
+                    .and_time(time.into())
+                    .unwrap(),
             ),
             name: self.name,
         }
     }
 }
 
-impl Drawable<Polar> for Station<Polar> {
-    fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d, geometry: &Polar) {
+impl Station<FlattenedTimeCone> {
+    pub(crate) fn write_svg_fragment_to(
+        &self,
+        w: &mut dyn io::Write,
+        geometry: &FlattenedTimeCone,
+    ) -> io::Result<()> {
         const STOP_RADIUS: f64 = 3.;
         let (bearing, magnitude) = self.coords;
         if magnitude > geometry.max() {
-            return;
+            return Ok(());
         }
         let (cx, cy) = geometry.coords(bearing, magnitude);
-        Circle::new((cx, cy), STOP_RADIUS).draw(ctx, &Cartesian);
-        Text::new(cx + STOP_RADIUS + 6., cy + 4., self.name.clone()).draw(ctx, &Cartesian);
-    }
-}
-
-impl Animatable<f64, Polar> for Station<Polar> {
-    type TransitionContext = CartesianTransitionContext;
-
-    fn draw_frame(
-        &self,
-        time: &f64,
-        transition_ctx: &mut CartesianTransitionContext,
-        canvas: &web_sys::CanvasRenderingContext2d,
-        geometry: &Polar,
-    ) {
-        const STOP_RADIUS: f64 = 3.;
-        let (bearing, magnitude) = self.coords;
-        if magnitude > geometry.max() {
-            // not drawing so remove the context too
-            *transition_ctx = CartesianTransitionContext::None;
-            return;
-        }
-
-        // set the target
-        let new_target = geometry.coords(bearing, magnitude);
-        // position to acutally draw
-        let (cx, cy) = transition_ctx
-            .or_start(geometry.coords(bearing, geometry.max()))
-            .process_transition_frame(new_target, *time, 1.);
-
-        Circle::new((cx, cy), STOP_RADIUS).draw(canvas, &Cartesian);
-        Text::new(cx + STOP_RADIUS + 6., cy + 4., self.name.clone()).draw(canvas, &Cartesian);
+        write_xml_element!(w, <circle cx={*cx} cy={*cy} r={STOP_RADIUS} />)?;
+        writeln!(
+            w,
+            r#"<text x="{:.1}" y="{:.1}">{}</text>"#,
+            *cx + STOP_RADIUS + 6.,
+            *cy + 4.,
+            self.name
+        )?;
+        Ok(())
     }
 }

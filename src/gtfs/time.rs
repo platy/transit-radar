@@ -1,12 +1,11 @@
 pub mod option_duration_format {
-    use radar_search::time::*;
     use serde::{Deserialize, Deserializer};
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<chrono::Duration>, D::Error>
     where
         D: Deserializer<'de>,
     {
-        Option::<i32>::deserialize(deserializer).map(|option| option.map(Duration::seconds))
+        Option::<i64>::deserialize(deserializer).map(|option| option.map(chrono::Duration::seconds))
     }
 }
 

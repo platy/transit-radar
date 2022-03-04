@@ -211,7 +211,7 @@ impl<'r> Plotter<'r> {
                     to_add.push(QueueItem {
                         to_stop,
                         arrival_time: departure_time
-                            + transfer.min_transfer_time.unwrap_or_default(),
+                            + transfer.min_transfer_time.unwrap_or_else(chrono::Duration::zero),
                         variant: QueueItemVariant::Transfer {
                             from_stop: stop,
                             departure_time,
@@ -239,7 +239,7 @@ impl<'r> Plotter<'r> {
                         to_add.push(QueueItem {
                             to_stop,
                             arrival_time: departure_time
-                                + transfer.min_transfer_time.unwrap_or_default(),
+                                + transfer.min_transfer_time.unwrap_or_else(chrono::Duration::zero),
                             variant: QueueItemVariant::Transfer {
                                 from_stop: station,
                                 departure_time,

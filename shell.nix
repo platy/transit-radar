@@ -8,7 +8,9 @@ stdenv.mkDerivation {
   buildInputs = [
     # generic rust
     ((rustChannelOf { channel = "stable"; }).rust.override (old:
-      { extensions = ["rust-src" "rust-analysis"]; }))
+      {
+        extensions = ["rust-src" "rust-analysis"]; 
+      }))
     rustfmt
     libiconv
 
@@ -27,6 +29,7 @@ stdenv.mkDerivation {
     kubectl
 
     # for dev and load test
+    cargo-make
     drill
   ];
   shellHook = ''

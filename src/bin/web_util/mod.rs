@@ -1,8 +1,6 @@
 use std::sync::Arc;
 use warp::Filter;
 
-pub mod naive_state;
-
 pub fn with_data<D: Sync + Send>(
     db: Arc<D>,
 ) -> impl Filter<Extract = (Arc<D>,), Error = std::convert::Infallible> + Clone {

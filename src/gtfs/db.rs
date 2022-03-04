@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 
 use crate::gtfs;
 use radar_search::search_data::*;
-use radar_search::time::*;
 
 /// Refers to a specific stop of a specific trip (an arrival / departure)
 pub type TripStopRef = (TripId, usize); // usize refers to the index of the stop in the trip, should probably instead use stop sequence
@@ -124,9 +123,7 @@ pub fn load_data<S: std::hash::BuildHasher>(
             Ok(transfer) => builder.add_transfer(
                 transfer.from_stop_id,
                 transfer.to_stop_id,
-                transfer
-                    .min_transfer_time
-                    .map(|d| Duration::seconds(d.to_secs())),
+                transfer.min_transfer_time,
             ),
             Err(err) => eprintln!("Error parsing transfer : {}", err),
         }

@@ -95,7 +95,7 @@ fn search(name: String, options: RadarOptions, data: &GTFSData) {
         Weekday::Sat => Day::Saturday,
         Weekday::Sun => Day::Sunday,
     };
-    let period = Period::between(now, now + Duration::minutes(30));
+    let period = Period::between(now, now + chrono::Duration::minutes(30));
 
     lookup(data, name, options, day, period).unwrap();
 }

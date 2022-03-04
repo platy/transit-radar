@@ -8,15 +8,8 @@ dependencies = [
   "test", 
   "format", 
   "clippy",
-  "frontend-pre-commit",
 ]
 
-[tasks.frontend-pre-commit]
-workspace = false
-script = [
-  "cd seed-frontend",
-  "cargo make pre-commit",
-]
 
 [tasks.build-docker-binary]
 workspace = false
@@ -30,27 +23,11 @@ args = [
   "x86_64-unknown-linux-musl"
 ]
 
-[tasks.build-frontend]
-workspace = false
-description = "Build the wasm pack of the frontend project"
-script = [
-  "cd seed-frontend",
-  "cargo make build",
-]
-
-[tasks.build-frontend-release]
-workspace = false
-description = "Build the wasm pack of the frontend project"
-script = [
-  "cd seed-frontend",
-  "cargo make build_release",
-]
-
 [tasks.build-docker]
 workspace = false
 description = "Build and tag the docker image"
 dependencies = ["build-docker-binary", "build-frontend-release"]
-command = "docker"
+command = "podman"
 args = [
   "build",
   "-t",
@@ -61,7 +38,7 @@ args = [
 [tasks.push-docker]
 workspace = false
 description = "Push the docker image"
-command = "docker"
+command = "podman"
 args = [
   "push",
   "${DOCKER_TAG}",
@@ -70,7 +47,7 @@ args = [
 [tasks.build-init-docker]
 workspace = false
 description = "Build and tag the init-gtfs docker image"
-command = "docker"
+command = "podman"
 args = [
   "build",
   "-t",
@@ -83,7 +60,7 @@ args = [
 [tasks.push-init-docker]
 workspace = false
 description = "Push the docker image"
-command = "docker"
+command = "podman"
 args = [
   "push",
   "${INIT_DOCKER_TAG}",

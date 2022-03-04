@@ -26,7 +26,7 @@ fn main() {
         Weekday::Sat => Day::Saturday,
         Weekday::Sun => Day::Sunday,
     };
-    let period = Period::between(now, now + Duration::minutes(30));
+    let period = Period::between(now, now + chrono::Duration::minutes(30));
     let station = db::get_station_by_name(&data, "U Voltastr. (Berlin)").unwrap();
 
     let services = data.services_of_day(day);

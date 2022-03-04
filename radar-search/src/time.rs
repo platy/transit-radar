@@ -1,61 +1,10 @@
 use std::convert::TryInto;
 use std::fmt;
-use std::ops::{Add, AddAssign, Div, Sub};
+use std::ops::{Add, Sub};
 
-use serde::{de, ser, Deserialize, Serialize};
+use chrono::{Duration, NaiveTime};
+use serde::{de, ser};
 
-/// Duration in seconds as represented in GTFS data, used for transfers.txt
-/// # Examples
-/// ```rust
-/// use radar_search::time::Duration;
-/// assert_eq!(Duration::seconds(60), Duration::minutes(1));
-/// ```
-#[derive(
-    Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize,
-)]
-pub struct Duration {
-    seconds: i32,
-}
-
-impl Duration {
-    /// Construct a duration of a number of seconds
-    pub const fn seconds(seconds: i32) -> Self {
-        Self { seconds }
-    }
-
-    /// Construct a duration of a number of minutes
-    pub const fn minutes(minutes: i32) -> Self {
-        Self {
-            seconds: minutes * 60,
-        }
-    }
-
-    /// Convert to minutes
-    pub const fn to_mins(self) -> i32 {
-        self.seconds / 60
-    }
-
-    /// Convert to seconds
-    pub const fn to_secs(self) -> i32 {
-        self.seconds
-    }
-}
-
-impl AddAssign<Duration> for Duration {
-    /// Add two `duration`s
-    fn add_assign(&mut self, rhs: Self) {
-        self.seconds += rhs.seconds;
-    }
-}
-
-impl Div<i32> for Duration {
-    type Output = Self;
-
-    /// Add two `duration`s
-    fn div(self, rhs: i32) -> Self::Output {
-        Self::seconds(self.seconds / rhs)
-    }
-}
 
 /// Implementation of a local time within a day, no attempt to handle leaps, based on time-rs with the following focus:
 /// * deserialisation for the formats contained in GTFS data
@@ -130,7 +79,7 @@ impl Add<Duration> for Time {
     /// if the duration is negative enough to roll over to yesterday
     fn add(self, rhs: Duration) -> Self::Output {
         let time: i64 = self.seconds_since_midnight.into();
-        let duration: i64 = rhs.seconds.into();
+        let duration: i64 = rhs.num_seconds();
         Self::Output {
             seconds_since_midnight: (time + duration)
                 .try_into()
@@ -145,9 +94,15 @@ impl Sub<Time> for Time {
     /// Subtract two `Time`s, returning the `Duration` between. This assumes
     /// both `Time`s are in the same calendar day.
     fn sub(self, rhs: Self) -> Self::Output {
-        let lhs: i32 = self.seconds_since_midnight.try_into().unwrap();
-        let rhs: i32 = rhs.seconds_since_midnight.try_into().unwrap();
+        let lhs: i64 = self.seconds_since_midnight.try_into().unwrap();
+        let rhs: i64 = rhs.seconds_since_midnight.try_into().unwrap();
         Duration::seconds(lhs - rhs)
+    }
+}
+
+impl From<Time> for NaiveTime {
+    fn from(time: Time) -> Self {
+        Self::from_num_seconds_from_midnight(time.seconds_since_midnight, 0)
     }
 }
 

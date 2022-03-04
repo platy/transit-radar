@@ -1,10 +1,10 @@
-use serde::{Deserialize, Serialize};
+use chrono::Duration;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;
 use std::fmt;
 use std::num::{NonZeroU32, NonZeroU64};
 
-use crate::time::{Duration, Period, Time};
+use crate::time::{Period, Time};
 
 pub type AgencyId = u16;
 pub type RouteId = u32;
@@ -18,7 +18,7 @@ pub type ServiceId = u16;
 /// Refers to a specific stop of a specific trip (an arrival / departure)
 pub type TripStopRef = (TripId, u8); // usize refers to the index of the stop in the trip, should probably instead use stop sequence
 
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Clone, Copy)]
 pub enum Day {
     Monday,
     Tuesday,
@@ -43,7 +43,7 @@ impl std::fmt::Display for Day {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Clone, Copy)]
 pub enum RouteType {
     Rail,                  // 2
     Bus,                   // 3
@@ -68,7 +68,6 @@ pub enum RouteType {
 /// Departures are stored on the stops and reference the stops within the trips that are present, they are not synced but rather are cross references added when the trips are added, they are present when their trip is present
 ///
 /// This could still be a lot of data, a friedrichstrasse search for 30 mins with all modes could include 213 trips and more than 1000 stops. But it still doesn't sound like more than a meg. And prioritisng the sync so that something useful shows fast could be very interesting
-#[derive(Serialize, Deserialize)]
 pub struct GTFSData {
     // sync whole trip as unit
     pub(crate) trips: HashMap<TripId, Trip>,
@@ -171,7 +170,7 @@ impl<'r> GTFSData {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone)]
 pub enum StopStereoType {
     // station is actually optional for stop or platform, but i think it is always present in vbbland
     StopOrPlatform {
@@ -187,7 +186,6 @@ pub enum StopStereoType {
     // BoardingArea { stopOrPlatform: StopId },
 }
 
-#[derive(Serialize, Deserialize, Clone)]
 pub struct Stop {
     pub stop_id: StopId,
     pub stop_name: String,
@@ -314,7 +312,7 @@ impl Stop {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Route {
     /// Identifies a route.
     pub route_id: RouteId,
@@ -343,7 +341,7 @@ impl Ord for Route {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone)]
 pub struct Trip {
     /// Identifies a route.
     pub route: Route,
@@ -354,7 +352,7 @@ pub struct Trip {
     pub stop_times: Vec<StopTime>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone)]
 pub struct StopTime {
     /// Arrival time at a specific stop for a specific trip on a route. If there are not separate times for arrival and departure at a stop, enter the same value for arrival_time and departure_time. For times occurring after midnight on the service day, enter the time as a value greater than 24:00:00 in HH:MM:SS local time for the day on which the trip schedule begins.
     /// Scheduled stops where the vehicle strictly adheres to the specified arrival and departure times are timepoints. If this stop is not a timepoint, it is recommended to provide an estimated or interpolated time. If this is not available, arrival_time can be left empty. Further, indicate that interpolated times are provided with timepoint=0. If interpolated times are indicated with timepoint=0, then time points must be indicated with timepoint=1. Provide arrival times for all stops that are time points. An arrival time must be specified for the first and the last stop in a trip.
@@ -366,7 +364,7 @@ pub struct StopTime {
     pub stop_id: StopId, // ~27bits needed
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone)]
 pub struct Transfer {
     /// Identifies a stop or station where a connection between routes ends. If this field refers to a station, the transfer rule applies to all child stops.
     pub to_stop_id: StopId,

@@ -204,11 +204,11 @@ To redesign the frontend for lower bandwidth, smooth animation, lower cpu usage,
 9. Display model which can be updated interactively and animate transitions without searching again. This model should be fast to draw and run on the render thread (60fps hopefully)
 
 Changes to do for this:
-[] Make the search model and algorithm able to be used on the frontend as well - not depending on GTFS stuff, serializable, extracted to it's own crate etc.
-[] Use search algorithm on backend to produce filtered search data to be used by the same algorithm.
-[] Use search algorithm on frontend
-[] Build a 2 stage renderer 1 converts the search result into a sort of DOM and accepts display parameters (and can be switched) and another that renders the DOM to canvas, and implements transitions
-[] Diff filtered data on backend and sync to frontend
+[x] Make the search model and algorithm able to be used on the frontend as well - not depending on GTFS stuff, serializable, extracted to it's own crate etc.
+[x] Use search algorithm on backend to produce filtered search data to be used by the same algorithm.
+[x] Use search algorithm on frontend
+[x] Build a 2 stage renderer 1 converts the search result into a sort of DOM and accepts display parameters (and can be switched) and another that renders the DOM to canvas, and implements transitions
+[x] Diff filtered data on backend and sync to frontend
 
 
 ## Memory usage reduction (which may speed up startup too)
@@ -248,3 +248,44 @@ I saved 50MB first by halving the size of the `TripStopRef`.
 It would be nice to save some of the memory fragmentation by storing all the stoptimes contiguously in memory and then splitting them up between the trips. But these types also need to handle being serialized to the client, so it is a little tricky.
 
 Going beyond these savings would most likely need to involve not loading everything into memory.
+
+## Return to SVG frontend
+
+At a high level, I want the backend returning SVG, so the document would have media type image/svg+xml, I can probably then use a combination of SMIL animation and JS (with additional SMIL animations loaded over websockets or webtransport) to achieve the live animation.
+
+SVG will allow:
+
+* Saving the image
+* Vector graphics
+* Dark/Light theme
+* Using browser optimisation for animation should improve the performance
+
+1. [x] Generate a static departure graph SVG on the backend
+ - [ ] Probably use CSS for all the styling
+ - [ ] better code organisation
+ - [ ] time dimension in geometry
+ - [ ] hidden paths
+ - [ ] fix the incorrect bezier curve
+ - [ ] Replace station suggestion somehow, maybe html page which embeds the svg
+ - [ ] Parsing errors
+ - [ ] Better SVG drawing macros
+2. Enhance
+ - [ ] Style the image (including dark mode and mobile)
+ - [ ] Click on other stations to change origin
+ - [ ] Clickable filters
+ - [ ] Choose a time or now
+ - [ ] Choose duration
+ - [ ] Choose size or scale
+ - [ ] Make sure it saves nice
+2. Expand
+ - [ ] Coordinate start points
+ - [ ] Station Arrival graph (Cause & effect)
+ - [ ] On-train graph
+ - [ ] On-train arrival graph
+ - [ ] Good navigation
+ - [ ] Add some other cities
+ - [ ] render iso bars as times instead of durations
+3. Live view
+ - [ ] Animate the passage of time on all views when looking at now
+ - [ ] Animate switching between views and start points
+ - [ ] Live departure updates

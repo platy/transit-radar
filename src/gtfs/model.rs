@@ -1,7 +1,8 @@
 //! Models of data contained in static GTFS files, as defined at [https://developers.google.com/transit/gtfs/reference]
 //! Documentation on this module uses excepts from that reference.
 
-pub use radar_search::time::{Duration, Period, Time};
+use chrono::Duration;
+pub use radar_search::time::{Period, Time};
 use serde::{self, Deserialize};
 use std::cmp::Ord;
 pub mod id;

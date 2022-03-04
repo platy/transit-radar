@@ -71,8 +71,7 @@ impl<T: std::hash::Hash + Eq + Copy> Suggester<T> {
             };
             results = Some(
                 self.prefix_iter(part)
-                    .map(|(_, s)| s)
-                    .flatten()
+                    .flat_map(|(_, s)| s)
                     .copied()
                     .filter(filter)
                     .collect(),
