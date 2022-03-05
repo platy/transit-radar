@@ -145,9 +145,7 @@ impl Geometry for FlattenedTimeCone {
 }
 
 pub struct Path<G: Geometry> {
-    pub line_width: f64,
-    pub line_dash: Vec<f64>,
-    pub stroke_style: Option<String>,
+    pub class: String,
     pub ops: Vec<PathTo<G>>,
 }
 
@@ -160,23 +158,13 @@ pub enum PathTo<G: Geometry> {
 impl<G: Geometry> Path<G> {
     pub fn begin_path() -> Self {
         Self {
-            line_width: 1.,
-            line_dash: vec![],
-            stroke_style: None,
+            class: String::new(),
             ops: vec![],
         }
     }
 
-    pub fn set_line_width(&mut self, line_width: f64) {
-        self.line_width = line_width;
-    }
-
-    pub fn set_line_dash(&mut self, line_dash: &[f64]) {
-        self.line_dash = line_dash.into();
-    }
-
-    pub fn set_stroke_style(&mut self, stroke_style: String) {
-        self.stroke_style = Some(stroke_style);
+    pub fn set_class(&mut self, class: String) {
+        self.class = class;
     }
 
     pub fn move_to(&mut self, coords: G::Coords) {
@@ -246,10 +234,7 @@ impl Path<FlattenedTimeCone> {
     ) -> io::Result<()> {
         write_xml!(w,
             <path
-                stroke-width={self.line_width}
-                stroke={self.stroke_style.as_deref().unwrap_or("black")}
-                fill={"none"}
-                stroke-dasharray=[&self.line_dash,]
+                class={self.class}
                 d={DisplayInGeometry { display: &self.ops, geometry }} />)
     }
 }

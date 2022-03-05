@@ -42,6 +42,10 @@ macro_rules! xml_format_args {
     (@outer({$text:expr} $($attrs:tt)*) -> $pattern:expr, ($($args:expr),*)) => {
         $crate::xml_format_args!(@outer($($attrs)*) -> concat!($pattern, "{}"), ($($args,)* $text))
     };
+    // matches a text literal
+    (@outer($text:literal $($attrs:tt)*) -> $pattern:expr, ($($args:expr),*)) => {
+        $crate::xml_format_args!(@outer($($attrs)*) -> concat!($pattern, $text), ($($args),*))
+    };
     // matches the end of the xml
     (@outer() -> $pattern:expr, ($($args:expr),*)) => {
         format_args!($pattern, $($args),*)
@@ -148,6 +152,11 @@ fn comma_separated_attribute() {
 #[test]
 fn text_containing() {
     assert_eq!(format_xml!(<tag>{"text"}</tag>), r#"<tag>text</tag>"#);
+}
+
+#[test]
+fn text_literal_containing() {
+    assert_eq!(format_xml!(<tag>"text"</tag>), r#"<tag>text</tag>"#);
 }
 
 #[test]

@@ -29,7 +29,6 @@ struct RadarTrip {
     #[allow(dead_code)]
     route_name: String,
     route_type: RouteType,
-    route_color: String,
     connection: TripSegment,
     segments: Vec<TripSegment>,
 }
@@ -292,7 +291,7 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
                 trip_id,
                 route_name,
                 route_type,
-                route_color,
+                route_color: _,
             } => {
                 trips.insert(
                     trip_id,
@@ -300,7 +299,6 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
                         trip_id,
                         route_name: route_name.to_string(),
                         route_type,
-                        route_color: route_color.to_owned(),
                         connection: TripSegment {
                             from: from_stop.location,
                             to: to_stop.location,
@@ -317,15 +315,11 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
     for RadarTrip {
         trip_id,
         connection,
-        route_name: _,
+        route_name,
         route_type,
-        route_color,
         segments,
     } in trips.values()
     {
-        use RouteType::{
-            Rail, RailwayService, SuburbanRailway, UrbanRailway, WaterTransportService,
-        };
         let time_to_datetime = |time: Time| departure_date.and_time(time.into()).unwrap();
         {
             let TripSegment {
@@ -335,8 +329,7 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
                 arrival_time,
             } = connection;
             let mut path = Path::begin_path();
-            path.set_line_dash(&[2., 4.]);
-            path.set_stroke_style(route_color.clone());
+            path.set_class(format!("Connection {}", route_name));
 
             let mut to = to;
             if *to == geometry.geographic_origin {
@@ -357,22 +350,7 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
         }
 
         let mut path = Path::begin_path();
-        if [
-            Rail,
-            RailwayService,
-            SuburbanRailway,
-            UrbanRailway,
-            WaterTransportService,
-        ]
-        .contains(route_type)
-        {
-            path.set_line_width(2.);
-        } else {
-            // Bus, BusService, TramService,
-            path.set_line_width(1.);
-        }
-        path.set_line_dash(&[]);
-        path.set_stroke_style(route_color.clone());
+        path.set_class(format!("{:?} {}", route_type, route_name));
         match segments.len().cmp(&1) {
             std::cmp::Ordering::Greater => {
                 let mut next_control_point = {
@@ -479,7 +457,7 @@ impl Geo {
         let (origin_x, origin_y) = (0., 0.);
 
         write_xml!(w,
-            <g stroke-dasharray="10,10" stroke="lightgray" stroke-width="1" fill="none">
+            <g class="grid">
                 <circle cx={origin_x} cy={origin_y} r={500. / 3.} />
                 <circle cx={origin_x} cy={origin_y} r={500. * 2. / 3.} />
                 <circle cx={origin_x} cy={origin_y} r={500} />
@@ -505,6 +483,7 @@ impl Radar {
     <desc>Departure tree.</desc>
          "#
         )?;
+        write_xml!(w, <style>{include_str!("Radar.css")}</style>)?;
 
         geometry.write_svg_fragment_to(w)?;
         for trip in trip_drawables.values() {
@@ -556,9 +535,8 @@ impl Station<FlattenedTimeCone> {
             return Ok(());
         }
         let (cx, cy) = geometry.coords(bearing, magnitude);
-        write_xml!(w, <circle cx={*cx} cy={*cy} r={STOP_RADIUS} />)?;
-        write_xml!(
-            w,
+        write_xml!(w,
+            <circle cx={*cx} cy={*cy} r={STOP_RADIUS} />
             <text x={*cx + STOP_RADIUS + 6.} y={*cy + 4.}>{self.name}</text>
         )?;
         Ok(())

@@ -5,7 +5,6 @@ use std::ops::{Add, Sub};
 use chrono::{Duration, NaiveTime};
 use serde::{de, ser};
 
-
 /// Implementation of a local time within a day, no attempt to handle leaps, based on time-rs with the following focus:
 /// * deserialisation for the formats contained in GTFS data
 /// * time can go over 24 hours to enable the continuation of the day's schedule
