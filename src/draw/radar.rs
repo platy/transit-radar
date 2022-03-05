@@ -1,5 +1,5 @@
-use chrono::Duration;
 use chrono::prelude::*;
+use chrono::Duration;
 use chrono_tz::Tz;
 use radar_search::journey_graph;
 use radar_search::search_data::*;
@@ -9,7 +9,7 @@ use std::f64::consts::PI;
 use std::io;
 use std::num::NonZeroU32;
 
-use crate::write_xml_element;
+use crate::write_xml;
 
 use super::geometry::*;
 
@@ -224,11 +224,7 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
     let mut station_animatables: HashMap<StopId, Station<FlattenedTimeCone>> = HashMap::new();
     let mut trip_drawables: HashMap<TripId, Path<FlattenedTimeCone>> = HashMap::new();
     let geometry = Geo {
-        time_cone_geometry: FlattenedTimeCone::new(
-            departure_time,
-            max_duration,
-            Pixels::new(500.),
-        ),
+        time_cone_geometry: FlattenedTimeCone::new(departure_time, max_duration, Pixels::new(500.)),
         geographic_origin: origin.location,
     };
 
@@ -478,20 +474,16 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
     }
 }
 
-
-
 impl Geo {
     fn write_svg_fragment_to(&self, w: &mut dyn io::Write) -> io::Result<()> {
         let (origin_x, origin_y) = (0., 0.);
 
-        write!(
-            w,
-            r#"<g stroke-dasharray="10,10" stroke="lightgray" stroke-width="1" fill="none">"#
-        )?;
-        write_xml_element!(w, <circle cx={origin_x} cy={origin_y} r={500. / 3.} />)?;
-        write_xml_element!(w, <circle cx={origin_x} cy={origin_y} r={500. * 2. / 3.} />)?;
-        write_xml_element!(w, <circle cx={origin_x} cy={origin_y} r={500} />)?;
-        write!(w, r#"</g>"#)?;
+        write_xml!(w,
+            <g stroke-dasharray="10,10" stroke="lightgray" stroke-width="1" fill="none">
+                <circle cx={origin_x} cy={origin_y} r={500. / 3.} />
+                <circle cx={origin_x} cy={origin_y} r={500. * 2. / 3.} />
+                <circle cx={origin_x} cy={origin_y} r={500} />
+            </g>)?;
 
         Ok(())
     }
@@ -564,13 +556,10 @@ impl Station<FlattenedTimeCone> {
             return Ok(());
         }
         let (cx, cy) = geometry.coords(bearing, magnitude);
-        write_xml_element!(w, <circle cx={*cx} cy={*cy} r={STOP_RADIUS} />)?;
-        writeln!(
+        write_xml!(w, <circle cx={*cx} cy={*cy} r={STOP_RADIUS} />)?;
+        write_xml!(
             w,
-            r#"<text x="{:.1}" y="{:.1}">{}</text>"#,
-            *cx + STOP_RADIUS + 6.,
-            *cy + 4.,
-            self.name
+            <text x={*cx + STOP_RADIUS + 6.} y={*cy + 4.}>{self.name}</text>
         )?;
         Ok(())
     }

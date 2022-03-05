@@ -3,6 +3,8 @@ use std::{fmt, io, ops};
 use chrono::{DateTime, Duration};
 use chrono_tz::Tz;
 
+use crate::write_xml;
+
 // Not sure if being generic over geometries makes sense anymore
 pub trait Geometry {
     type Coords;
@@ -83,11 +85,7 @@ impl FlattenedTimeCone {
         }
     }
 
-    pub fn coords(
-        &self,
-        bearing: Bearing,
-        magnitude: DateTime<Tz>,
-    ) -> (Pixels, Pixels) {
+    pub fn coords(&self, bearing: Bearing, magnitude: DateTime<Tz>) -> (Pixels, Pixels) {
         let radius = magnitude - self.origin;
         if radius < Duration::zero() {
             (Pixels(0.), Pixels(0.))
@@ -194,60 +192,64 @@ impl<G: Geometry> Path<G> {
     }
 }
 
-impl Path<FlattenedTimeCone> {
-    pub(crate) fn write_svg_fragment_to(
-        &self,
-        w: &mut dyn io::Write,
-        geometry: &FlattenedTimeCone,
-    ) -> io::Result<()> {
-        write!(
-            w,
-            r#"<path stroke-width="{}" stroke="{}" fill="none" stroke-dasharray=""#,
-            self.line_width,
-            self.stroke_style.as_deref().unwrap_or("black")
-        )?;
-        {
-            let mut line_dashes = self.line_dash.iter();
-            if let Some(first) = line_dashes.next() {
-                write!(w, "{:.1}", first)?;
-                for dash in line_dashes {
-                    write!(w, ",{:.1}", dash)?;
-                }
-            }
-        }
-        write!(w, r#"" d=""#)?;
+struct DisplayInGeometry<T, G> {
+    display: T,
+    geometry: G,
+}
 
-        for op in &self.ops {
-            match *op {
+impl<T, I> std::fmt::Display for DisplayInGeometry<T, &FlattenedTimeCone>
+where
+    T: for<'a> IntoIterator<Item = I> + Copy,
+    I: std::borrow::Borrow<PathTo<FlattenedTimeCone>>,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for item in self.display {
+            match *item.borrow() {
                 PathTo::Move((bearing, magnitude)) => {
-                    if magnitude > geometry.max() {
-                        break;
+                    if magnitude > self.geometry.max() {
+                        return Ok(());
                     }
-                    let (x, y) = geometry.coords(bearing, magnitude);
-                    write!(w, "M {} {} ", x, y)?;
+                    let (x, y) = self.geometry.coords(bearing, magnitude);
+                    write!(f, "M {} {} ", x, y)?;
                 }
                 PathTo::Line((bearing, magnitude)) => {
-                    if magnitude > geometry.max() {
-                        break;
+                    if magnitude > self.geometry.max() {
+                        return Ok(());
                     }
-                    let (x, y) = geometry.coords(bearing, magnitude);
-                    write!(w, "{} {} ", x, y)?;
+                    let (x, y) = self.geometry.coords(bearing, magnitude);
+                    write!(f, "{} {} ", x, y)?;
                 }
                 PathTo::BezierCurve(
                     (cp1_bearing, cp1_magnitude),
                     (cp2_bearing, cp2_magnitude),
                     (bearing, magnitude),
                 ) => {
-                    if magnitude > geometry.max() {
-                        break;
+                    if magnitude > self.geometry.max() {
+                        return Ok(());
                     }
-                    let (cp1_x, cp1_y) = geometry.coords(cp1_bearing, cp1_magnitude);
-                    let (cp2_x, cp2_y) = geometry.coords(cp2_bearing, cp2_magnitude);
-                    let (x, y) = geometry.coords(bearing, magnitude);
-                    write!(w, "C {} {} {} {} {} {} ", cp1_x, cp1_y, cp2_x, cp2_y, x, y)?;
+                    let (cp1_x, cp1_y) = self.geometry.coords(cp1_bearing, cp1_magnitude);
+                    let (cp2_x, cp2_y) = self.geometry.coords(cp2_bearing, cp2_magnitude);
+                    let (x, y) = self.geometry.coords(bearing, magnitude);
+                    write!(f, "C {} {} {} {} {} {} ", cp1_x, cp1_y, cp2_x, cp2_y, x, y)?;
                 }
             }
         }
-        writeln!(w, r#"" />"#)
+        Ok(())
+    }
+}
+
+impl Path<FlattenedTimeCone> {
+    pub(crate) fn write_svg_fragment_to(
+        &self,
+        w: &mut dyn io::Write,
+        geometry: &FlattenedTimeCone,
+    ) -> io::Result<()> {
+        write_xml!(w,
+            <path
+                stroke-width={self.line_width}
+                stroke={self.stroke_style.as_deref().unwrap_or("black")}
+                fill={"none"}
+                stroke-dasharray=[&self.line_dash,]
+                d={DisplayInGeometry { display: &self.ops, geometry }} />)
     }
 }
