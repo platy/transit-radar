@@ -267,7 +267,7 @@ SVG will allow:
  - [x] fix the incorrect bezier curve
  - [ ] whenever there is a gap in the route, there needs to be an extra connection
  - [ ] Replace station suggestion somehow, maybe html page which embeds the svg
- - [ ] Parsing errors
+ - [x] Parsing errors
 2. Enhance
  - [ ] Style the image (including dark mode and mobile)
  - [ ] Click on other stations to change origin
@@ -278,6 +278,7 @@ SVG will allow:
  - [ ] Choose size or scale
  - [ ] Make sure it saves nice
 2. Expand
+ - [ ] Use calendar and calendar dates
  - [ ] Coordinate start points
  - [ ] Station Arrival graph (Cause & effect)
  - [ ] On-train graph

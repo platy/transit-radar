@@ -2,10 +2,12 @@ use crate::suggester::Suggester;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
+use std::num::IntErrorKind;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
 use crate::gtfs;
+use csv::DeserializeErrorKind;
 use radar_search::search_data::*;
 
 /// Refers to a specific stop of a specific trip (an arrival / departure)
@@ -80,6 +82,7 @@ pub fn load_data<S: std::hash::BuildHasher>(
 
     let mut builder = GTFSData::builder(services_by_day.clone(), timetable_start_date);
 
+    let mut count_stop_id_invalid_digit = 0;
     let mut rdr = source.open_csv("stops.txt")?;
     for result in rdr.deserialize() {
         match result {
@@ -110,11 +113,26 @@ pub fn load_data<S: std::hash::BuildHasher>(
             Err(err) =>
             // /// One of VBB's StopIds has 'D_' in front of it, I don't know why. That stop's parent is the same number without the 'D_', it is on a couple of trips but - we just show a warning and skip it
             {
+                if let csv::ErrorKind::Deserialize { pos: _, err } = err.kind() {
+                    if err.field() == Some(0) {
+                        if let DeserializeErrorKind::ParseInt(err) = err.kind() {
+                            if IntErrorKind::InvalidDigit == *err.kind() {
+                                count_stop_id_invalid_digit += 1;
+                                continue;
+                            }
+                        }
+                    }
+                }
                 eprintln!("Error parsing stop - skipped : {}", err)
             }
         }
     }
+    eprintln!(
+        "{} stops failed to parse due to an invalid digit in the stop id, this happens",
+        count_stop_id_invalid_digit
+    );
 
+    let mut count_stop_id_invalid_digit = 0;
     for result in source
         .open_csv("transfers.txt")?
         .deserialize::<gtfs::Transfer>()
@@ -125,9 +143,25 @@ pub fn load_data<S: std::hash::BuildHasher>(
                 transfer.to_stop_id,
                 transfer.min_transfer_time,
             ),
-            Err(err) => eprintln!("Error parsing transfer : {}", err),
+            Err(err) => {
+                if let csv::ErrorKind::Deserialize { pos: _, err } = err.kind() {
+                    if err.field() == Some(0) {
+                        if let DeserializeErrorKind::ParseInt(err) = err.kind() {
+                            if IntErrorKind::InvalidDigit == *err.kind() {
+                                count_stop_id_invalid_digit += 1;
+                                continue;
+                            }
+                        }
+                    }
+                }
+                eprintln!("Error parsing transfer : {}", err)
+            }
         }
     }
+    eprintln!(
+        "{} transfers failed to parse due to an invalid digit in the stop id, this happens",
+        count_stop_id_invalid_digit
+    );
 
     use std::borrow::Cow;
     let mut rdr = source.open_csv("routes.txt")?;
@@ -156,6 +190,7 @@ pub fn load_data<S: std::hash::BuildHasher>(
         added_trips.insert(trip.trip_id);
     }
 
+    let mut count_stop_id_invalid_digit = 0;
     let mut rdr = source.open_csv("stop_times.txt")?;
     for result in rdr.deserialize::<gtfs::StopTime>() {
         match result {
@@ -171,9 +206,25 @@ pub fn load_data<S: std::hash::BuildHasher>(
                     eprintln!("Stop time parsed for ignored trip {}", stop_time.trip_id)
                 }
             }
-            Err(err) => eprintln!("Error parsing stop time : {}", err),
+            Err(err) => {
+                if let csv::ErrorKind::Deserialize { pos: _, err } = err.kind() {
+                    if err.field() == Some(3) {
+                        if let DeserializeErrorKind::ParseInt(err) = err.kind() {
+                            if IntErrorKind::InvalidDigit == *err.kind() {
+                                count_stop_id_invalid_digit += 1;
+                                continue;
+                            }
+                        }
+                    }
+                }
+                eprintln!("Error parsing stop time : {}", err)
+            }
         }
     }
+    eprintln!(
+        "{} stop times failed to parse due to an invalid digit in the stop id, this happens",
+        count_stop_id_invalid_digit
+    );
 
     Ok(builder.build())
 }
