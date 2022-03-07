@@ -263,12 +263,10 @@ SVG will allow:
 1. [x] Generate a static departure graph SVG on the backend
  - [x] Better SVG drawing macros
  - [x] Probably use CSS for all the styling
- - [ ] sample allocations per request
  - [ ] hidden paths
  - [ ] fix the incorrect bezier curve
  - [ ] Replace station suggestion somehow, maybe html page which embeds the svg
  - [ ] Parsing errors
- - [ ] better code organisation
  - [ ] Find the occasionally missing line clockwise on the ring, I guess it is a just not in the css
 2. Enhance
  - [ ] Style the image (including dark mode and mobile)
@@ -276,9 +274,9 @@ SVG will allow:
  - [ ] Clickable filters
  - [ ] Choose a time or now
  - [ ] Choose duration
+ - [ ] better code organisation
  - [ ] Choose size or scale
  - [ ] Make sure it saves nice
- - [ ] Mark last transfer between trains as well as first
 2. Expand
  - [ ] Coordinate start points
  - [ ] Station Arrival graph (Cause & effect)
@@ -288,7 +286,9 @@ SVG will allow:
  - [ ] Add some other cities
  - [ ] render iso bars as times instead of durations
  - [ ] departures from 2 different places on one chart, with an intersecting line showing where the distance is the same. It would only show the stations that both can reach within 30 minutes, the positioning choose between 2 points which has the correct isochronic distance from both origins
+ - [ ] Different options for displaying equivalent routes (which quickest at the same destination on the same trip, but with different intermediaries), the current algorithm shows the earliest you could get onto each trip, you might rather see the latest, or both
 3. Live view
  - [ ] Animate the passage of time on all views when looking at now
  - [ ] Animate switching between views and start points
  - [ ] Live departure updates
+ - [ ] sample allocations per request

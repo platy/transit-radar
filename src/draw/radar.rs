@@ -194,7 +194,7 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
     let (day, start_time) = day_time(departure_time);
     let max_duration = Duration::minutes(30);
     let end_time = start_time + max_duration;
-    let max_extra_search = Duration::minutes(10);
+    let max_extra_search = Duration::minutes(0);
     let mut plotter = journey_graph::Plotter::new(
         day,
         Period::between(start_time, end_time + max_extra_search),
@@ -439,9 +439,10 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
                 path.line_to((to_bearing, time_to_datetime(segment.arrival_time)));
             }
             std::cmp::Ordering::Less => {
-                // path is empty - ignore
+                panic!("path is empty - ignore");
             }
         }
+        assert!(!path.ops.is_empty());
         trip_drawables.insert(*trip_id, path);
     }
 
@@ -471,8 +472,8 @@ impl Radar {
     pub fn write_svg_to(&self, w: &mut dyn io::Write) -> io::Result<()> {
         let Self {
             geometry,
-            stations: station_animatables,
-            trips: trip_drawables,
+            stations,
+            trips,
         } = self;
 
         writeln!(
@@ -486,10 +487,10 @@ impl Radar {
         write_xml!(w, <style>{include_str!("Radar.css")}</style>)?;
 
         geometry.write_svg_fragment_to(w)?;
-        for trip in trip_drawables.values() {
+        for trip in trips.values() {
             trip.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;
         }
-        for station in station_animatables.values() {
+        for station in stations.values() {
             station.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;
         }
         writeln!(w, "</svg>")

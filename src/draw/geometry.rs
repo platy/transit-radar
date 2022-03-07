@@ -195,14 +195,14 @@ where
             match *item.borrow() {
                 PathTo::Move((bearing, magnitude)) => {
                     if magnitude > self.geometry.max() {
-                        return Ok(());
+                        panic!("Out of bounds : {} > {}", magnitude, self.geometry.max());
                     }
                     let (x, y) = self.geometry.coords(bearing, magnitude);
                     write!(f, "M {} {} ", x, y)?;
                 }
                 PathTo::Line((bearing, magnitude)) => {
                     if magnitude > self.geometry.max() {
-                        return Ok(());
+                        panic!("Out of bounds : {} > {}", magnitude, self.geometry.max());
                     }
                     let (x, y) = self.geometry.coords(bearing, magnitude);
                     write!(f, "{} {} ", x, y)?;
@@ -213,7 +213,7 @@ where
                     (bearing, magnitude),
                 ) => {
                     if magnitude > self.geometry.max() {
-                        return Ok(());
+                        panic!("Out of bounds : {} > {}", magnitude, self.geometry.max());
                     }
                     let (cp1_x, cp1_y) = self.geometry.coords(cp1_bearing, cp1_magnitude);
                     let (cp2_x, cp2_y) = self.geometry.coords(cp2_bearing, cp2_magnitude);
@@ -232,6 +232,7 @@ impl Path<FlattenedTimeCone> {
         w: &mut dyn io::Write,
         geometry: &FlattenedTimeCone,
     ) -> io::Result<()> {
+        assert!(!self.ops.is_empty());
         write_xml!(w,
             <path
                 class={self.class}
