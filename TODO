@@ -263,11 +263,11 @@ SVG will allow:
 1. [x] Generate a static departure graph SVG on the backend
  - [x] Better SVG drawing macros
  - [x] Probably use CSS for all the styling
- - [ ] hidden paths
- - [ ] fix the incorrect bezier curve
+ - [x] hidden paths
+ - [x] fix the incorrect bezier curve
+ - [ ] whenever there is a gap in the route, there needs to be an extra connection
  - [ ] Replace station suggestion somehow, maybe html page which embeds the svg
  - [ ] Parsing errors
- - [ ] Find the occasionally missing line clockwise on the ring, I guess it is a just not in the css
 2. Enhance
  - [ ] Style the image (including dark mode and mobile)
  - [ ] Click on other stations to change origin

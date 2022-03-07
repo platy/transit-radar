@@ -81,9 +81,17 @@ impl Geo {
 
         let start_mag = start_time.seconds_since_midnight() as f64 - origin;
         let end_mag = end_time.seconds_since_midnight() as f64 - origin;
+        assert!(
+            start_mag > 0.,
+            "starting magnitude is less than zero {} : {:?} - {:?}",
+            start_mag,
+            start_time,
+            self.time_cone_geometry.origin().time()
+        );
 
         if let Some(start_bearing) = start_bearing {
-            let bearing_difference = start_bearing.as_radians() - end_bearing.as_radians();
+            let bearing_difference =
+                (start_bearing.as_radians() - end_bearing.as_radians() + PI) % (2. * PI) - PI;
             let initial_heads_closer_to_origin =
                 if bearing_difference >= PI / 2. || bearing_difference <= -PI / 2. {
                     // at PI or beyond PI/2 the tangent never crosses
@@ -96,18 +104,27 @@ impl Geo {
             // if a straight line between would travel closer to the origin than the start
             if initial_heads_closer_to_origin {
                 // add a control point to prevent that
-                let cp_bearing = start_bearing.as_radians() - bearing_difference / 3.;
-                return (
-                    Bearing::radians(cp_bearing),
+                let cp_bearing_difference = bearing_difference / 3.;
+                let cp_bearing = start_bearing.as_radians() - cp_bearing_difference;
+                let mag = self.time_cone_geometry.origin()
+                    + Duration::seconds((start_mag / cp_bearing_difference.cos()) as i64);
+                assert!(
+                    mag > self.time_cone_geometry.origin(),
+                    "{} {}",
+                    mag,
                     self.time_cone_geometry.origin()
-                        + Duration::seconds((start_mag / (bearing_difference / 3.).cos()) as i64),
                 );
+                return (Bearing::radians(cp_bearing), mag);
             }
         }
-        (
-            start_bearing.unwrap_or(end_bearing),
-            self.time_cone_geometry.origin() + Duration::seconds(start_mag as i64),
-        )
+        let mag = self.time_cone_geometry.origin() + Duration::seconds(start_mag as i64);
+        assert!(
+            mag > self.time_cone_geometry.origin(),
+            "{} {}",
+            mag,
+            self.time_cone_geometry.origin()
+        );
+        (start_bearing.unwrap_or(end_bearing), mag)
     }
 
     fn control_points(
@@ -366,6 +383,7 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
                         (segment.from, segment.departure_time),
                         (segment.to, segment.arrival_time),
                     );
+                    assert!(cp1.1 > from_mag, "Control point for curve cannot have a lower magnitude than the origin {} must be > {}", cp1.1, from_mag);
                     let (post_location, post_time) = if segments[1].from == segment.to {
                         (segments[1].to, segments[1].arrival_time)
                     } else {
