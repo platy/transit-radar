@@ -265,9 +265,13 @@ SVG will allow:
  - [x] Probably use CSS for all the styling
  - [x] hidden paths
  - [x] fix the incorrect bezier curve
- - [ ] whenever there is a gap in the route, there needs to be an extra connection
+ - [x] no gaps in routes
+ - [ ] transfer on later trip join doesn't connect properly
+ - [ ] Reduce prominence of sibling stations (ie. so that Alexanderplatz isn't a total mess) perhaps just show a small dot and no name, or perhaps no dot
  - [ ] Replace station suggestion somehow, maybe html page which embeds the svg
  - [x] Parsing errors
+ - [ ] Possibly lots of unseen paths to remove, ie. I think saw that a Connection from gesundbrunnen to gesundbrunnen was being added as a slow trip
+ - [ ] Reassess panics and asserts
 2. Enhance
  - [ ] Style the image (including dark mode and mobile)
  - [ ] Click on other stations to change origin
@@ -277,6 +281,8 @@ SVG will allow:
  - [ ] better code organisation
  - [ ] Choose size or scale
  - [ ] Make sure it saves nice
+ - [ ] If 2 different lines arrive at a stop at the same time (eg. Mehringdamm) maybe we should show both
+ - [ ] Scoring for how easy the connection to an added trip or station was, this can be used to decide whether to make a new connection to a trip at a later point. Later this can be used for prefereneces about less transfers / less walking / les waiting / speed
 2. Expand
  - [ ] Use calendar and calendar dates
  - [ ] Coordinate start points
@@ -287,7 +293,7 @@ SVG will allow:
  - [ ] Add some other cities
  - [ ] render iso bars as times instead of durations
  - [ ] departures from 2 different places on one chart, with an intersecting line showing where the distance is the same. It would only show the stations that both can reach within 30 minutes, the positioning choose between 2 points which has the correct isochronic distance from both origins
- - [ ] Different options for displaying equivalent routes (which quickest at the same destination on the same trip, but with different intermediaries), the current algorithm shows the earliest you could get onto each trip, you might rather see the latest, or both
+ - [ ] Different options for deciding the best route (less transfers / less walking / les waiting / speed)
 3. Live view
  - [ ] Animate the passage of time on all views when looking at now
  - [ ] Animate switching between views and start points

@@ -7,7 +7,6 @@ use radar_search::time::*;
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::io;
-use std::num::NonZeroU32;
 
 use crate::write_xml;
 
@@ -15,7 +14,7 @@ use super::geometry::*;
 
 pub struct Radar {
     geometry: Geo,
-    trips: HashMap<TripId, Path<FlattenedTimeCone>>,
+    trips: HashMap<TripId, RadarTrip>,
     stations: HashMap<StopId, Station<FlattenedTimeCone>>,
 }
 
@@ -25,8 +24,7 @@ struct Station<G: Geometry> {
 }
 
 struct RadarTrip {
-    trip_id: TripId,
-    #[allow(dead_code)]
+    _trip_id: TripId,
     route_name: String,
     route_type: RouteType,
     connection: TripSegment,
@@ -207,7 +205,6 @@ pub fn day_time<Tz: TimeZone>(date_time: DateTime<Tz>) -> (Day, Time) {
 
 pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
     let departure_time = Utc::now().with_timezone(&chrono_tz::Europe::Berlin);
-    let departure_date = departure_time.date();
     let (day, start_time) = day_time(departure_time);
     let max_duration = Duration::minutes(30);
     let end_time = start_time + max_duration;
@@ -237,8 +234,7 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
     let mut expires_time = end_time;
     let mut trips: HashMap<TripId, RadarTrip> = HashMap::new();
 
-    let mut station_animatables: HashMap<StopId, Station<FlattenedTimeCone>> = HashMap::new();
-    let mut trip_drawables: HashMap<TripId, Path<FlattenedTimeCone>> = HashMap::new();
+    let mut stations: HashMap<StopId, Station<FlattenedTimeCone>> = HashMap::new();
     let geometry = Geo {
         time_cone_geometry: FlattenedTimeCone::new(departure_time, max_duration, Pixels::new(500.)),
         geographic_origin: origin.location,
@@ -257,27 +253,17 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
                     coords: (stop.location, earliest_arrival),
                     name: stop.stop_name.replace(" (Berlin)", ""),
                 };
-                assert!(station_animatables
+                assert!(stations
                     .insert(stop.station_id(), station.into_polar(&geometry))
                     .is_none());
             }
-            journey_graph::Item::JourneySegment {
+            journey_graph::Item::Transfer {
                 departure_time: _,
                 arrival_time: _,
                 from_stop: _,
                 to_stop: _,
             } => {
-                // let to = *stop_id_to_idx.get(&to_stop.station_id()).unwrap();
-                // let from_stop_or_station_id = from_stop.station_id();
-                // let from = *stop_id_to_idx.get(&from_stop_or_station_id).unwrap_or(&to);
-                // fe_conns.push(FEConnection {
-                //     from,
-                //     to,
-                //     route_name: None,
-                //     kind: None,
-                //     from_seconds: (departure_time - period.start()).to_secs(),
-                //     to_seconds: (arrival_time - period.start()).to_secs(),
-                // })
+                // eprintln!("Ignoring transfer from {:?} to {:?}", from_stop, to_stop);
             }
             journey_graph::Item::SegmentOfTrip {
                 departure_time,
@@ -310,10 +296,10 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
                 route_type,
                 route_color: _,
             } => {
-                trips.insert(
+                if let Some(evicted) = trips.insert(
                     trip_id,
                     RadarTrip {
-                        trip_id,
+                        _trip_id: trip_id,
                         route_name: route_name.to_string(),
                         route_type,
                         connection: TripSegment {
@@ -324,20 +310,54 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
                         },
                         segments: vec![],
                     },
-                );
+                ) {
+                    eprintln!(
+                        "Trip {} {} from {:?} evicted by from {:?} {:?}",
+                        trip_id,
+                        route_name,
+                        evicted.segments.first().map(|seg| seg.from),
+                        from_stop,
+                        from_stop.location
+                    );
+                    assert!(trips
+                        .insert(
+                            std::num::NonZeroU32::new(1_000_000 + trip_id.get()).unwrap(),
+                            evicted
+                        )
+                        .is_none());
+                }
             }
         }
     }
 
-    for RadarTrip {
-        trip_id,
-        connection,
-        route_name,
-        route_type,
-        segments,
-    } in trips.values()
-    {
-        let time_to_datetime = |time: Time| departure_date.and_time(time.into()).unwrap();
+    Radar {
+        geometry,
+        trips,
+        stations,
+    }
+}
+
+impl RadarTrip {
+    pub(crate) fn write_svg_fragment_to(
+        &self,
+        w: &mut dyn std::io::Write,
+        geometry: &Geo,
+    ) -> io::Result<()> {
+        let RadarTrip {
+            _trip_id: _,
+            connection,
+            route_name,
+            route_type,
+            segments,
+        } = self;
+        let time_to_datetime = |time: Time| {
+            geometry
+                .time_cone_geometry
+                .origin()
+                .date()
+                .and_time(time.into())
+                .unwrap()
+        };
         {
             let TripSegment {
                 from,
@@ -353,17 +373,15 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
                 // connection is on origin meaning no natural bearing for it, we use the bearing to the next stop
                 to = &segments.first().expect("at least one segment in a trip").to;
             }
-            // done in reverse, it means the line moves into the origin rather than just erasing from the end
             path.move_to((
-                geometry.bearing(*to).unwrap(),
-                time_to_datetime(*arrival_time),
-            ));
-            path.line_to((
                 geometry.bearing(*from).unwrap_or_default(),
                 time_to_datetime(*departure_time),
             ));
-            // use random to make connection and trip unique in hashmap
-            trip_drawables.insert(NonZeroU32::new(1_000_000 + trip_id.get()).unwrap(), path);
+            path.line_to((
+                geometry.bearing(*to).unwrap(),
+                time_to_datetime(*arrival_time),
+            ));
+            path.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;
         }
 
         let mut path = Path::begin_path();
@@ -410,14 +428,10 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
 
                         let pre_bearing = geometry.bearing(pre.to).unwrap();
                         let pre_mag = pre.arrival_time;
-                        if pre_bearing != from_bearing && pre_mag != from_mag {
-                            // there is a gap in the route and so we move
-                            path.move_to((from_bearing, time_to_datetime(from_mag)));
-                            next_control_point = geometry.initial_control_point(
-                                (segment.from, segment.departure_time),
-                                (segment.to, segment.arrival_time),
-                            );
-                        }
+                        assert!(
+                            !(pre_bearing != from_bearing && pre_mag != from_mag),
+                            "shouldn't have a gap in the route"
+                        );
                         let (post_location, post_time) = if post.from == segment.to {
                             (post.to, post.arrival_time)
                         } else {
@@ -461,13 +475,8 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
             }
         }
         assert!(!path.ops.is_empty());
-        trip_drawables.insert(*trip_id, path);
-    }
-
-    Radar {
-        geometry,
-        trips: trip_drawables,
-        stations: station_animatables,
+        path.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;
+        Ok(())
     }
 }
 
@@ -506,7 +515,7 @@ impl Radar {
 
         geometry.write_svg_fragment_to(w)?;
         for trip in trips.values() {
-            trip.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;
+            trip.write_svg_fragment_to(w, geometry)?;
         }
         for station in stations.values() {
             station.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;

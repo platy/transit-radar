@@ -151,7 +151,7 @@ impl<'r> Plotter<'r> {
             QueueItemVariant::Transfer {
                 from_stop,
                 departure_time,
-            } => Some(Item::JourneySegment {
+            } => Some(Item::Transfer {
                 from_stop,
                 to_stop,
                 departure_time,
@@ -438,6 +438,8 @@ impl<'r> Plotter<'r> {
                     }
                     // only emit if we got to a new station
                     if self.emitted_stations.contains(&item.to_stop.station_id()) {
+                        let slow_trip = self.slow_trips.entry(trip_id).or_default();
+                        slow_trip.push(item);
                         vec![]
                     } else {
                         // if this now made some slow stops on the trip relevant, they should be emitted as well
@@ -672,7 +674,7 @@ impl<'r> QueueItemVariant<'r> {
 
 #[derive(Debug)]
 pub enum Item<'r> {
-    JourneySegment {
+    Transfer {
         departure_time: Time,
         arrival_time: Time,
         from_stop: &'r Stop,

@@ -53,7 +53,7 @@ fn produce_tree_json(
                 stop,
                 earliest_arrival,
             } => {}
-            journey_graph::Item::JourneySegment {
+            journey_graph::Item::Transfer {
                 departure_time,
                 arrival_time,
                 from_stop,
