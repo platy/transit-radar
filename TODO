@@ -266,7 +266,7 @@ SVG will allow:
  - [x] hidden paths
  - [x] fix the incorrect bezier curve
  - [x] no gaps in routes
- - [ ] transfer on later trip join doesn't connect properly
+ - [x] transfer on later trip join doesn't connect properly
  - [ ] Reduce prominence of sibling stations (ie. so that Alexanderplatz isn't a total mess) perhaps just show a small dot and no name, or perhaps no dot
  - [ ] Replace station suggestion somehow, maybe html page which embeds the svg
  - [x] Parsing errors

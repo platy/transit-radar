@@ -296,6 +296,16 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
                 route_type,
                 route_color: _,
             } => {
+                let adjusted_departure_time = stations
+                    .get(&from_stop.station_id())
+                    .map(|station| station.coords.1.time().into())
+                    .unwrap_or(departure_time);
+                if adjusted_departure_time != departure_time {
+                    eprintln!("Had to adjust departure time of connection to {}({}) from {:?} as the departure time was {} but {:?} is reached earliest at {}",
+                        route_name, trip_id, from_stop, departure_time, from_stop, adjusted_departure_time,
+                    );
+                }
+
                 if let Some(evicted) = trips.insert(
                     trip_id,
                     RadarTrip {
@@ -305,19 +315,20 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
                         connection: TripSegment {
                             from: from_stop.location,
                             to: to_stop.location,
-                            departure_time,
+                            departure_time: adjusted_departure_time,
                             arrival_time,
                         },
                         segments: vec![],
                     },
                 ) {
                     eprintln!(
-                        "Trip {} {} from {:?} evicted by from {:?} {:?}",
-                        trip_id,
+                        "Trip {}({}) from {:?} evicted by from {:?} at {}-{}",
                         route_name,
+                        trip_id,
                         evicted.segments.first().map(|seg| seg.from),
                         from_stop,
-                        from_stop.location
+                        adjusted_departure_time,
+                        arrival_time,
                     );
                     assert!(trips
                         .insert(

@@ -2,7 +2,7 @@ use std::convert::TryInto;
 use std::fmt;
 use std::ops::{Add, Sub};
 
-use chrono::{Duration, NaiveTime};
+use chrono::{Duration, NaiveTime, Timelike};
 use serde::{de, ser};
 
 /// Implementation of a local time within a day, no attempt to handle leaps, based on time-rs with the following focus:
@@ -102,6 +102,12 @@ impl Sub<Time> for Time {
 impl From<Time> for NaiveTime {
     fn from(time: Time) -> Self {
         Self::from_num_seconds_from_midnight(time.seconds_since_midnight, 0)
+    }
+}
+
+impl From<NaiveTime> for Time {
+    fn from(time: NaiveTime) -> Self {
+        Self::from_seconds_since_midnight(time.num_seconds_from_midnight())
     }
 }
 
