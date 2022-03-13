@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use crate::gtfs;
 use csv::DeserializeErrorKind;
 use radar_search::search_data::*;
+use regex::Regex;
 
 /// Refers to a specific stop of a specific trip (an arrival / departure)
 pub type TripStopRef = (TripId, usize); // usize refers to the index of the stop in the trip, should probably instead use stop sequence
@@ -94,6 +95,7 @@ pub fn load_data<S: std::hash::BuildHasher>(
                 location_type,
                 parent_station,
             }) => {
+                let stop_name = strip_stop_name(&stop_name);
                 let location = geo::Point::new(stop_lat, stop_lon);
                 match (location_type, parent_station) {
                     (1, None) => builder.add_station(stop_id, stop_name, location),
@@ -227,6 +229,32 @@ pub fn load_data<S: std::hash::BuildHasher>(
     );
 
     Ok(builder.build())
+}
+
+fn strip_stop_name(stop_name: &str) -> String {
+    let pattern = Regex::new(r"Berlin, |S |S\+U |U | Bhf| \(Berlin\)| \[.*\]").unwrap();
+    pattern.replace_all(stop_name, "").into_owned()
+}
+
+#[test]
+fn test_strip() {
+    for (input, output) in &[
+        ("Berlin, Birkholzer Weg/Straße 8", "Birkholzer Weg/Straße 8"),
+        ("S Mahlsdorf (Berlin) [Tram Bus Treskowstr.]", "Mahlsdorf"),
+        ("S Strausberg [Tram]", "Strausberg"),
+        (
+            "Dallgow-Döberitz, Finkenkruger Str.",
+            "Dallgow-Döberitz, Finkenkruger Str.",
+        ),
+        ("S+U Alexanderplatz (Berlin) [U2]", "Alexanderplatz"),
+        ("S+U Gesundbrunnen Bhf (Berlin)", "Gesundbrunnen"),
+        (
+            "Berlin, S+U Alexanderplatz Bhf/Memhardstr.",
+            "Alexanderplatz/Memhardstr.",
+        ),
+    ] {
+        assert_eq!(strip_stop_name(input), *output);
+    }
 }
 
 /// Get a station by exact name

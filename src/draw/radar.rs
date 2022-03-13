@@ -68,61 +68,12 @@ impl Geo {
         assert!(end_time >= start_time);
 
         // this is here because the calculation is not independent of start_time, this means that the animation will be an approximation and will distort :(
-        let origin = self
-            .time_cone_geometry
-            .origin()
-            .time()
-            .num_seconds_from_midnight() as f64;
+        let origin = self.time_cone_geometry.origin();
 
         let start_bearing = self.bearing(start_point);
         let end_bearing = self.bearing(end_point).unwrap();
 
-        let start_mag = start_time.seconds_since_midnight() as f64 - origin;
-        let end_mag = end_time.seconds_since_midnight() as f64 - origin;
-        assert!(
-            start_mag > 0.,
-            "starting magnitude is less than zero {} : {:?} - {:?}",
-            start_mag,
-            start_time,
-            self.time_cone_geometry.origin().time()
-        );
-
-        if let Some(start_bearing) = start_bearing {
-            let bearing_difference =
-                (start_bearing.as_radians() - end_bearing.as_radians() + PI) % (2. * PI) - PI;
-            let initial_heads_closer_to_origin =
-                if bearing_difference >= PI / 2. || bearing_difference <= -PI / 2. {
-                    // at PI or beyond PI/2 the tangent never crosses
-                    true
-                } else {
-                    // compare the distance from origin of the end with the distance that the tangent to start would be at that bearing
-                    end_mag < (start_mag / bearing_difference.cos())
-                };
-
-            // if a straight line between would travel closer to the origin than the start
-            if initial_heads_closer_to_origin {
-                // add a control point to prevent that
-                let cp_bearing_difference = bearing_difference / 3.;
-                let cp_bearing = start_bearing.as_radians() - cp_bearing_difference;
-                let mag = self.time_cone_geometry.origin()
-                    + Duration::seconds((start_mag / cp_bearing_difference.cos()) as i64);
-                assert!(
-                    mag > self.time_cone_geometry.origin(),
-                    "{} {}",
-                    mag,
-                    self.time_cone_geometry.origin()
-                );
-                return (Bearing::radians(cp_bearing), mag);
-            }
-        }
-        let mag = self.time_cone_geometry.origin() + Duration::seconds(start_mag as i64);
-        assert!(
-            mag > self.time_cone_geometry.origin(),
-            "{} {}",
-            mag,
-            self.time_cone_geometry.origin()
-        );
-        (start_bearing.unwrap_or(end_bearing), mag)
+        initial_control_point(origin, (start_bearing, start_time), (end_bearing, end_time))
     }
 
     fn control_points(
@@ -176,6 +127,88 @@ impl Geo {
                     ),
             ),
         )
+    }
+}
+
+fn initial_control_point(
+    origin: DateTime<Tz>,
+    (start_bearing, start_time): (Option<Bearing>, Time),
+    (end_bearing, end_time): (Bearing, Time),
+) -> (Bearing, DateTime<Tz>) {
+    let origin_secs = origin.time().num_seconds_from_midnight() as f64;
+
+    let start_mag = start_time.seconds_since_midnight() as f64 - origin_secs;
+    let end_mag = end_time.seconds_since_midnight() as f64 - origin_secs;
+
+    assert!(
+        start_mag > -60.,
+        "starting magnitude is less than zero {} : {:?} - {:?}",
+        start_mag,
+        start_time,
+        origin.time()
+    );
+    if let Some(start_bearing) = start_bearing {
+        let bearing_difference = (start_bearing - end_bearing).normalize_around_zero();
+        let initial_heads_closer_to_origin = if bearing_difference.as_radians().abs() >= PI / 2. {
+            // at PI or beyond PI/2 the tangent never crosses
+            true
+        } else {
+            // compare the distance from origin of the end with the distance that the tangent to start would be at that bearing
+            end_mag < (start_mag / bearing_difference.as_radians().cos())
+        };
+
+        // if a straight line between would travel closer to the origin than the start
+        if initial_heads_closer_to_origin {
+            // add a control point to prevent that
+            let cp_bearing_difference = bearing_difference.as_radians() / 3.;
+            let cp_bearing = start_bearing.as_radians() - cp_bearing_difference;
+            let mag = origin + Duration::seconds((start_mag / cp_bearing_difference.cos()) as i64);
+            assert!(
+                mag > origin,
+                "initial_control_point({:?}, {:?}) at origin {}",
+                (start_bearing, start_time),
+                (end_bearing, end_time),
+                origin
+            );
+            return (Bearing::radians(cp_bearing), mag);
+        }
+    }
+    let mag = origin + Duration::seconds(start_mag as i64);
+    assert!(mag >= origin, "{} {}", mag, origin);
+    (start_bearing.unwrap_or(end_bearing), mag)
+}
+
+#[test]
+fn sane_initial_control_point() {
+    let origin = FixedOffset::east(3600)
+        .ymd(2020, 1, 1)
+        .and_hms(0, 0, 0)
+        .with_timezone(&chrono_tz::Europe::Berlin);
+    for &((start_bearing, start_seconds), (end_bearing, end_seconds)) in &[
+        ((None, 0), (Bearing::degrees(90.), 300)),
+        (
+            (Some(Bearing::radians(-3.045)), 20 * 60),
+            (Bearing::radians(3.0196), 22 * 60),
+        ),
+    ] {
+        let (_bearing, mag) = initial_control_point(
+            origin,
+            (
+                start_bearing,
+                Time::from_seconds_since_midnight(start_seconds),
+            ),
+            (end_bearing, Time::from_seconds_since_midnight(end_seconds)),
+        );
+        let start_time = NaiveTime::from_num_seconds_from_midnight(start_seconds, 0);
+        let end_time = NaiveTime::from_num_seconds_from_midnight(end_seconds, 0);
+        let actual_time = mag.time();
+        assert!(
+            start_time <= actual_time && actual_time < end_time,
+            "Expected {} < time < {}, but time was {}",
+            start_time,
+            end_time,
+            actual_time
+        );
     }
 }
 
@@ -245,13 +278,30 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
             journey_graph::Item::Station {
                 stop,
                 earliest_arrival,
+                name_trunk_length,
             } => {
                 if earliest_arrival > end_time + (expires_time - start_time) {
                     break;
                 }
                 let station = Station {
                     coords: (stop.location, earliest_arrival),
-                    name: stop.stop_name.replace(" (Berlin)", ""),
+                    name: if name_trunk_length == stop.stop_name.len() {
+                        continue;
+                    } else if name_trunk_length > 10 {
+                        // last space before the common chars end
+                        let trunk_division = stop
+                            .stop_name
+                            .chars()
+                            .enumerate()
+                            .filter_map(|(i, c)| {
+                                (c.is_whitespace() && i < name_trunk_length).then(|| i + 1)
+                            })
+                            .last()
+                            .unwrap_or_default();
+                        format!("...{}", &stop.stop_name[trunk_division..])
+                    } else {
+                        stop.stop_name.to_owned()
+                    },
                 };
                 assert!(stations
                     .insert(stop.station_id(), station.into_polar(&geometry))
@@ -377,7 +427,7 @@ impl RadarTrip {
                 arrival_time,
             } = connection;
             let mut path = Path::begin_path();
-            path.set_class(format!("Connection {}", route_name));
+            path.set_class(format!("Connection {:?} {}", route_type, route_name));
 
             let mut to = to;
             if *to == geometry.geographic_origin {

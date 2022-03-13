@@ -112,6 +112,21 @@ impl<'r> Plotter<'r> {
                     to_emit.push(Item::Station {
                         stop: item.to_stop,
                         earliest_arrival: item.arrival_time,
+                        name_trunk_length: if item.variant.is_stop_on_trip() {
+                            0
+                        } else {
+                            item.variant
+                                .get_from_stop()
+                                .map(|from_stop| {
+                                    from_stop
+                                        .stop_name
+                                        .chars()
+                                        .zip(item.to_stop.stop_name.chars())
+                                        .take_while(|(a, b)| a == b)
+                                        .count()
+                                })
+                                .unwrap_or_default()
+                        },
                     });
                 }
                 if let Some(item) = self.convert_item(item) {
@@ -623,6 +638,10 @@ enum QueueItemVariant<'r> {
 }
 
 impl<'r> QueueItemVariant<'r> {
+    fn is_stop_on_trip(&self) -> bool {
+        matches!(self, QueueItemVariant::StopOnTrip { .. })
+    }
+
     fn get_from_stop(&self) -> Option<&'r Stop> {
         match self {
             QueueItemVariant::Connection {
@@ -703,5 +722,6 @@ pub enum Item<'r> {
     Station {
         stop: &'r Stop,
         earliest_arrival: Time,
+        name_trunk_length: usize,
     },
 }

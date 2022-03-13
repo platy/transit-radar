@@ -52,6 +52,7 @@ fn produce_tree_json(
             journey_graph::Item::Station {
                 stop,
                 earliest_arrival,
+                name_trunk_length,
             } => {}
             journey_graph::Item::Transfer {
                 departure_time,

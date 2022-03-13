@@ -1,4 +1,4 @@
-use std::{fmt, io, ops};
+use std::{f64::consts::PI, fmt, io, ops};
 
 use chrono::{DateTime, Duration};
 use chrono_tz::Tz;
@@ -123,12 +123,30 @@ impl Bearing {
     }
 
     pub fn degrees(degrees: f64) -> Self {
-        use std::f64::consts::PI;
         Self(degrees * PI / 180.)
     }
 
     pub const fn as_radians(self) -> f64 {
         self.0
+    }
+
+    /// normalises the number of radians to the interval `-PI..PI`
+    pub fn normalize_around_zero(&self) -> Bearing {
+        if self.0 < -PI {
+            Bearing((self.0 - PI) % (2. * PI) + PI)
+        } else if self.0 > PI {
+            Bearing((self.0 + PI) % (2. * PI) - PI)
+        } else {
+            *self
+        }
+    }
+}
+
+impl std::ops::Sub for Bearing {
+    type Output = Bearing;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Bearing(self.0 - rhs.0)
     }
 }
 
@@ -138,6 +156,34 @@ impl std::fmt::Debug for Bearing {
         f.write_str(" rad")?;
         Ok(())
     }
+}
+
+#[cfg(test)]
+macro_rules! assert_f64 {
+    ($x:expr, $y:expr) => {
+        if !($x - $y).abs().lt(&0.000_000_000_1) {
+            panic!(
+                "{} and {} have difference {} > {}",
+                $x,
+                $y,
+                $x - $y,
+                f64::EPSILON
+            );
+        }
+    };
+}
+
+#[test]
+fn test_bearing_normalize_around_zero() {
+    assert_f64!(Bearing(0.).normalize_around_zero().0, 0.);
+    assert_f64!(Bearing(PI).normalize_around_zero().0, PI);
+    assert_f64!(Bearing(-PI).normalize_around_zero().0, -PI);
+    assert_f64!(Bearing(2. * PI).normalize_around_zero().0, 0.);
+    assert_f64!(Bearing(1.5 * PI).normalize_around_zero().0, -0.5 * PI);
+    assert_f64!(Bearing(2.5 * PI).normalize_around_zero().0, 0.5 * PI);
+    assert_f64!(Bearing(6. * PI).normalize_around_zero().0, 0.);
+    assert_f64!(Bearing(8.5 * PI).normalize_around_zero().0, 0.5 * PI);
+    assert_f64!(Bearing(-8.5 * PI).normalize_around_zero().0, -0.5 * PI);
 }
 
 impl Geometry for FlattenedTimeCone {
