@@ -270,11 +270,8 @@ SVG will allow:
  - [x] Reduce prominence of sibling stations (ie. so that Alexanderplatz isn't a total mess) perhaps just show a small dot and no name, or perhaps no dot
  - [ ] Replace station suggestion somehow, maybe html page which embeds the svg
  - [x] Parsing errors
- - [ ] Possibly lots of unseen paths to remove, ie. I think saw that a Connection from gesundbrunnen to gesundbrunnen was being added as a slow trip
- - [ ] Reassess panics and asserts
- - [ ] Shift bearings so that eastward and westward lines are less likely to write over each other
 2. Enhance
- - [ ] Style the image (including dark mode and mobile)
+ - [x] Style the image for dark mode
  - [ ] Click on other stations to change origin
  - [ ] Clickable filters
  - [ ] Choose a time or now

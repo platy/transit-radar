@@ -578,9 +578,11 @@ impl Radar {
         for trip in trips.values() {
             trip.write_svg_fragment_to(w, geometry)?;
         }
+        write_xml!(w, <g class="s">)?;
         for station in stations.values() {
             station.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;
         }
+        write_xml!(w, </g>)?;
         writeln!(w, "</svg>")
     }
 }

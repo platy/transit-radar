@@ -57,7 +57,7 @@ macro_rules! xml_format_args {
     };
 }
 
-/// Write a self-closing xml element and it's attributes
+/// Write XML
 #[macro_export]
 macro_rules! write_xml {
     ($dst:expr, $($attrs:tt)*) => {

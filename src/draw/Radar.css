@@ -1,4 +1,4 @@
-.grid circle {
+.grid {
   fill: none;
   stroke: lightgray;
   stroke-width: 1pt;
@@ -181,4 +181,11 @@ path {
 }
 .T68 {
   stroke:#65b42f
+}
+
+@media (prefers-color-scheme: dark) {
+  svg   { background:  #222; }
+  .grid { stroke: #555; }
+  .s text { stroke: #999 }
+  .s circle { fill: #999 }
 }
