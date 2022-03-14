@@ -238,8 +238,12 @@ pub fn day_time<Tz: TimeZone>(date_time: DateTime<Tz>) -> (Day, Time) {
     (day, now)
 }
 
-pub fn search<'s>(data: &'s GTFSData, origin: &'s Stop, flags: &Flags) -> Radar<'s> {
-    let departure_time = Utc::now().with_timezone(&chrono_tz::Europe::Berlin);
+pub fn search<'s>(
+    data: &'s GTFSData,
+    origin: &'s Stop,
+    departure_time: DateTime<Tz>,
+    flags: &Flags,
+) -> Radar<'s> {
     let (day, start_time) = day_time(departure_time);
     let max_duration = Duration::minutes(30);
     let end_time = start_time + max_duration;
@@ -467,7 +471,7 @@ impl RadarTrip {
                         (segment.from, segment.departure_time),
                         (segment.to, segment.arrival_time),
                     );
-                    assert!(cp1.1 > from_mag, "Control point for curve cannot have a lower magnitude than the origin {} must be > {}", cp1.1, from_mag);
+                    assert!(cp1.1 >= from_mag, "Control point for curve cannot have a lower magnitude than the origin, {} must be > {}", cp1.1, from_mag);
                     let (post_location, post_time) = if segments[1].from == segment.to {
                         (segments[1].to, segments[1].arrival_time)
                     } else {
@@ -564,7 +568,11 @@ impl Geo {
 }
 
 impl<'s> Radar<'s> {
-    pub fn write_svg_to(&self, w: &mut dyn io::Write) -> io::Result<()> {
+    pub fn write_svg_to(
+        &self,
+        w: &mut dyn io::Write,
+        link_renderer: &dyn Fn(StopId) -> String,
+    ) -> io::Result<()> {
         let Self {
             geometry,
             stations,
@@ -587,7 +595,7 @@ impl<'s> Radar<'s> {
         }
         write_xml!(w, <g class="s">)?;
         for station in stations.values() {
-            station.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;
+            station.write_svg_fragment_to(w, &geometry.time_cone_geometry, link_renderer)?;
         }
         write_xml!(w, </g>)?;
         writeln!(w, "</svg>")
@@ -618,6 +626,7 @@ impl<'s> Station<'s, FlattenedTimeCone> {
         &self,
         w: &mut dyn io::Write,
         geometry: &FlattenedTimeCone,
+        link_renderer: &dyn Fn(StopId) -> String,
     ) -> io::Result<()> {
         const STOP_RADIUS: f64 = 3.;
         let (bearing, magnitude) = self.coords;
@@ -631,7 +640,7 @@ impl<'s> Station<'s, FlattenedTimeCone> {
             format!("...{}", &self.stop.stop_name[self.name_trunk_length..]).into()
         };
         write_xml!(w,
-            <a href={format!("/{}", self.stop.station_id())}>
+            <a href={link_renderer(self.stop.station_id())}>
             <circle cx={*cx} cy={*cy} r={STOP_RADIUS} />
                 <text x={*cx + STOP_RADIUS + 6.} y={*cy + 4.}>{name}</text>
             </a>

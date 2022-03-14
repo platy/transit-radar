@@ -273,11 +273,13 @@ SVG will allow:
 2. Enhance
  - [x] Style the image for dark mode
  - [x] Click on other stations to change origin
- - [ ] Clickable filters
- - [ ] Choose a time or now
+ - [x] Choose a time or now
  - [ ] Choose duration
- - [ ] better code organisation
+ - [ ] Header
+ - [ ] Legend
+ - [ ] Clickable filters
  - [ ] Choose size or scale
+ - [ ] better code organisation
  - [ ] Make sure it saves nice
  - [ ] If 2 different lines arrive at a stop at the same time (eg. Mehringdamm) maybe we should show both
  - [ ] Scoring for how easy the connection to an added trip or station was, this can be used to decide whether to make a new connection to a trip at a later point. Later this can be used for prefereneces about less transfers / less walking / les waiting / speed
