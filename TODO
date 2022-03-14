@@ -272,7 +272,7 @@ SVG will allow:
  - [x] Parsing errors
 2. Enhance
  - [x] Style the image for dark mode
- - [ ] Click on other stations to change origin
+ - [x] Click on other stations to change origin
  - [ ] Clickable filters
  - [ ] Choose a time or now
  - [ ] Choose duration

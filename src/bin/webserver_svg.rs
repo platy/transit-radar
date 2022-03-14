@@ -12,10 +12,11 @@ extern crate rocket;
 
 #[get("/<id>")]
 fn index(id: StopId, data: &State<Arc<GTFSData>>) -> (ContentType, String) {
-    let origin = data.get_stop(id);
+    let origin = data.get_stop(id).unwrap();
+    assert!(origin.is_station(), "Origin must be a station");
     let radar = search(
         data,
-        origin.unwrap(),
+        origin,
         &Flags {
             show_ubahn: true,
             show_bus: false,

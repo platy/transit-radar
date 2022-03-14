@@ -12,15 +12,16 @@ use crate::write_xml;
 
 use super::geometry::*;
 
-pub struct Radar {
+pub struct Radar<'s> {
     geometry: Geo,
     trips: HashMap<TripId, RadarTrip>,
-    stations: HashMap<StopId, Station<FlattenedTimeCone>>,
+    stations: HashMap<StopId, Station<'s, FlattenedTimeCone>>,
 }
 
-struct Station<G: Geometry> {
+struct Station<'s, G: Geometry> {
     coords: G::Coords,
-    name: String,
+    stop: &'s Stop,
+    name_trunk_length: usize,
 }
 
 struct RadarTrip {
@@ -31,6 +32,7 @@ struct RadarTrip {
     segments: Vec<TripSegment>,
 }
 
+#[derive(Debug)]
 struct TripSegment {
     from: geo::Point<f64>,
     to: geo::Point<f64>,
@@ -236,7 +238,7 @@ pub fn day_time<Tz: TimeZone>(date_time: DateTime<Tz>) -> (Day, Time) {
     (day, now)
 }
 
-pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
+pub fn search<'s>(data: &'s GTFSData, origin: &'s Stop, flags: &Flags) -> Radar<'s> {
     let departure_time = Utc::now().with_timezone(&chrono_tz::Europe::Berlin);
     let (day, start_time) = day_time(departure_time);
     let max_duration = Duration::minutes(30);
@@ -285,7 +287,8 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
                 }
                 let station = Station {
                     coords: (stop.location, earliest_arrival),
-                    name: if name_trunk_length == stop.stop_name.len() {
+                    stop,
+                    name_trunk_length: if name_trunk_length == stop.stop_name.len() {
                         continue;
                     } else if name_trunk_length > 10 {
                         // last space before the common chars end
@@ -298,9 +301,9 @@ pub fn search(data: &GTFSData, origin: &Stop, flags: &Flags) -> Radar {
                             })
                             .last()
                             .unwrap_or_default();
-                        format!("...{}", &stop.stop_name[trunk_division..])
+                        trunk_division
                     } else {
-                        stop.stop_name.to_owned()
+                        0
                     },
                 };
                 assert!(stations
@@ -452,7 +455,9 @@ impl RadarTrip {
                 let mut next_control_point = {
                     // first segment
                     let segment = &segments[0];
-                    let to_bearing = geometry.bearing(segment.to).unwrap();
+                    let to_bearing = geometry
+                        .bearing(segment.to)
+                        .expect("Segment goes to origin");
                     let from_bearing = geometry.bearing(segment.from).unwrap_or(to_bearing);
                     let from_mag = time_to_datetime(segment.departure_time);
                     let to_mag = time_to_datetime(segment.arrival_time);
@@ -468,7 +473,9 @@ impl RadarTrip {
                     } else {
                         (segments[1].from, segments[1].departure_time)
                     };
-                    let post_bearing = geometry.bearing(post_location).unwrap();
+                    let post_bearing = geometry
+                        .bearing(post_location)
+                        .expect("Segment goes to origin");
                     let post_mag = time_to_datetime(post_time);
 
                     let (cp2, next_control_point) = geometry.control_points(
@@ -556,7 +563,7 @@ impl Geo {
     }
 }
 
-impl Radar {
+impl<'s> Radar<'s> {
     pub fn write_svg_to(&self, w: &mut dyn io::Write) -> io::Result<()> {
         let Self {
             geometry,
@@ -587,19 +594,10 @@ impl Radar {
     }
 }
 
-// impl Drawable for Station<Cartesian> {
-//     fn draw(&self, ctx: &web_sys::CanvasRenderingContext2d, _: &Cartesian) {
-//         const STOP_RADIUS: f64 = 3.;
-//         let (cx, cy) = self.coords;
-//         Circle::new((cx, cy), STOP_RADIUS).draw(ctx, &Cartesian);
-//         Text::new(cx + STOP_RADIUS + 6., cy + 4., self.name.clone()).draw(ctx, &Cartesian);
-//     }
-// }
-
-impl Station<Geo> {
-    fn into_polar(self, geometry: &Geo) -> Station<FlattenedTimeCone> {
+impl<'s> Station<'s, Geo> {
+    fn into_polar(self, geometry: &Geo) -> Station<'s, FlattenedTimeCone> {
         let (point, time) = self.coords;
-        Station::<FlattenedTimeCone> {
+        Station::<'s, FlattenedTimeCone> {
             coords: (
                 geometry.bearing(point).unwrap_or_default(),
                 geometry
@@ -609,12 +607,13 @@ impl Station<Geo> {
                     .and_time(time.into())
                     .unwrap(),
             ),
-            name: self.name,
+            stop: self.stop,
+            name_trunk_length: self.name_trunk_length,
         }
     }
 }
 
-impl Station<FlattenedTimeCone> {
+impl<'s> Station<'s, FlattenedTimeCone> {
     pub(crate) fn write_svg_fragment_to(
         &self,
         w: &mut dyn io::Write,
@@ -626,9 +625,16 @@ impl Station<FlattenedTimeCone> {
             return Ok(());
         }
         let (cx, cy) = geometry.coords(bearing, magnitude);
+        let name: std::borrow::Cow<_> = if self.name_trunk_length == 0 {
+            (*self.stop.stop_name).into()
+        } else {
+            format!("...{}", &self.stop.stop_name[self.name_trunk_length..]).into()
+        };
         write_xml!(w,
+            <a href={format!("/{}", self.stop.station_id())}>
             <circle cx={*cx} cy={*cy} r={STOP_RADIUS} />
-            <text x={*cx + STOP_RADIUS + 6.} y={*cy + 4.}>{self.name}</text>
+                <text x={*cx + STOP_RADIUS + 6.} y={*cy + 4.}>{name}</text>
+            </a>
         )?;
         Ok(())
     }
