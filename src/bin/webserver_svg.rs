@@ -1,6 +1,6 @@
 use std::{io, num::NonZeroU64, path::Path, sync::Arc};
 
-use chrono::{NaiveDateTime, TimeZone, Utc};
+use chrono::{NaiveDateTime, TimeZone, Utc, Duration};
 use radar_search::search_data::StopId;
 use rocket::{http::ContentType, request::FromParam, State};
 use transit_radar::{
@@ -14,8 +14,8 @@ extern crate rocket;
 
 const STATION_ID_MIN: u64 = 900_000_000_000;
 
-#[get("/depart-from/<id>/<time>")]
-fn index(mut id: u64, time: TimeFilter, data: &State<Arc<GTFSData>>) -> (ContentType, String) {
+#[get("/depart-from/<id>/<time>?<minutes>")]
+fn index(mut id: u64, time: TimeFilter, minutes: Option<i64>, data: &State<Arc<GTFSData>>) -> (ContentType, String) {
     if id < STATION_ID_MIN {
         id = id + STATION_ID_MIN;
     }
@@ -25,10 +25,12 @@ fn index(mut id: u64, time: TimeFilter, data: &State<Arc<GTFSData>>) -> (Content
         TimeFilter::Now => Utc::now().with_timezone(&chrono_tz::Europe::Berlin),
         TimeFilter::Local(dt) => chrono_tz::Europe::Berlin.from_local_datetime(&dt).unwrap(),
     };
+    let max_duration = Duration::minutes(minutes.unwrap_or(30));
     let radar = search(
         data,
         origin,
         departure_time,
+        max_duration,
         &Flags {
             show_ubahn: true,
             show_bus: false,
@@ -39,9 +41,14 @@ fn index(mut id: u64, time: TimeFilter, data: &State<Arc<GTFSData>>) -> (Content
     );
     let link_renderer = Box::new(|station_id: StopId| {
         format!(
-            "/depart-from/{}/{}",
+            "/depart-from/{}/{}{}",
             station_id.get() - STATION_ID_MIN,
-            &time
+            &time,
+            if let Some(minutes) = minutes {
+                std::borrow::Cow::Owned(format!("?minutes={}", minutes))
+            } else {
+                "".into()
+            }
         )
     });
     let mut svg = Vec::new();

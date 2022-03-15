@@ -274,7 +274,7 @@ SVG will allow:
  - [x] Style the image for dark mode
  - [x] Click on other stations to change origin
  - [x] Choose a time or now
- - [ ] Choose duration
+ - [x] Choose duration
  - [ ] Header
  - [ ] Legend
  - [ ] Clickable filters

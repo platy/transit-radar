@@ -242,10 +242,10 @@ pub fn search<'s>(
     data: &'s GTFSData,
     origin: &'s Stop,
     departure_time: DateTime<Tz>,
+    max_duration: Duration,
     flags: &Flags,
 ) -> Radar<'s> {
     let (day, start_time) = day_time(departure_time);
-    let max_duration = Duration::minutes(30);
     let end_time = start_time + max_duration;
     let max_extra_search = Duration::minutes(0);
     let mut plotter = journey_graph::Plotter::new(
@@ -556,12 +556,22 @@ impl Geo {
     fn write_svg_fragment_to(&self, w: &mut dyn io::Write) -> io::Result<()> {
         let (origin_x, origin_y) = (0., 0.);
 
+        const PIXEL_RADIUS: f64 = 500.;
+        let max_duration = self.time_cone_geometry.max_duration();
+        let duration_interval = if max_duration <= Duration::minutes(20) {
+            Duration::minutes(5)
+        } else {
+            Duration::minutes(10)
+        };
+        let pixel_interval: f64 = PIXEL_RADIUS * duration_interval.num_seconds() as f64 / max_duration.num_seconds() as f64;
+
         write_xml!(w,
-            <g class="grid">
-                <circle cx={origin_x} cy={origin_y} r={500. / 3.} />
-                <circle cx={origin_x} cy={origin_y} r={500. * 2. / 3.} />
-                <circle cx={origin_x} cy={origin_y} r={500} />
-            </g>)?;
+            <g class="grid">)?;
+        
+        for radius in (1..).map(|x| pixel_interval * x as f64).take_while(|p: &f64| p <= &PIXEL_RADIUS) {
+            write_xml!(w, <circle cx={origin_x} cy={origin_y} r={radius} />)?;
+        }
+        write_xml!(w, </g>)?;
 
         Ok(())
     }
