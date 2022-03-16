@@ -186,6 +186,11 @@ path {
 @media (prefers-color-scheme: dark) {
   svg   { background:  #222; }
   .grid { stroke: #555; }
-  .s text { stroke: #999 }
+  text { fill: #999 }
   .s circle { fill: #999 }
+}
+
+#credit {
+    font-style: oblique;
+    font-size: 6pt;
 }

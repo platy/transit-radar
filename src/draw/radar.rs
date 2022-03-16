@@ -16,6 +16,7 @@ pub struct Radar<'s> {
     geometry: Geo,
     trips: HashMap<TripId, RadarTrip>,
     stations: HashMap<StopId, Station<'s, FlattenedTimeCone>>,
+    origin: &'s Stop,
 }
 
 struct Station<'s, G: Geometry> {
@@ -399,6 +400,7 @@ pub fn search<'s>(
     }
 
     Radar {
+        origin,
         geometry,
         trips,
         stations,
@@ -563,12 +565,16 @@ impl Geo {
         } else {
             Duration::minutes(10)
         };
-        let pixel_interval: f64 = PIXEL_RADIUS * duration_interval.num_seconds() as f64 / max_duration.num_seconds() as f64;
+        let pixel_interval: f64 = PIXEL_RADIUS * duration_interval.num_seconds() as f64
+            / max_duration.num_seconds() as f64;
 
         write_xml!(w,
             <g class="grid">)?;
-        
-        for radius in (1..).map(|x| pixel_interval * x as f64).take_while(|p: &f64| p <= &PIXEL_RADIUS) {
+
+        for radius in (1..)
+            .map(|x| pixel_interval * x as f64)
+            .take_while(|p: &f64| p <= &PIXEL_RADIUS)
+        {
             write_xml!(w, <circle cx={origin_x} cy={origin_y} r={radius} />)?;
         }
         write_xml!(w, </g>)?;
@@ -581,12 +587,13 @@ impl<'s> Radar<'s> {
     pub fn write_svg_to(
         &self,
         w: &mut dyn io::Write,
-        link_renderer: &dyn Fn(StopId) -> String,
+        link_renderer: &dyn Fn(Option<StopId>, Option<NaiveDateTime>) -> String,
     ) -> io::Result<()> {
         let Self {
             geometry,
             stations,
             trips,
+            origin,
         } = self;
 
         writeln!(
@@ -598,6 +605,17 @@ impl<'s> Radar<'s> {
          "#
         )?;
         write_xml!(w, <style>{include_str!("Radar.css")}</style>)?;
+
+        write_xml!(w,
+            <g id="header" transform="translate(-506, -506)">
+                <text y="20" style="font-size: 20pt;">{origin.stop_name}{" departures"}</text>
+                <a href={link_renderer(None, Some(geometry.time_cone_geometry.origin().naive_local()))} rel="self"><text y="50" style="font-size: 10pt; font-style: oblique;">
+                    {"All trips starting "}{geometry.time_cone_geometry.origin().format("at %k:%M on %e %b %Y")}
+                    <tspan x="0" dy="1.4em">{"and lasting less than "}{geometry.time_cone_geometry.max_duration().num_minutes()}{" minutes"}</tspan>
+                </text></a>
+                <a id="credit" href="https://radar.njk.onl"><text y="100">{"from transit radar,"}<tspan x="0" dy="1.4em" >{"by platy"}</tspan></text></a>
+            </g>
+        )?;
 
         geometry.write_svg_fragment_to(w)?;
         for trip in trips.values() {
@@ -636,7 +654,7 @@ impl<'s> Station<'s, FlattenedTimeCone> {
         &self,
         w: &mut dyn io::Write,
         geometry: &FlattenedTimeCone,
-        link_renderer: &dyn Fn(StopId) -> String,
+        link_renderer: &dyn Fn(Option<StopId>, Option<NaiveDateTime>) -> String,
     ) -> io::Result<()> {
         const STOP_RADIUS: f64 = 3.;
         let (bearing, magnitude) = self.coords;
@@ -650,7 +668,7 @@ impl<'s> Station<'s, FlattenedTimeCone> {
             format!("...{}", &self.stop.stop_name[self.name_trunk_length..]).into()
         };
         write_xml!(w,
-            <a href={link_renderer(self.stop.station_id())}>
+            <a href={link_renderer(Some(self.stop.station_id()), None)}>
             <circle cx={*cx} cy={*cy} r={STOP_RADIUS} />
                 <text x={*cx + STOP_RADIUS + 6.} y={*cy + 4.}>{name}</text>
             </a>

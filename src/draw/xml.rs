@@ -1,59 +1,59 @@
 #[macro_export]
 macro_rules! xml_format_args {
     // ends a tag
-    (@inner(> $($attrs:tt)*) -> $pattern:expr, ($($args:expr),*)) => {
-        $crate::xml_format_args!(@outer($($attrs)*) -> concat!($pattern, ">"), ($($args),*))
+    (@inner(> $($attrs:tt)*) -> ($($pattern:expr),*), ($($args:expr),*)) => {
+        $crate::xml_format_args!(@outer($($attrs)*) -> ($($pattern),*, ">"), ($($args),*))
     };
     // ends a self-closing element
-    (@inner(/> $($attrs:tt)*) -> $pattern:expr, ($($args:expr),*)) => {
-        $crate::xml_format_args!(@outer($($attrs)*) -> concat!($pattern, " />"), ($($args),*))
+    (@inner(/> $($attrs:tt)*) -> ($($pattern:expr),*), ($($args:expr),*)) => {
+        $crate::xml_format_args!(@outer($($attrs)*) -> ($($pattern),*, " />"), ($($args),*))
     };
     // matches an attribute with a singly-hyphenated name
-    (@inner($aname1:ident-$aname2:ident $($attrs:tt)*) -> $pattern:expr, ($($args:expr),*)) => {
-        $crate::xml_format_args!(@attr($($attrs)*) -> concat!($pattern, " ", stringify!($aname1), "-", stringify!($aname2)), ($($args),*))
+    (@inner($aname1:ident-$aname2:ident $($attrs:tt)*) -> ($($pattern:expr),*), ($($args:expr),*)) => {
+        $crate::xml_format_args!(@attr($($attrs)*) -> ($($pattern),*, " ", stringify!($aname1), "-", stringify!($aname2)), ($($args),*))
     };
     // matches an attribute which fits in a rust identifier
-    (@inner($aname:ident $($attrs:tt)*) -> $pattern:expr, ($($args:expr),*)) => {
-        $crate::xml_format_args!(@attr($($attrs)*) -> concat!($pattern, " ", stringify!($aname)), ($($args),*))
+    (@inner($aname:ident $($attrs:tt)*) -> ($($pattern:expr),*), ($($args:expr),*)) => {
+        $crate::xml_format_args!(@attr($($attrs)*) -> ($($pattern),*, " ", stringify!($aname)), ($($args),*))
     };
 
     // an expression, evaluating to an iterable as a comma-separated attribute value
-    (@attr(=[$avalue:expr,] $($attrs:tt)*) -> $pattern:expr, ($($args:expr),*)) => {
-        $crate::xml_format_args!(@inner($($attrs)*) -> concat!($pattern, "=\"{}\""), ($($args,)* crate::draw::xml::JoinList { list: $avalue, join: "," }))
+    (@attr(=[$avalue:expr,] $($attrs:tt)*) -> ($($pattern:expr),*), ($($args:expr),*)) => {
+        $crate::xml_format_args!(@inner($($attrs)*) -> ($($pattern),*, "=\"{}\""), ($($args,)* crate::draw::xml::JoinList { list: $avalue, join: "," }))
     };
     // an expression as an attribute value
-    (@attr(={$avalue:expr} $($attrs:tt)*) -> $pattern:expr, ($($args:expr),*)) => {
-        $crate::xml_format_args!(@inner($($attrs)*) -> concat!($pattern, "=\"{}\""), ($($args,)* $avalue))
+    (@attr(={$avalue:expr} $($attrs:tt)*) -> ($($pattern:expr),*), ($($args:expr),*)) => {
+        $crate::xml_format_args!(@inner($($attrs)*) -> ($($pattern),*, "=\"{}\""), ($($args,)* $avalue))
     };
     // a literal as an attribute value
-    (@attr(=$avalue:literal $($attrs:tt)*) -> $pattern:expr, ($($args:expr),*)) => {
-        $crate::xml_format_args!(@inner($($attrs)*) -> concat!($pattern, "=\"", $avalue, "\""), ($($args),*))
+    (@attr(=$avalue:literal $($attrs:tt)*) -> ($($pattern:expr),*), ($($args:expr),*)) => {
+        $crate::xml_format_args!(@inner($($attrs)*) -> ($($pattern),*, "=\"", $avalue, "\""), ($($args),*))
     };
 
     // starts a tag
-    (@outer(<$name:ident $($attrs:tt)*) -> $pattern:expr, ($($args:expr),*)) => {
-        $crate::xml_format_args!(@inner($($attrs)*) -> concat!($pattern, "<", stringify!($name)), ($($args),*))
+    (@outer(<$name:ident $($attrs:tt)*) -> ($($pattern:expr),*), ($($args:expr),*)) => {
+        $crate::xml_format_args!(@inner($($attrs)*) -> ($($pattern),*, "<", stringify!($name)), ($($args),*))
     };
     // matches an end tag
-    (@outer(</$name:ident> $($attrs:tt)*) -> $pattern:expr, ($($args:expr),*)) => {
-        $crate::xml_format_args!(@outer($($attrs)*) -> concat!($pattern, "</", stringify!($name), ">"), ($($args),*))
+    (@outer(</$name:ident> $($attrs:tt)*) -> ($($pattern:expr),*), ($($args:expr),*)) => {
+        $crate::xml_format_args!(@outer($($attrs)*) -> ($($pattern),*, "</", stringify!($name), ">"), ($($args),*))
     };
     // matches a text expression
-    (@outer({$text:expr} $($attrs:tt)*) -> $pattern:expr, ($($args:expr),*)) => {
-        $crate::xml_format_args!(@outer($($attrs)*) -> concat!($pattern, "{}"), ($($args,)* $text))
+    (@outer({$text:expr} $($attrs:tt)*) -> ($($pattern:expr),*), ($($args:expr),*)) => {
+        $crate::xml_format_args!(@outer($($attrs)*) -> ($($pattern),*, "{}"), ($($args,)* $text))
     };
     // matches a text literal
-    (@outer($text:literal $($attrs:tt)*) -> $pattern:expr, ($($args:expr),*)) => {
-        $crate::xml_format_args!(@outer($($attrs)*) -> concat!($pattern, $text), ($($args),*))
+    (@outer($text:literal $($attrs:tt)*) -> ($($pattern:expr),*), ($($args:expr),*)) => {
+        $crate::xml_format_args!(@outer($($attrs)*) -> ($($pattern),*, $text), ($($args),*))
     };
     // matches the end of the xml
-    (@outer() -> $pattern:expr, ($($args:expr),*)) => {
-        format_args!($pattern, $($args),*)
+    (@outer() -> ($($pattern:expr),*), ($($args:expr),*)) => {
+        format_args!(concat!($($pattern),*), $($args),*)
     };
 
     // matches the start of a tag, for opening the xml
     (<$($attrs:tt)*) => {
-        $crate::xml_format_args!(@outer(<$($attrs)*) -> "", ())
+        $crate::xml_format_args!(@outer(<$($attrs)*) -> (""), ())
     };
 }
 

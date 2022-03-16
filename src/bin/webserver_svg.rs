@@ -1,6 +1,6 @@
 use std::{io, num::NonZeroU64, path::Path, sync::Arc};
 
-use chrono::{NaiveDateTime, TimeZone, Utc, Duration};
+use chrono::{Duration, NaiveDateTime, TimeZone, Utc};
 use radar_search::search_data::StopId;
 use rocket::{http::ContentType, request::FromParam, State};
 use transit_radar::{
@@ -15,11 +15,19 @@ extern crate rocket;
 const STATION_ID_MIN: u64 = 900_000_000_000;
 
 #[get("/depart-from/<id>/<time>?<minutes>")]
-fn index(mut id: u64, time: TimeFilter, minutes: Option<i64>, data: &State<Arc<GTFSData>>) -> (ContentType, String) {
-    if id < STATION_ID_MIN {
-        id = id + STATION_ID_MIN;
-    }
-    let origin = data.get_stop(NonZeroU64::new(id).unwrap()).unwrap();
+fn index(
+    id: u64,
+    time: TimeFilter,
+    minutes: Option<i64>,
+    data: &State<Arc<GTFSData>>,
+) -> (ContentType, String) {
+    let station_id = NonZeroU64::new(if id < STATION_ID_MIN {
+        id + STATION_ID_MIN
+    } else {
+        id
+    })
+    .unwrap();
+    let origin = data.get_stop(station_id).unwrap();
     assert!(origin.is_station(), "Origin must be a station");
     let departure_time = match time {
         TimeFilter::Now => Utc::now().with_timezone(&chrono_tz::Europe::Berlin),
@@ -39,18 +47,22 @@ fn index(mut id: u64, time: TimeFilter, minutes: Option<i64>, data: &State<Arc<G
             show_tram: false,
         },
     );
-    let link_renderer = Box::new(|station_id: StopId| {
-        format!(
-            "/depart-from/{}/{}{}",
-            station_id.get() - STATION_ID_MIN,
-            &time,
-            if let Some(minutes) = minutes {
-                std::borrow::Cow::Owned(format!("?minutes={}", minutes))
-            } else {
-                "".into()
-            }
-        )
-    });
+    let link_renderer = Box::new(
+        |link_station_id: Option<StopId>, link_time: Option<NaiveDateTime>| {
+            let link_station_id = link_station_id.unwrap_or(station_id);
+            let link_time = link_time.map(TimeFilter::Local);
+            format!(
+                "/depart-from/{}/{}{}",
+                link_station_id.get() - STATION_ID_MIN,
+                link_time.as_ref().unwrap_or(&time),
+                if let Some(minutes) = minutes {
+                    std::borrow::Cow::Owned(format!("?minutes={}", minutes))
+                } else {
+                    "".into()
+                }
+            )
+        },
+    );
     let mut svg = Vec::new();
     radar
         .write_svg_to(&mut io::Cursor::new(&mut svg), &link_renderer)
