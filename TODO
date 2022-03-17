@@ -270,7 +270,7 @@ SVG will allow:
  - [x] Reduce prominence of sibling stations (ie. so that Alexanderplatz isn't a total mess) perhaps just show a small dot and no name, or perhaps no dot
  - [ ] Replace station suggestion somehow, maybe html page which embeds the svg
  - [x] Parsing errors
- - [ ] Add automatic reload to achieve animation
+ - [x] Add automatic reload to achieve animation
 2. Enhance
  - [x] Style the image for dark mode
  - [x] Click on other stations to change origin

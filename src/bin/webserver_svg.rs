@@ -14,11 +14,12 @@ extern crate rocket;
 
 const STATION_ID_MIN: u64 = 900_000_000_000;
 
-#[get("/depart-from/<id>/<time>?<minutes>")]
+#[get("/depart-from/<id>/<time>?<minutes>&<refresh>")]
 fn index(
     id: u64,
     time: TimeFilter,
     minutes: Option<i64>,
+    refresh: Option<bool>,
     data: &State<Arc<GTFSData>>,
 ) -> (ContentType, String) {
     let station_id = NonZeroU64::new(if id < STATION_ID_MIN {
@@ -63,9 +64,10 @@ fn index(
             )
         },
     );
+    let refresh = refresh.unwrap_or(true) && matches!(time, TimeFilter::Now);
     let mut svg = Vec::new();
     radar
-        .write_svg_to(&mut io::Cursor::new(&mut svg), &link_renderer)
+        .write_svg_to(&mut io::Cursor::new(&mut svg), &link_renderer, refresh)
         .unwrap();
     (ContentType::SVG, String::from_utf8(svg).unwrap())
 }

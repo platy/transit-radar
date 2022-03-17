@@ -588,6 +588,7 @@ impl<'s> Radar<'s> {
         &self,
         w: &mut dyn io::Write,
         link_renderer: &dyn Fn(Option<StopId>, Option<NaiveDateTime>) -> String,
+        refresh: bool,
     ) -> io::Result<()> {
         let Self {
             geometry,
@@ -604,16 +605,18 @@ impl<'s> Radar<'s> {
     <desc>Departure tree.</desc>
          "#
         )?;
+
         write_xml!(w, <style>{include_str!("Radar.css")}</style>)?;
 
         write_xml!(w,
             <g id="header" transform="translate(-506, -506)">
                 <text y="20" style="font-size: 20pt;">{origin.stop_name}{" departures"}</text>
                 <a href={link_renderer(None, Some(geometry.time_cone_geometry.origin().naive_local()))} rel="self"><text y="50" style="font-size: 10pt; font-style: oblique;">
-                    {"All trips starting "}{geometry.time_cone_geometry.origin().format("at %k:%M on %e %b %Y")}
+                    "All trips starting "{geometry.time_cone_geometry.origin().format("at %k:%M on %e %b %Y")}
                     <tspan x="0" dy="1.4em">{"and lasting less than "}{geometry.time_cone_geometry.max_duration().num_minutes()}{" minutes"}</tspan>
                 </text></a>
-                <a id="credit" href="https://radar.njk.onl"><text y="100">{"from transit radar,"}<tspan x="0" dy="1.4em" >{"by platy"}</tspan></text></a>
+                <text id="refresh-notice" y="90" visibility="hidden">"refreshing every 5 seconds [disable]"</text>
+                <a id="credit" href="https://radar.njk.onl"><text y="200">"from transit radar,"<tspan x="0" dy="1.4em" >"by platy"</tspan></text></a>
             </g>
         )?;
 
@@ -626,6 +629,20 @@ impl<'s> Radar<'s> {
             station.write_svg_fragment_to(w, &geometry.time_cone_geometry, link_renderer)?;
         }
         write_xml!(w, </g>)?;
+
+        if refresh {
+            write_xml!(w,
+                <script>{r#"
+                const refreshTimeout = setTimeout(() => location.reload(), 5000);
+                const refreshNotice = document.getElementById('refresh-notice')
+                refreshNotice.setAttribute('visibility', 'visible');
+                refreshNotice.onclick = () => {
+                    clearTimeout(refreshTimeout);
+                    refreshNotice.setAttribute('visibility', 'hidden');
+                }
+                "#}</script>)?;
+        }
+
         writeln!(w, "</svg>")
     }
 }
