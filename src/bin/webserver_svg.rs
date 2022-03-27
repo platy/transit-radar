@@ -1,10 +1,9 @@
-use std::{io, num::NonZeroU64, path::Path, sync::Arc};
+use std::{borrow::Cow, collections::HashSet, io, num::NonZeroU64, path::Path, sync::Arc};
 
-use chrono::{Duration, NaiveDateTime, TimeZone, Utc};
-use radar_search::search_data::StopId;
-use rocket::{http::ContentType, request::FromParam, State};
+use chrono::{Duration, NaiveDateTime, TimeZone};
+use rocket::{form::FromFormField, http::ContentType, request::FromParam, State};
 use transit_radar::{
-    draw::radar::{search, Flags},
+    draw::radar::{search, SearchParams, TransitMode, UrlSearchParams, STATION_ID_MIN},
     gtfs::db,
     GTFSData,
 };
@@ -12,14 +11,66 @@ use transit_radar::{
 #[macro_use]
 extern crate rocket;
 
-const STATION_ID_MIN: u64 = 900_000_000_000;
+struct TransitModes(std::collections::HashSet<TransitMode>);
 
-#[get("/depart-from/<id>/<time>?<minutes>&<refresh>")]
+impl Default for TransitModes {
+    fn default() -> Self {
+        Self(
+            [TransitMode::SBahn, TransitMode::UBahn]
+                .iter()
+                .copied()
+                .collect(),
+        )
+    }
+}
+
+impl<'v> FromFormField<'v> for TransitModes {
+    fn from_value(field: rocket::form::ValueField<'v>) -> rocket::form::Result<'v, Self> {
+        if field.value.is_empty() {
+            return Ok(Default::default());
+        }
+        let modes: HashSet<_> = field
+            .value
+            .split(',')
+            .map(|mode| match mode {
+                "ubahn" => Ok(TransitMode::UBahn),
+                "sbahn" => Ok(TransitMode::SBahn),
+                "bus" => Ok(TransitMode::Bus),
+                "tram" => Ok(TransitMode::Tram),
+                "regional" => Ok(TransitMode::Regional),
+                "boat" => Ok(TransitMode::Boat),
+                other => Err(rocket::form::Errors::from(
+                    rocket::form::prelude::ErrorKind::InvalidChoice {
+                        choices: vec![
+                            "ubahn".into(),
+                            "sbahn".into(),
+                            "tram".into(),
+                            "tram".into(),
+                            "regional".into(),
+                            "boat".into(),
+                        ]
+                        .into(),
+                    },
+                )
+                .with_name(field.name)
+                .with_value(other)),
+            })
+            .collect::<Result<_, _>>()?;
+        Ok(TransitModes(modes))
+    }
+
+    fn default() -> Option<Self> {
+        Some(Default::default())
+    }
+}
+
+#[get("/depart-from/<id>/<time>?<minutes>&<refresh>&<mode>")]
 fn index(
     id: u64,
     time: TimeFilter,
     minutes: Option<i64>,
     refresh: Option<bool>,
+    mode: TransitModes,
     data: &State<Arc<GTFSData>>,
 ) -> (ContentType, String) {
     let station_id = NonZeroU64::new(if id < STATION_ID_MIN {
@@ -31,43 +82,27 @@ fn index(
     let origin = data.get_stop(station_id).unwrap();
     assert!(origin.is_station(), "Origin must be a station");
     let departure_time = match time {
-        TimeFilter::Now => Utc::now().with_timezone(&chrono_tz::Europe::Berlin),
-        TimeFilter::Local(dt) => chrono_tz::Europe::Berlin.from_local_datetime(&dt).unwrap(),
+        TimeFilter::Now => None,
+        TimeFilter::Local(dt) => Some(chrono_tz::Europe::Berlin.from_local_datetime(&dt).unwrap()),
     };
     let max_duration = Duration::minutes(minutes.unwrap_or(30));
-    let radar = search(
-        data,
+    let search_params = SearchParams {
         origin,
         departure_time,
         max_duration,
-        &Flags {
-            show_ubahn: true,
-            show_bus: false,
-            show_regional: false,
-            show_sbahn: true,
-            show_tram: false,
-        },
-    );
-    let link_renderer = Box::new(
-        |link_station_id: Option<StopId>, link_time: Option<NaiveDateTime>| {
-            let link_station_id = link_station_id.unwrap_or(station_id);
-            let link_time = link_time.map(TimeFilter::Local);
-            format!(
-                "/depart-from/{}/{}{}",
-                link_station_id.get() - STATION_ID_MIN,
-                link_time.as_ref().unwrap_or(&time),
-                if let Some(minutes) = minutes {
-                    std::borrow::Cow::Owned(format!("?minutes={}", minutes))
-                } else {
-                    "".into()
-                }
-            )
-        },
-    );
+        modes: Cow::Borrowed(&mode.0),
+    };
+    let url_search_params = UrlSearchParams {
+        station_id,
+        departure_time,
+        max_duration,
+        modes: Cow::Borrowed(&mode.0),
+    };
+    let radar = search(data, search_params);
     let refresh = refresh.unwrap_or(true) && matches!(time, TimeFilter::Now);
     let mut svg = Vec::new();
     radar
-        .write_svg_to(&mut io::Cursor::new(&mut svg), &link_renderer, refresh)
+        .write_svg_to(&mut io::Cursor::new(&mut svg), url_search_params, refresh)
         .unwrap();
     (ContentType::SVG, String::from_utf8(svg).unwrap())
 }
@@ -86,6 +121,7 @@ fn rocket() -> _ {
     rocket::build().manage(data).mount("/", routes![index])
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
 enum TimeFilter {
     Now,
     Local(NaiveDateTime),

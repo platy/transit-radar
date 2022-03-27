@@ -48,7 +48,7 @@ macro_rules! xml_format_args {
     };
     // matches the end of the xml
     (@outer() -> ($($pattern:expr),*), ($($args:expr),*)) => {
-        format_args!(concat!($($pattern),*), $($args),*)
+        format_args!(concat!($($pattern),*, "\n"), $($args),*)
     };
 
     // matches the start of a tag, for opening the xml

@@ -365,9 +365,9 @@ pub struct GTFSSource {
 }
 
 impl GTFSSource {
-    pub fn new(dir_path: &Path) -> GTFSSource {
+    pub fn new(dir_path: impl AsRef<Path>) -> GTFSSource {
         GTFSSource {
-            dir_path: dir_path.to_owned(),
+            dir_path: dir_path.as_ref().to_path_buf(),
         }
     }
 

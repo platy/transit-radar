@@ -4,8 +4,12 @@ use chrono_tz::Tz;
 use radar_search::journey_graph;
 use radar_search::search_data::*;
 use radar_search::time::*;
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::f64::consts::PI;
+use std::fmt::Display;
+use std::fmt::Write;
 use std::io;
 
 use crate::write_xml;
@@ -215,14 +219,42 @@ fn sane_initial_control_point() {
     }
 }
 
-#[derive(Default, Debug, Clone, Eq, PartialEq)]
-#[allow(clippy::struct_excessive_bools)]
-pub struct Flags {
-    pub show_sbahn: bool,
-    pub show_ubahn: bool,
-    pub show_bus: bool,
-    pub show_tram: bool,
-    pub show_regional: bool,
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum TransitMode {
+    SBahn,
+    UBahn,
+    Bus,
+    Tram,
+    Regional,
+    Boat,
+}
+
+impl TransitMode {
+    const DEFAULTS: &'static [TransitMode] = &[TransitMode::SBahn, TransitMode::UBahn];
+
+    fn key(&self) -> &str {
+        match self {
+            TransitMode::SBahn => "sbahn",
+            TransitMode::UBahn => "ubahn",
+            TransitMode::Bus => "bus",
+            TransitMode::Tram => "tram",
+            TransitMode::Regional => "regional",
+            TransitMode::Boat => "boat",
+        }
+    }
+}
+
+impl Display for TransitMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TransitMode::SBahn => f.write_str("S-Bahn"),
+            TransitMode::UBahn => f.write_str("U-Bahn"),
+            TransitMode::Bus => f.write_str("Bus"),
+            TransitMode::Tram => f.write_str("Tram"),
+            TransitMode::Regional => f.write_str("Regional"),
+            TransitMode::Boat => f.write_str("Boat"),
+        }
+    }
 }
 
 pub fn day_time<Tz: TimeZone>(date_time: DateTime<Tz>) -> (Day, Time) {
@@ -238,14 +270,114 @@ pub fn day_time<Tz: TimeZone>(date_time: DateTime<Tz>) -> (Day, Time) {
     };
     (day, now)
 }
+pub struct SearchParams<'s> {
+    pub origin: &'s Stop,
+    pub departure_time: Option<DateTime<Tz>>,
+    pub max_duration: Duration,
+    pub modes: Cow<'s, HashSet<TransitMode>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UrlSearchParams<'s> {
+    pub station_id: StopId,
+    pub departure_time: Option<DateTime<Tz>>,
+    pub max_duration: Duration,
+    pub modes: Cow<'s, HashSet<TransitMode>>,
+}
+
+impl<'s> UrlSearchParams<'s> {
+    fn with_station_id(self, station_id: StopId) -> Self {
+        Self {
+            station_id,
+            departure_time: self.departure_time,
+            max_duration: self.max_duration,
+            modes: self.modes,
+        }
+    }
+
+    fn with_departure_time(self, departure_time: DateTime<Tz>) -> Self {
+        Self {
+            station_id: self.station_id,
+            departure_time: Some(departure_time),
+            max_duration: self.max_duration,
+            modes: self.modes,
+        }
+    }
+
+    fn with_mode(self, mode: TransitMode) -> Self {
+        let mut modes = self.modes.into_owned();
+        modes.insert(mode);
+        Self {
+            station_id: self.station_id,
+            departure_time: self.departure_time,
+            max_duration: self.max_duration,
+            modes: Cow::Owned(modes),
+        }
+    }
+
+    fn without_mode(self, mode: TransitMode) -> Self {
+        let mut modes = self.modes.into_owned();
+        modes.remove(&mode);
+        Self {
+            station_id: self.station_id,
+            departure_time: self.departure_time,
+            max_duration: self.max_duration,
+            modes: Cow::Owned(modes),
+        }
+    }
+}
+
+pub const STATION_ID_MIN: u64 = 900_000_000_000;
+pub const DEFAULT_MAX_DURATION_MINS: i64 = 30;
+
+impl<'s> Display for UrlSearchParams<'s> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "/depart-from/{}/",
+            self.station_id.get() - STATION_ID_MIN,
+        )?;
+        if let Some(time) = self.departure_time {
+            write!(f, "{:?}", time.naive_local())?;
+        } else {
+            f.write_str("now")?;
+        }
+        let uses_non_default_minutes = self.max_duration.num_minutes() != DEFAULT_MAX_DURATION_MINS;
+        let uses_non_default_modes = *self.modes != TransitMode::DEFAULTS.iter().copied().collect();
+        if uses_non_default_minutes || uses_non_default_modes {
+            f.write_char('?')?;
+        }
+        if uses_non_default_minutes {
+            write!(f, "minutes={}", self.max_duration.num_minutes())?;
+        }
+        if uses_non_default_minutes && uses_non_default_modes {
+            write!(f, "&amp;")?;
+        }
+        if *self.modes != TransitMode::DEFAULTS.iter().copied().collect() {
+            write!(f, "mode=")?;
+            let mut iter = self.modes.iter().peekable();
+            while let Some(mode) = iter.next() {
+                f.write_str(mode.key())?;
+                if iter.peek().is_some() {
+                    write!(f, ",")?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
 
 pub fn search<'s>(
     data: &'s GTFSData,
-    origin: &'s Stop,
-    departure_time: DateTime<Tz>,
-    max_duration: Duration,
-    flags: &Flags,
+    SearchParams {
+        origin,
+        departure_time,
+        max_duration,
+        modes,
+    }: SearchParams<'s>,
 ) -> Radar<'s> {
+    let departure_time =
+        departure_time.unwrap_or_else(|| Utc::now().with_timezone(&chrono_tz::Europe::Berlin));
     let (day, start_time) = day_time(departure_time);
     let end_time = start_time + max_duration;
     let max_extra_search = Duration::minutes(0);
@@ -254,22 +386,26 @@ pub fn search<'s>(
         Period::between(start_time, end_time + max_extra_search),
         data,
     );
-    plotter.add_origin_station(origin);
-    if flags.show_sbahn {
-        plotter.add_route_type(RouteType::SuburbanRailway)
+    plotter.add_origin_station(&origin);
+    if modes.contains(&TransitMode::SBahn) {
+        plotter.add_route_type(RouteType::SuburbanRailway);
     }
-    if flags.show_ubahn {
-        plotter.add_route_type(RouteType::UrbanRailway)
+    if modes.contains(&TransitMode::UBahn) {
+        plotter.add_route_type(RouteType::UrbanRailway);
     }
-    if flags.show_bus {
+    if modes.contains(&TransitMode::Bus) {
         plotter.add_route_type(RouteType::BusService);
-        plotter.add_route_type(RouteType::Bus)
+        plotter.add_route_type(RouteType::Bus);
     }
-    if flags.show_tram {
-        plotter.add_route_type(RouteType::TramService)
+    if modes.contains(&TransitMode::Tram) {
+        plotter.add_route_type(RouteType::TramService);
     }
-    if flags.show_regional {
-        plotter.add_route_type(RouteType::RailwayService)
+    if modes.contains(&TransitMode::Regional) {
+        plotter.add_route_type(RouteType::RailwayService);
+        plotter.add_route_type(RouteType::Rail);
+    }
+    if modes.contains(&TransitMode::Boat) {
+        plotter.add_route_type(RouteType::WaterTransportService);
     }
     let mut expires_time = end_time;
     let mut trips: HashMap<TripId, RadarTrip> = HashMap::new();
@@ -587,7 +723,7 @@ impl<'s> Radar<'s> {
     pub fn write_svg_to(
         &self,
         w: &mut dyn io::Write,
-        link_renderer: &dyn Fn(Option<StopId>, Option<NaiveDateTime>) -> String,
+        search_params: UrlSearchParams<'s>,
         refresh: bool,
     ) -> io::Result<()> {
         let Self {
@@ -611,12 +747,35 @@ impl<'s> Radar<'s> {
         write_xml!(w,
             <g id="header" transform="translate(-506, -506)">
                 <text y="20" style="font-size: 20pt;">{origin.stop_name}{" departures"}</text>
-                <a href={link_renderer(None, Some(geometry.time_cone_geometry.origin().naive_local()))} rel="self"><text y="50" style="font-size: 10pt; font-style: oblique;">
+                <a href={search_params.clone().with_departure_time(geometry.time_cone_geometry.origin())} rel="self"><text y="50" style="font-size: 10pt; font-style: oblique;">
                     "All trips starting "{geometry.time_cone_geometry.origin().format("at %k:%M on %e %b %Y")}
                     <tspan x="0" dy="1.4em">{"and lasting less than "}{geometry.time_cone_geometry.max_duration().num_minutes()}{" minutes"}</tspan>
                 </text></a>
                 <text id="refresh-notice" y="90" visibility="hidden">"refreshing every 5 seconds [disable]"</text>
-                <a id="credit" href="https://radar.njk.onl"><text y="200">"from transit radar,"<tspan x="0" dy="1.4em" >"by platy"</tspan></text></a>
+                <text y="110" id="transport-types">
+        )?;
+        for &mode in &[
+            TransitMode::SBahn,
+            TransitMode::UBahn,
+            TransitMode::Tram,
+            TransitMode::Bus,
+            TransitMode::Regional,
+            TransitMode::Boat,
+        ] {
+            let mode_enabled = search_params.modes.contains(&mode);
+            write_xml!(w,
+                <tspan x="0" dy="1.5em" class={ if mode_enabled { "" } else {"disabled"}}>
+                    <a href={if mode_enabled {
+                        search_params.clone().without_mode(mode)
+                    } else {
+                        search_params.clone().with_mode(mode)
+                    }}>{mode}</a>
+                </tspan>
+            )?;
+        }
+        write_xml!(w,
+                </text>
+                <text id="credit" y="200"><a href="https://radar.njk.onl">"from transit radar,"</a><tspan x="0" dy="1.4em" ><a href="mailto:platy@njk.lonl">"by platy"</a></tspan></text>
             </g>
         )?;
 
@@ -626,7 +785,7 @@ impl<'s> Radar<'s> {
         }
         write_xml!(w, <g class="s">)?;
         for station in stations.values() {
-            station.write_svg_fragment_to(w, &geometry.time_cone_geometry, link_renderer)?;
+            station.write_svg_fragment_to(w, &geometry.time_cone_geometry, &search_params)?;
         }
         write_xml!(w, </g>)?;
 
@@ -671,7 +830,7 @@ impl<'s> Station<'s, FlattenedTimeCone> {
         &self,
         w: &mut dyn io::Write,
         geometry: &FlattenedTimeCone,
-        link_renderer: &dyn Fn(Option<StopId>, Option<NaiveDateTime>) -> String,
+        search_params: &UrlSearchParams,
     ) -> io::Result<()> {
         const STOP_RADIUS: f64 = 3.;
         let (bearing, magnitude) = self.coords;
@@ -685,7 +844,7 @@ impl<'s> Station<'s, FlattenedTimeCone> {
             format!("...{}", &self.stop.stop_name[self.name_trunk_length..]).into()
         };
         write_xml!(w,
-            <a href={link_renderer(Some(self.stop.station_id()), None)}>
+            <a href={search_params.clone().with_station_id(self.stop.station_id())}>
             <circle cx={*cx} cy={*cy} r={STOP_RADIUS} />
                 <text x={*cx + STOP_RADIUS + 6.} y={*cy + 4.}>{name}</text>
             </a>

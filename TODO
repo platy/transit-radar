@@ -271,19 +271,26 @@ SVG will allow:
  - [ ] Replace station suggestion somehow, maybe html page which embeds the svg
  - [x] Parsing errors
  - [x] Add automatic reload to achieve animation
+ - [ ] Bus error from Wannsee
+ - [ ] Ferries
 2. Enhance
  - [x] Style the image for dark mode
  - [x] Click on other stations to change origin
  - [x] Choose a time or now
  - [x] Choose duration
  - [x] Header
- - [ ] Clickable filters
+ - [x] Clickable filters
+ - [ ] compress links as there are a lot of them on an svg
  - [ ] Choose size or scale
- - [ ] better code organisation
+ - [ ] On hover:
+  - [ ] Make it bigger and bring to the front
+  - [ ] Make all the trips and interchange stations on the way to it larger and bring to front
+  - [ ] Show details about the arrival at the station or about the trip and it's stop times
+  - [ ] Show details of the previous steps to get to that point de-emphasised
  - [ ] Make sure it saves nice
+ - [ ] better code organisation
  - [ ] If 2 different lines arrive at a stop at the same time (eg. Mehringdamm) maybe we should show both
  - [ ] Scoring for how easy the connection to an added trip or station was, this can be used to decide whether to make a new connection to a trip at a later point. Later this can be used for prefereneces about less transfers / less walking / les waiting / speed
- - [ ] hover text on paths
 3. Expand
  - [ ] Use calendar and calendar dates
  - [ ] Coordinate start points
@@ -298,6 +305,51 @@ SVG will allow:
  - [ ] Switch to regular map
 4. Live view
  - [ ] Animate the passage of time on all views when looking at now
- - [ ] Animate switching between views and start points
+ - [ ] Animate switching between views and start points and filters
  - [ ] Live departure updates
  - [ ] sample allocations per request
+
+## Data structure
+
+There are 2 big problems with the way the data works in the app, one is that it takes a long time to load up the data, and the other is that it uses a lot of memory (>500MB). Both problems are caused by having to read the whole of the gtfs data on each load up and keep it in memory the whole time. The effect is bad DX and costly production, so I'd like to fix it.
+
+I think a lot of the load time is actually taken by allocations, so a big saving could be made by avoiding allocations, but this saving is limited, to make the load really fast, the data needs to be preprocessed and stored on-disk, so it can be loaded and used without parsing everything and building new structures every time.
+
+To also reduce the amount of memory used, we need to avoid loading data until it will actually be used, only 10's of MBs should be needed to answer a query, we might also want to remove things from memory which are no longer used. This means processing the GTFS data and producing a different format of data which the search algorithm can randomly read parts of. In order to avoid seeks and reads all over the place and keep the search fast, we need to keep data that will be used together clustered in ways that localises data that will be used together.
+
+### Localising data
+
+The station, trip, route, etc. data is not so huge, and so we may well load all of it, but the stop times are huge and that's where we need the localisation of data so that only a small amount is loaded. The simplest localisation of stop times needed in a query is by time, for a 30min radar, we only need stop times which depart and arrive during that 30mins. I imagine that this reduces the size of stoptimes needed in memory by around 30x. The main lookup is by station though and this needs to be fast, so we can't search through every departure in 30 mins looking for ones from a particular station.
+
+I think the solution would be to partition time into blocks of around 10/15 mins to be stored together in memory, within each block there would then be a table keyed on the stopid, pointing to an ordered table of the departures from the stop.
+
+```
+MSBs of Time -> StopId -> LSBs of Time* -> (trip_id, arrival_time, departure_time, previous_stop_id, next_stop_id)
+```
+
+Only a few of these blocks would be needed for a query.
+Maybe the LSB's of time don't need to be indexed as most stops will only have a few departures per block.
+If the arrival time and departure time are in different blocks, do we need to duplicate them?
+The stop_id lookup is probably the trickiest part, there could be over 10,000 stops with departures in a block and we need to look up every stop we come across in the search (in several blocks).
+
+### Building data
+
+This datastore needs to be rebuilt each time a new gtfs archive is fetched. Thankfully it can actually be done while an existing version is using the old store, but if it uses 500MB to build then it doesn't actually reduce the peak memory usage in production, it just reduces that to only being during the data build. Ideally we would avoid having to load all the data into memory in order to build this store, but we probably need to load all the stop times in order to do it properly.
+
+### Parsing or MMapping
+
+When the search algo finds blocks it needs for searching, we could either then seek to that block and deserialise it, or if we use mmap, we could let the OS deal with reading pages, but that means we need only mmapable structures, which means we can't use BTreeMap, etc. If we do want to use BTreeMap for the stop_id lookup, we need to parse a loopu table and load it into a BTree, this could either be done for each block when it is loaded, or there could be a single lookup for all of them, which would be built at startup and might be 10MB
+
+### Todo
+
+- [ ] Remove the trip stoptime storage, I think it was only needed for the sync, and maybe not even
+- [ ] See if https://docs.rs/flatdata/latest/flatdata/ (or something similar would work for this storage
+- [ ] Otherwise look into mmapable indexes / maps / lookups
+- [ ] Binary which:
+ - [ ] reads all the stop times into memory - 33secs
+ - [ ] Puts previous_stop and next_stop on each
+ - [ ] creates indexes of both time fields
+ - [ ] checks the page size and calculates maximum number of stop times per page
+ - [ ] buckets the stoptimes into pages, writing them into a file
+ - [ ] records a table of content to the file
+ - [ ] reads the file back and verifies it

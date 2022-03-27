@@ -35,16 +35,15 @@ fn produce_tree_json(
         plotter.add_route_type(RouteType::SuburbanRailway);
     }
     if options.bus {
+        plotter.add_route_type(RouteType::Bus);
         plotter.add_route_type(RouteType::BusService);
     }
     if options.tram {
         plotter.add_route_type(RouteType::TramService);
     }
     if options.regio {
+        plotter.add_route_type(RouteType::Rail);
         plotter.add_route_type(RouteType::RailwayService);
-    }
-    if options.bus {
-        plotter.add_route_type(RouteType::Bus);
     }
 
     for item in plotter {

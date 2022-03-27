@@ -25,7 +25,7 @@ path {
 .BusService {
   stroke:#a01c7d
 }
-.Ferry {
+.WaterTransportService {
   stroke:#0099d6
 }
 .Connection {
@@ -188,6 +188,10 @@ path {
   .grid { stroke: #555; }
   text { fill: #999 }
   .s circle { fill: #999 }
+}
+
+#transport-types .disabled {
+  text-decoration: line-through;
 }
 
 #credit {
