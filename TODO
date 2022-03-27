@@ -271,8 +271,9 @@ SVG will allow:
  - [ ] Replace station suggestion somehow, maybe html page which embeds the svg
  - [x] Parsing errors
  - [x] Add automatic reload to achieve animation
- - [ ] Bus error from Wannsee
- - [ ] Ferries
+ - [x] Bus error from Wannsee
+ - [x] Ferries
+ - [ ] Fix trip eviction from Kladow : http://127.0.0.1:8000/depart-from/39102/2022-03-28T08:52:15.504079?minutes=180&mode=boat,bus
 2. Enhance
  - [x] Style the image for dark mode
  - [x] Click on other stations to change origin
@@ -280,15 +281,16 @@ SVG will allow:
  - [x] Choose duration
  - [x] Header
  - [x] Clickable filters
- - [ ] compress links as there are a lot of them on an svg
  - [ ] Choose size or scale
  - [ ] On hover:
   - [ ] Make it bigger and bring to the front
   - [ ] Make all the trips and interchange stations on the way to it larger and bring to front
+ - [ ] On click:
   - [ ] Show details about the arrival at the station or about the trip and it's stop times
   - [ ] Show details of the previous steps to get to that point de-emphasised
+  - [ ] Link to show departures from on stations
  - [ ] Make sure it saves nice
- - [ ] better code organisation
+  - [ ] compress links as there are a lot of them on an svg
  - [ ] If 2 different lines arrive at a stop at the same time (eg. Mehringdamm) maybe we should show both
  - [ ] Scoring for how easy the connection to an added trip or station was, this can be used to decide whether to make a new connection to a trip at a later point. Later this can be used for prefereneces about less transfers / less walking / les waiting / speed
 3. Expand

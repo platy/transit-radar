@@ -1,4 +1,4 @@
-use std::{path::Path, thread};
+use std::path::Path;
 
 use transit_radar::gtfs::{self, db::GTFSSource, StopId, Time, TripId};
 

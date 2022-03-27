@@ -18,7 +18,7 @@ use super::geometry::*;
 
 pub struct Radar<'s> {
     geometry: Geo,
-    trips: HashMap<TripId, RadarTrip>,
+    trips: HashMap<TripId, RadarTrip<'s>>,
     stations: HashMap<StopId, Station<'s, FlattenedTimeCone>>,
     origin: &'s Stop,
 }
@@ -29,18 +29,19 @@ struct Station<'s, G: Geometry> {
     name_trunk_length: usize,
 }
 
-struct RadarTrip {
+#[derive(Debug)]
+struct RadarTrip<'s> {
     _trip_id: TripId,
     route_name: String,
     route_type: RouteType,
-    connection: TripSegment,
-    segments: Vec<TripSegment>,
+    connection: TripSegment<'s>,
+    segments: Vec<TripSegment<'s>>,
 }
 
 #[derive(Debug)]
-struct TripSegment {
-    from: geo::Point<f64>,
-    to: geo::Point<f64>,
+struct TripSegment<'s> {
+    from: &'s Stop,
+    to: &'s Stop,
     departure_time: Time,
     arrival_time: Time,
 }
@@ -386,7 +387,7 @@ pub fn search<'s>(
         Period::between(start_time, end_time + max_extra_search),
         data,
     );
-    plotter.add_origin_station(&origin);
+    plotter.add_origin_station(origin);
     if modes.contains(&TransitMode::SBahn) {
         plotter.add_route_type(RouteType::SuburbanRailway);
     }
@@ -474,8 +475,8 @@ pub fn search<'s>(
                     .get_mut(&trip_id)
                     .expect("trip to have been connected to");
                 trip.segments.push(TripSegment {
-                    from: from_stop.location,
-                    to: to_stop.location,
+                    from: from_stop,
+                    to: to_stop,
                     departure_time,
                     arrival_time,
                 });
@@ -507,8 +508,8 @@ pub fn search<'s>(
                         route_name: route_name.to_string(),
                         route_type,
                         connection: TripSegment {
-                            from: from_stop.location,
-                            to: to_stop.location,
+                            from: from_stop,
+                            to: to_stop,
                             departure_time: adjusted_departure_time,
                             arrival_time,
                         },
@@ -543,7 +544,7 @@ pub fn search<'s>(
     }
 }
 
-impl RadarTrip {
+impl<'s> RadarTrip<'s> {
     pub(crate) fn write_svg_fragment_to(
         &self,
         w: &mut dyn std::io::Write,
@@ -564,6 +565,14 @@ impl RadarTrip {
                 .and_time(time.into())
                 .unwrap()
         };
+        // At Wannsee, bus 118 leaves Wannsee and arrives at Wannsee 2 minutes later according to my data, remove any of these
+        let mut segments = &segments[..];
+        for i in 0..segments.len() {
+            if segments[i].to.location != geometry.geographic_origin {
+                segments = &segments[i..];
+                break;
+            }
+        }
         {
             let TripSegment {
                 from,
@@ -575,16 +584,16 @@ impl RadarTrip {
             path.set_class(format!("Connection {:?} {}", route_type, route_name));
 
             let mut to = to;
-            if *to == geometry.geographic_origin {
+            if to.location == geometry.geographic_origin {
                 // connection is on origin meaning no natural bearing for it, we use the bearing to the next stop
                 to = &segments.first().expect("at least one segment in a trip").to;
             }
             path.move_to((
-                geometry.bearing(*from).unwrap_or_default(),
+                geometry.bearing(from.location).unwrap_or_default(),
                 time_to_datetime(*departure_time),
             ));
             path.line_to((
-                geometry.bearing(*to).unwrap(),
+                geometry.bearing(to.location).unwrap(),
                 time_to_datetime(*arrival_time),
             ));
             path.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;
@@ -598,25 +607,27 @@ impl RadarTrip {
                     // first segment
                     let segment = &segments[0];
                     let to_bearing = geometry
-                        .bearing(segment.to)
+                        .bearing(segment.to.location)
                         .expect("Segment goes to origin");
-                    let from_bearing = geometry.bearing(segment.from).unwrap_or(to_bearing);
+                    let from_bearing = geometry
+                        .bearing(segment.from.location)
+                        .unwrap_or(to_bearing);
                     let from_mag = time_to_datetime(segment.departure_time);
                     let to_mag = time_to_datetime(segment.arrival_time);
                     path.move_to((from_bearing, from_mag));
 
                     let cp1 = geometry.initial_control_point(
-                        (segment.from, segment.departure_time),
-                        (segment.to, segment.arrival_time),
+                        (segment.from.location, segment.departure_time),
+                        (segment.to.location, segment.arrival_time),
                     );
                     assert!(cp1.1 >= from_mag, "Control point for curve cannot have a lower magnitude than the origin, {} must be > {}", cp1.1, from_mag);
-                    let (post_location, post_time) = if segments[1].from == segment.to {
+                    let (post_stop, post_time) = if segments[1].from == segment.to {
                         (segments[1].to, segments[1].arrival_time)
                     } else {
                         (segments[1].from, segments[1].departure_time)
                     };
                     let post_bearing = geometry
-                        .bearing(post_location)
+                        .bearing(post_stop.location)
                         .expect("Segment goes to origin");
                     let post_mag = time_to_datetime(post_time);
 
@@ -631,23 +642,25 @@ impl RadarTrip {
                 // all the connecting segments
                 for window in segments.windows(3) {
                     if let [pre, segment, post] = window {
-                        let to_bearing = geometry.bearing(segment.to).unwrap();
-                        let from_bearing = geometry.bearing(segment.from).unwrap_or(to_bearing);
+                        let to_bearing = geometry.bearing(segment.to.location).unwrap();
+                        let from_bearing = geometry
+                            .bearing(segment.from.location)
+                            .unwrap_or(to_bearing);
                         let from_mag = segment.departure_time;
                         let to_mag = segment.arrival_time;
 
-                        let pre_bearing = geometry.bearing(pre.to).unwrap();
+                        let pre_bearing = geometry.bearing(pre.to.location).unwrap();
                         let pre_mag = pre.arrival_time;
                         assert!(
                             !(pre_bearing != from_bearing && pre_mag != from_mag),
                             "shouldn't have a gap in the route"
                         );
-                        let (post_location, post_time) = if post.from == segment.to {
+                        let (post_stop, post_time) = if post.from == segment.to {
                             (post.to, post.arrival_time)
                         } else {
                             (post.from, post.departure_time)
                         };
-                        let post_bearing = geometry.bearing(post_location).unwrap();
+                        let post_bearing = geometry.bearing(post_stop.location).unwrap();
                         let post_mag = post_time;
                         let cp1 = next_control_point;
                         let (cp2, next_control_point_tmp) = geometry.control_points(
@@ -665,7 +678,7 @@ impl RadarTrip {
                     // draw the last curve
                     let end = segments.last().unwrap();
                     let to = (
-                        geometry.bearing(end.to).unwrap(),
+                        geometry.bearing(end.to.location).unwrap(),
                         time_to_datetime(end.arrival_time),
                     );
                     let cp1 = next_control_point;
@@ -674,8 +687,10 @@ impl RadarTrip {
             }
             std::cmp::Ordering::Equal => {
                 let segment = &segments[0];
-                let to_bearing = geometry.bearing(segment.to).unwrap();
-                let from_bearing = geometry.bearing(segment.from).unwrap_or(to_bearing);
+                let to_bearing = geometry.bearing(segment.to.location).unwrap();
+                let from_bearing = geometry
+                    .bearing(segment.from.location)
+                    .unwrap_or(to_bearing);
 
                 path.move_to((from_bearing, time_to_datetime(segment.departure_time)));
                 path.line_to((to_bearing, time_to_datetime(segment.arrival_time)));
