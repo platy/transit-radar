@@ -346,7 +346,7 @@ When the search algo finds blocks it needs for searching, we could either then s
 - [ ] See if https://docs.rs/flatdata/latest/flatdata/ (or something similar would work for this storage
 - [ ] Otherwise look into mmapable indexes / maps / lookups
 - [ ] Binary which:
- - [ ] reads all the stop times into memory - 33secs
+ - [x] reads all the stop times into memory - 33secs
  - [ ] Puts previous_stop and next_stop on each
  - [ ] creates indexes of both time fields
  - [ ] checks the page size and calculates maximum number of stop times per page
