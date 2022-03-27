@@ -113,19 +113,17 @@ impl<'r> Plotter<'r> {
                         stop: item.to_stop,
                         earliest_arrival: item.arrival_time,
                         name_trunk_length: if item.variant.is_stop_on_trip() {
-                            0
-                        } else {
                             item.variant
                                 .get_from_stop()
-                                .map(|from_stop| {
-                                    from_stop
+                                .and_then(|from_stop| {
+                                    item.to_stop
                                         .stop_name
-                                        .chars()
-                                        .zip(item.to_stop.stop_name.chars())
-                                        .take_while(|(a, b)| a == b)
-                                        .count()
+                                        .starts_with(&from_stop.stop_name)
+                                        .then(|| from_stop.stop_name.len())
                                 })
                                 .unwrap_or_default()
+                        } else {
+                            0
                         },
                     });
                 }
