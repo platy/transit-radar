@@ -273,7 +273,10 @@ SVG will allow:
  - [x] Add automatic reload to achieve animation
  - [x] Bus error from Wannsee
  - [x] Ferries
- - [ ] Fix trip eviction from Kladow : http://127.0.0.1:8000/depart-from/39102/2022-03-28T08:52:15.504079?minutes=180&mode=boat,bus
+ - [x] Issue with successive bus stops arriving in the same minute : http://127.0.0.1:8000/depart-from/900000110004/2022-03-28T10:45:15?minutes=4&mode=bus
+ - [ ] Memory and time performance benchmark
+ - [ ] Try removing whole trip enqueuing and filtering
+ - [ ] Make ready to deploy
 2. Enhance
  - [x] Style the image for dark mode
  - [x] Click on other stations to change origin

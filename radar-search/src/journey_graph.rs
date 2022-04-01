@@ -582,19 +582,36 @@ impl<'r> fmt::Debug for QueueItem<'r> {
 }
 
 /// The ordering on the queue items puts those with the earliest arrival times as the greatest,
-/// so that they will be highest priority in the `BinaryHeap`, then all the other fields need to be
+/// so that they will be highest priority in the `BinaryHeap`, then (as an occasional bus route has sub-minute arrival times), it does the same thong each with previous arrival time, departure time and next departure time in the case of a stop. Then all the other fields need to be
 /// taken into account for a full ordering
 impl<'r> Ord for QueueItem<'r> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.arrival_time
             .cmp(&other.arrival_time)
             .reverse()
-            .then_with(|| {
-                self.to_stop
-                    .stop_id
-                    .cmp(&other.to_stop.stop_id)
-                    .then(self.variant.cmp(&other.variant))
+            .then_with(|| match (&self.variant, &other.variant) {
+                (
+                    QueueItemVariant::StopOnTrip {
+                        departure_time: d1,
+                        previous_arrival_time: p1,
+                        next_departure_time: n1,
+                        ..
+                    },
+                    QueueItemVariant::StopOnTrip {
+                        departure_time: d2,
+                        previous_arrival_time: p2,
+                        next_departure_time: n2,
+                        ..
+                    },
+                ) => p1
+                    .cmp(p2)
+                    .then_with(|| d1.cmp(d2))
+                    .then_with(|| n1.cmp(n2))
+                    .reverse(),
+                _ => Ordering::Equal,
             })
+            .then_with(|| self.variant.cmp(&other.variant))
+            .then_with(|| self.to_stop.cmp(other.to_stop))
     }
 }
 

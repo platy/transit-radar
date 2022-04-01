@@ -34,8 +34,8 @@ struct RadarTrip<'s> {
     _trip_id: TripId,
     route_name: String,
     route_type: RouteType,
-    connection: TripSegment<'s>,
-    segments: Vec<TripSegment<'s>>,
+    /// Usually just one of these, each item is a connection into this trip and the segments that follow it
+    parts: Vec<(TripSegment<'s>, Vec<TripSegment<'s>>)>,
 }
 
 #[derive(Debug)]
@@ -474,12 +474,23 @@ pub fn search<'s>(
                 let trip = trips
                     .get_mut(&trip_id)
                     .expect("trip to have been connected to");
-                trip.segments.push(TripSegment {
+                let segment = TripSegment {
                     from: from_stop,
                     to: to_stop,
                     departure_time,
                     arrival_time,
-                });
+                };
+                if let Some(pre) = trip.parts.last().unwrap().1.last() {
+                    assert!(
+                        !(pre.to != segment.from && pre.arrival_time != segment.departure_time),
+                        "shouldn't have a gap in the route : from ({:?} {}) to ({:?} {})",
+                        pre.to,
+                        pre.arrival_time,
+                        segment.from,
+                        segment.departure_time,
+                    );
+                }
+                trip.parts.last_mut().unwrap().1.push(segment);
             }
             journey_graph::Item::ConnectionToTrip {
                 departure_time,
@@ -501,37 +512,24 @@ pub fn search<'s>(
                     );
                 }
 
-                if let Some(evicted) = trips.insert(
-                    trip_id,
-                    RadarTrip {
+                trips
+                    .entry(trip_id)
+                    .or_insert_with(|| RadarTrip {
                         _trip_id: trip_id,
                         route_name: route_name.to_string(),
                         route_type,
-                        connection: TripSegment {
+                        parts: Vec::with_capacity(1),
+                    })
+                    .parts
+                    .push((
+                        TripSegment {
                             from: from_stop,
                             to: to_stop,
                             departure_time: adjusted_departure_time,
                             arrival_time,
                         },
-                        segments: vec![],
-                    },
-                ) {
-                    eprintln!(
-                        "Trip {}({}) from {:?} evicted by from {:?} at {}-{}",
-                        route_name,
-                        trip_id,
-                        evicted.segments.first().map(|seg| seg.from),
-                        from_stop,
-                        adjusted_departure_time,
-                        arrival_time,
-                    );
-                    assert!(trips
-                        .insert(
-                            std::num::NonZeroU32::new(1_000_000 + trip_id.get()).unwrap(),
-                            evicted
-                        )
-                        .is_none());
-                }
+                        vec![],
+                    ));
             }
         }
     }
@@ -552,10 +550,9 @@ impl<'s> RadarTrip<'s> {
     ) -> io::Result<()> {
         let RadarTrip {
             _trip_id: _,
-            connection,
             route_name,
             route_type,
-            segments,
+            parts,
         } = self;
         let time_to_datetime = |time: Time| {
             geometry
@@ -565,142 +562,148 @@ impl<'s> RadarTrip<'s> {
                 .and_time(time.into())
                 .unwrap()
         };
-        // At Wannsee, bus 118 leaves Wannsee and arrives at Wannsee 2 minutes later according to my data, remove any of these
-        let mut segments = &segments[..];
-        for i in 0..segments.len() {
-            if segments[i].to.location != geometry.geographic_origin {
-                segments = &segments[i..];
-                break;
+        for (connection, segments) in parts {
+            // At Wannsee, bus 118 leaves Wannsee and arrives at Wannsee 2 minutes later according to my data, remove any of these
+            let mut segments = &segments[..];
+            for i in 0..segments.len() {
+                if segments[i].to.location != geometry.geographic_origin {
+                    segments = &segments[i..];
+                    break;
+                }
             }
-        }
-        {
-            let TripSegment {
-                from,
-                to,
-                departure_time,
-                arrival_time,
-            } = connection;
+            {
+                let TripSegment {
+                    from,
+                    to,
+                    departure_time,
+                    arrival_time,
+                } = connection;
+                let mut path = Path::begin_path();
+                path.set_class(format!("Connection {:?} {}", route_type, route_name));
+
+                let mut to = to;
+                if to.location == geometry.geographic_origin {
+                    // connection is on origin meaning no natural bearing for it, we use the bearing to the next stop
+                    to = &segments.first().expect("at least one segment in a trip").to;
+                }
+                path.move_to((
+                    geometry.bearing(from.location).unwrap_or_default(),
+                    time_to_datetime(*departure_time),
+                ));
+                path.line_to((
+                    geometry.bearing(to.location).unwrap(),
+                    time_to_datetime(*arrival_time),
+                ));
+                path.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;
+            }
+
             let mut path = Path::begin_path();
-            path.set_class(format!("Connection {:?} {}", route_type, route_name));
-
-            let mut to = to;
-            if to.location == geometry.geographic_origin {
-                // connection is on origin meaning no natural bearing for it, we use the bearing to the next stop
-                to = &segments.first().expect("at least one segment in a trip").to;
-            }
-            path.move_to((
-                geometry.bearing(from.location).unwrap_or_default(),
-                time_to_datetime(*departure_time),
-            ));
-            path.line_to((
-                geometry.bearing(to.location).unwrap(),
-                time_to_datetime(*arrival_time),
-            ));
-            path.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;
-        }
-
-        let mut path = Path::begin_path();
-        path.set_class(format!("{:?} {}", route_type, route_name));
-        match segments.len().cmp(&1) {
-            std::cmp::Ordering::Greater => {
-                let mut next_control_point = {
-                    // first segment
-                    let segment = &segments[0];
-                    let to_bearing = geometry
-                        .bearing(segment.to.location)
-                        .expect("Segment goes to origin");
-                    let from_bearing = geometry
-                        .bearing(segment.from.location)
-                        .unwrap_or(to_bearing);
-                    let from_mag = time_to_datetime(segment.departure_time);
-                    let to_mag = time_to_datetime(segment.arrival_time);
-                    path.move_to((from_bearing, from_mag));
-
-                    let cp1 = geometry.initial_control_point(
-                        (segment.from.location, segment.departure_time),
-                        (segment.to.location, segment.arrival_time),
-                    );
-                    assert!(cp1.1 >= from_mag, "Control point for curve cannot have a lower magnitude than the origin, {} must be > {}", cp1.1, from_mag);
-                    let (post_stop, post_time) = if segments[1].from == segment.to {
-                        (segments[1].to, segments[1].arrival_time)
-                    } else {
-                        (segments[1].from, segments[1].departure_time)
-                    };
-                    let post_bearing = geometry
-                        .bearing(post_stop.location)
-                        .expect("Segment goes to origin");
-                    let post_mag = time_to_datetime(post_time);
-
-                    let (cp2, next_control_point) = geometry.control_points(
-                        (from_bearing, from_mag),
-                        (to_bearing, to_mag),
-                        (post_bearing, post_mag),
-                    );
-                    path.bezier_curve_to(cp1, cp2, (to_bearing, to_mag));
-                    next_control_point
-                };
-                // all the connecting segments
-                for window in segments.windows(3) {
-                    if let [pre, segment, post] = window {
-                        let to_bearing = geometry.bearing(segment.to.location).unwrap();
+            path.set_class(format!("{:?} {}", route_type, route_name));
+            match segments.len().cmp(&1) {
+                std::cmp::Ordering::Greater => {
+                    let mut next_control_point = {
+                        // first segment
+                        let segment = &segments[0];
+                        let to_bearing = geometry
+                            .bearing(segment.to.location)
+                            .expect("Segment goes to origin");
                         let from_bearing = geometry
                             .bearing(segment.from.location)
                             .unwrap_or(to_bearing);
-                        let from_mag = segment.departure_time;
-                        let to_mag = segment.arrival_time;
+                        let from_mag = time_to_datetime(segment.departure_time);
+                        let to_mag = time_to_datetime(segment.arrival_time);
+                        path.move_to((from_bearing, from_mag));
 
-                        let pre_bearing = geometry.bearing(pre.to.location).unwrap();
-                        let pre_mag = pre.arrival_time;
-                        assert!(
-                            !(pre_bearing != from_bearing && pre_mag != from_mag),
-                            "shouldn't have a gap in the route"
+                        let cp1 = geometry.initial_control_point(
+                            (segment.from.location, segment.departure_time),
+                            (segment.to.location, segment.arrival_time),
                         );
-                        let (post_stop, post_time) = if post.from == segment.to {
-                            (post.to, post.arrival_time)
+                        assert!(cp1.1 >= from_mag, "Control point for curve cannot have a lower magnitude than the origin, {} must be > {}", cp1.1, from_mag);
+                        let (post_stop, post_time) = if segments[1].from == segment.to {
+                            (segments[1].to, segments[1].arrival_time)
                         } else {
-                            (post.from, post.departure_time)
+                            (segments[1].from, segments[1].departure_time)
                         };
-                        let post_bearing = geometry.bearing(post_stop.location).unwrap();
-                        let post_mag = post_time;
-                        let cp1 = next_control_point;
-                        let (cp2, next_control_point_tmp) = geometry.control_points(
-                            (from_bearing, time_to_datetime(from_mag)),
-                            (to_bearing, time_to_datetime(to_mag)),
-                            (post_bearing, time_to_datetime(post_mag)),
+                        let post_bearing = geometry
+                            .bearing(post_stop.location)
+                            .expect("Segment goes to origin");
+                        let post_mag = time_to_datetime(post_time);
+
+                        let (cp2, next_control_point) = geometry.control_points(
+                            (from_bearing, from_mag),
+                            (to_bearing, to_mag),
+                            (post_bearing, post_mag),
                         );
-                        path.bezier_curve_to(cp1, cp2, (to_bearing, time_to_datetime(to_mag)));
-                        next_control_point = next_control_point_tmp;
-                    } else {
-                        panic!("unusual window");
+                        path.bezier_curve_to(cp1, cp2, (to_bearing, to_mag));
+                        next_control_point
+                    };
+                    // all the connecting segments
+                    for window in segments.windows(3) {
+                        if let [pre, segment, post] = window {
+                            assert!(
+                                !(pre.to != segment.from
+                                    && pre.arrival_time != segment.departure_time),
+                                "shouldn't have a gap in the route : from ({:?} {}) to ({:?} {})",
+                                pre.to,
+                                pre.arrival_time,
+                                segment.from,
+                                segment.departure_time,
+                            );
+
+                            let to_bearing = geometry.bearing(segment.to.location).unwrap();
+                            let from_bearing = geometry
+                                .bearing(segment.from.location)
+                                .unwrap_or(to_bearing);
+                            let from_mag = segment.departure_time;
+                            let to_mag = segment.arrival_time;
+
+                            let (post_stop, post_time) = if post.from == segment.to {
+                                (post.to, post.arrival_time)
+                            } else {
+                                (post.from, post.departure_time)
+                            };
+                            let post_bearing = geometry.bearing(post_stop.location).unwrap();
+                            let post_mag = post_time;
+                            let cp1 = next_control_point;
+                            let (cp2, next_control_point_tmp) = geometry.control_points(
+                                (from_bearing, time_to_datetime(from_mag)),
+                                (to_bearing, time_to_datetime(to_mag)),
+                                (post_bearing, time_to_datetime(post_mag)),
+                            );
+                            path.bezier_curve_to(cp1, cp2, (to_bearing, time_to_datetime(to_mag)));
+                            next_control_point = next_control_point_tmp;
+                        } else {
+                            panic!("unusual window");
+                        }
+                    }
+                    {
+                        // draw the last curve
+                        let end = segments.last().unwrap();
+                        let to = (
+                            geometry.bearing(end.to.location).unwrap(),
+                            time_to_datetime(end.arrival_time),
+                        );
+                        let cp1 = next_control_point;
+                        path.bezier_curve_to(cp1, to, to);
                     }
                 }
-                {
-                    // draw the last curve
-                    let end = segments.last().unwrap();
-                    let to = (
-                        geometry.bearing(end.to.location).unwrap(),
-                        time_to_datetime(end.arrival_time),
-                    );
-                    let cp1 = next_control_point;
-                    path.bezier_curve_to(cp1, to, to);
+                std::cmp::Ordering::Equal => {
+                    let segment = &segments[0];
+                    let to_bearing = geometry.bearing(segment.to.location).unwrap();
+                    let from_bearing = geometry
+                        .bearing(segment.from.location)
+                        .unwrap_or(to_bearing);
+
+                    path.move_to((from_bearing, time_to_datetime(segment.departure_time)));
+                    path.line_to((to_bearing, time_to_datetime(segment.arrival_time)));
+                }
+                std::cmp::Ordering::Less => {
+                    panic!("path is empty - ignore");
                 }
             }
-            std::cmp::Ordering::Equal => {
-                let segment = &segments[0];
-                let to_bearing = geometry.bearing(segment.to.location).unwrap();
-                let from_bearing = geometry
-                    .bearing(segment.from.location)
-                    .unwrap_or(to_bearing);
-
-                path.move_to((from_bearing, time_to_datetime(segment.departure_time)));
-                path.line_to((to_bearing, time_to_datetime(segment.arrival_time)));
-            }
-            std::cmp::Ordering::Less => {
-                panic!("path is empty - ignore");
-            }
+            assert!(!path.ops.is_empty());
+            path.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;
         }
-        assert!(!path.ops.is_empty());
-        path.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;
         Ok(())
     }
 }
@@ -752,9 +755,10 @@ impl<'s> Radar<'s> {
             w,
             r#"<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="100%" height="100%" viewBox="-512 -512 1024 1024">
-    <title>Transit Radar</title>
+    <title>{} departures: Transit Radar</title>
     <desc>Departure tree.</desc>
-         "#
+         "#,
+            origin.stop_name
         )?;
 
         write_xml!(w, <style>{include_str!("Radar.css")}</style>)?;

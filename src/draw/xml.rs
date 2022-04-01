@@ -104,31 +104,31 @@ where
 
 #[test]
 fn self_closing() {
-    assert_eq!(format_xml!(<tag />), r#"<tag />"#);
+    assert_eq!(format_xml!(<tag />).trim_end(), r#"<tag />"#);
 }
 
 #[test]
 fn self_closing_attribute() {
-    assert_eq!(format_xml!(<tag att={"val"} />), r#"<tag att="val" />"#);
+    assert_eq!(format_xml!(<tag att={"val"} />).trim_end(), r#"<tag att="val" />"#);
 }
 
 #[test]
 fn self_closing_attributes() {
     assert_eq!(
-        format_xml!(<tag att={"val"} att2={"val2"} />),
+        format_xml!(<tag att={"val"} att2={"val2"} />).trim_end(),
         r#"<tag att="val" att2="val2" />"#
     );
 }
 
 #[test]
 fn literal_attribute() {
-    assert_eq!(format_xml!(<tag att="val" />), r#"<tag att="val" />"#);
+    assert_eq!(format_xml!(<tag att="val" />).trim_end(), r#"<tag att="val" />"#);
 }
 
 #[test]
 fn self_closing_hyphenated_attribute() {
     assert_eq!(
-        format_xml!(<tag the-att={"val"} />),
+        format_xml!(<tag the-att={"val"} />).trim_end(),
         r#"<tag the-att="val" />"#
     );
 }
@@ -136,7 +136,7 @@ fn self_closing_hyphenated_attribute() {
 #[test]
 fn literal_hyphenated_attribute() {
     assert_eq!(
-        format_xml!(<tag the-att="val" />),
+        format_xml!(<tag the-att="val" />).trim_end(),
         r#"<tag the-att="val" />"#
     );
 }
@@ -146,20 +146,20 @@ fn comma_separated_attribute() {
     let list = &[1, 2, 3];
     // trace_macros!(true);
     // trace_macros!(false);
-    assert_eq!(format_xml!(<tag att=[list,] />), r#"<tag att="1,2,3" />"#);
+    assert_eq!(format_xml!(<tag att=[list,] />).trim_end(), r#"<tag att="1,2,3" />"#);
 }
 
 #[test]
 fn text_containing() {
-    assert_eq!(format_xml!(<tag>{"text"}</tag>), r#"<tag>text</tag>"#);
+    assert_eq!(format_xml!(<tag>{"text"}</tag>).trim_end(), r#"<tag>text</tag>"#);
 }
 
 #[test]
 fn text_literal_containing() {
-    assert_eq!(format_xml!(<tag>"text"</tag>), r#"<tag>text</tag>"#);
+    assert_eq!(format_xml!(<tag>"text"</tag>).trim_end(), r#"<tag>text</tag>"#);
 }
 
 #[test]
 fn element_containing() {
-    assert_eq!(format_xml!(<tag><inner /></tag>), r#"<tag><inner /></tag>"#);
+    assert_eq!(format_xml!(<tag><inner /></tag>).trim_end(), r#"<tag><inner /></tag>"#);
 }
