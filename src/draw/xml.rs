@@ -109,7 +109,10 @@ fn self_closing() {
 
 #[test]
 fn self_closing_attribute() {
-    assert_eq!(format_xml!(<tag att={"val"} />).trim_end(), r#"<tag att="val" />"#);
+    assert_eq!(
+        format_xml!(<tag att={"val"} />).trim_end(),
+        r#"<tag att="val" />"#
+    );
 }
 
 #[test]
@@ -122,7 +125,10 @@ fn self_closing_attributes() {
 
 #[test]
 fn literal_attribute() {
-    assert_eq!(format_xml!(<tag att="val" />).trim_end(), r#"<tag att="val" />"#);
+    assert_eq!(
+        format_xml!(<tag att="val" />).trim_end(),
+        r#"<tag att="val" />"#
+    );
 }
 
 #[test]
@@ -146,20 +152,32 @@ fn comma_separated_attribute() {
     let list = &[1, 2, 3];
     // trace_macros!(true);
     // trace_macros!(false);
-    assert_eq!(format_xml!(<tag att=[list,] />).trim_end(), r#"<tag att="1,2,3" />"#);
+    assert_eq!(
+        format_xml!(<tag att=[list,] />).trim_end(),
+        r#"<tag att="1,2,3" />"#
+    );
 }
 
 #[test]
 fn text_containing() {
-    assert_eq!(format_xml!(<tag>{"text"}</tag>).trim_end(), r#"<tag>text</tag>"#);
+    assert_eq!(
+        format_xml!(<tag>{"text"}</tag>).trim_end(),
+        r#"<tag>text</tag>"#
+    );
 }
 
 #[test]
 fn text_literal_containing() {
-    assert_eq!(format_xml!(<tag>"text"</tag>).trim_end(), r#"<tag>text</tag>"#);
+    assert_eq!(
+        format_xml!(<tag>"text"</tag>).trim_end(),
+        r#"<tag>text</tag>"#
+    );
 }
 
 #[test]
 fn element_containing() {
-    assert_eq!(format_xml!(<tag><inner /></tag>).trim_end(), r#"<tag><inner /></tag>"#);
+    assert_eq!(
+        format_xml!(<tag><inner /></tag>).trim_end(),
+        r#"<tag><inner /></tag>"#
+    );
 }

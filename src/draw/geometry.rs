@@ -277,11 +277,15 @@ impl Path<FlattenedTimeCone> {
         &self,
         w: &mut dyn io::Write,
         geometry: &FlattenedTimeCone,
+        title: &str,
     ) -> io::Result<()> {
         assert!(!self.ops.is_empty());
         write_xml!(w,
             <path
                 class={self.class}
-                d={DisplayInGeometry { display: &self.ops, geometry }} />)
+                d={DisplayInGeometry { display: &self.ops, geometry }}>
+                <title>{title}</title>
+            </path>
+        )
     }
 }

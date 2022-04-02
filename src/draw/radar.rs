@@ -333,10 +333,15 @@ pub const DEFAULT_MAX_DURATION_MINS: i64 = 30;
 
 impl<'s> Display for UrlSearchParams<'s> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let station_id = self.station_id.get();
         write!(
             f,
             "/depart-from/{}/",
-            self.station_id.get() - STATION_ID_MIN,
+            if station_id > STATION_ID_MIN {
+                station_id - STATION_ID_MIN
+            } else {
+                station_id
+            }
         )?;
         if let Some(time) = self.departure_time {
             write!(f, "{:?}", time.naive_local())?;
@@ -594,7 +599,7 @@ impl<'s> RadarTrip<'s> {
                     geometry.bearing(to.location).unwrap(),
                     time_to_datetime(*arrival_time),
                 ));
-                path.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;
+                path.write_svg_fragment_to(w, &geometry.time_cone_geometry, route_name)?;
             }
 
             let mut path = Path::begin_path();
@@ -694,15 +699,24 @@ impl<'s> RadarTrip<'s> {
                         .bearing(segment.from.location)
                         .unwrap_or(to_bearing);
 
+                    let cp1 = geometry.initial_control_point(
+                        (segment.from.location, segment.departure_time),
+                        (segment.to.location, segment.arrival_time),
+                    );
+
                     path.move_to((from_bearing, time_to_datetime(segment.departure_time)));
-                    path.line_to((to_bearing, time_to_datetime(segment.arrival_time)));
+                    path.bezier_curve_to(
+                        cp1,
+                        cp1,
+                        (to_bearing, time_to_datetime(segment.arrival_time)),
+                    );
                 }
                 std::cmp::Ordering::Less => {
                     panic!("path is empty - ignore");
                 }
             }
             assert!(!path.ops.is_empty());
-            path.write_svg_fragment_to(w, &geometry.time_cone_geometry)?;
+            path.write_svg_fragment_to(w, &geometry.time_cone_geometry, route_name)?;
         }
         Ok(())
     }
