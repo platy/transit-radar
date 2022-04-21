@@ -22,6 +22,9 @@ path {
 .Rail, .RailwayService {
   stroke: red
 }
+.TramService {
+  stroke: red;
+}
 .BusService {
   stroke:#a01c7d
 }
