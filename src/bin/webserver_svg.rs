@@ -1,12 +1,21 @@
-use std::{borrow::Cow, collections::HashSet, io, num::NonZeroU64, path::Path, sync::Arc};
+use std::{borrow::Cow, collections::HashSet, fmt, io, num::NonZeroU64, path::Path, sync::Arc};
 
 use chrono::{Duration, NaiveDateTime, TimeZone};
-use rocket::{form::FromFormField, http::ContentType, request::FromParam, State};
+use radar_search::search_data::{Stop, StopId};
+use rocket::{
+    form::FromFormField,
+    http::{ContentType, Status},
+    request::FromParam,
+    response::content,
+    State,
+};
 use transit_radar::{
     draw::radar::{search, SearchParams, TransitMode, UrlSearchParams, STATION_ID_MIN},
     gtfs::db,
-    GTFSData,
+    write_xml, GTFSData, Suggester,
 };
+
+mod station_name_search;
 
 #[macro_use]
 extern crate rocket;
@@ -107,6 +116,71 @@ fn index(
     (ContentType::SVG, String::from_utf8(svg).unwrap())
 }
 
+#[get("/?<q>")]
+fn station_search(
+    q: Option<&str>,
+    data: &State<Arc<GTFSData>>,
+    suggester: &State<Suggester<(StopId, usize)>>,
+) -> (Status, content::Html<String>) {
+    let (status, main) = station_search_xml(q, data, suggester);
+    let input_args: Cow<_> = if let Some(q) = q {
+        if !q.is_empty() {
+            format!(r#"value="{}""#, q).into()
+        } else {
+            "".into()
+        }
+    } else {
+        "".into()
+    };
+    let page = format!(
+        include_str!("station_search.html"),
+        style = include_str!("style.css"),
+        script = include_str!("script.js"),
+        main = main,
+        input_args = input_args
+    );
+    (status, content::Html(page))
+}
+
+#[get("/auto?<q>")]
+fn station_search_xml(
+    q: Option<&str>,
+    data: &State<Arc<GTFSData>>,
+    suggester: &State<Suggester<(StopId, usize)>>,
+) -> (Status, String) {
+    if let Some(q) = q {
+        if let Ok(top_matches) = station_name_search::station_search_handler(q, &*data, &*suggester)
+        {
+            let mut string = String::new();
+            write_results(&mut string, top_matches).unwrap();
+            (Status::Ok, string)
+        } else {
+            (
+                Status::BadRequest,
+                "<main>Unable to parse query</main>".to_owned(),
+            )
+        }
+    } else {
+        (Status::Ok, "<main />".into())
+    }
+}
+
+fn write_results<'s>(
+    w: &mut dyn fmt::Write,
+    matches: impl IntoIterator<Item = &'s Stop>,
+) -> fmt::Result {
+    write_xml!(w, <main>)?;
+    for stop in matches {
+        write_xml!(w,
+            <a href={&format!("/depart-from/{id}/now", id = stop.stop_id)}>
+                {stop.full_stop_name}
+            </a>
+        )?;
+    }
+    write_xml!(w, </main>)?;
+    Ok(())
+}
+
 #[launch]
 fn rocket() -> _ {
     let gtfs_dir = std::env::var("GTFS_DIR").unwrap_or_else(|_| "gtfs".to_owned());
@@ -118,7 +192,12 @@ fn rocket() -> _ {
     let data =
         Arc::new(db::load_data(gtfs_dir, db::DayFilter::All, colors).expect("gtfs data to load"));
 
-    rocket::build().manage(data).mount("/", routes![index])
+    let suggester = db::build_station_word_index(&data);
+
+    rocket::build()
+        .manage(data)
+        .manage(suggester)
+        .mount("/", routes![index, station_search, station_search_xml])
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]

@@ -435,12 +435,12 @@ pub fn search<'s>(
                 let station = Station {
                     coords: (stop.location, earliest_arrival),
                     stop,
-                    name_trunk_length: if name_trunk_length == stop.stop_name.len() {
+                    name_trunk_length: if name_trunk_length == stop.short_stop_name.len() {
                         continue;
                     } else if name_trunk_length > 10 {
                         // last space before the common chars end
                         let trunk_division = stop
-                            .stop_name
+                            .short_stop_name
                             .chars()
                             .enumerate()
                             .filter_map(|(i, c)| {
@@ -772,14 +772,14 @@ impl<'s> Radar<'s> {
     <title>{} departures: Transit Radar</title>
     <desc>Departure tree.</desc>
          "#,
-            origin.stop_name
+            origin.short_stop_name
         )?;
 
         write_xml!(w, <style>{include_str!("Radar.css")}</style>)?;
 
         write_xml!(w,
             <g id="header" transform="translate(-506, -506)">
-                <text y="20" style="font-size: 20pt;">{origin.stop_name}{" departures"}</text>
+                <text y="20" style="font-size: 20pt;">{origin.short_stop_name}{" departures"}</text>
                 <a href={search_params.clone().with_departure_time(geometry.time_cone_geometry.origin())} rel="self"><text y="50" style="font-size: 10pt; font-style: oblique;">
                     "All trips starting "{geometry.time_cone_geometry.origin().format("at %k:%M on %e %b %Y")}
                     <tspan x="0" dy="1.4em">{"and lasting less than "}{geometry.time_cone_geometry.max_duration().num_minutes()}{" minutes"}</tspan>
@@ -872,9 +872,13 @@ impl<'s> Station<'s, FlattenedTimeCone> {
         }
         let (cx, cy) = geometry.coords(bearing, magnitude);
         let name: std::borrow::Cow<_> = if self.name_trunk_length == 0 {
-            (*self.stop.stop_name).into()
+            (*self.stop.short_stop_name).into()
         } else {
-            format!("...{}", &self.stop.stop_name[self.name_trunk_length..]).into()
+            format!(
+                "...{}",
+                &self.stop.short_stop_name[self.name_trunk_length..]
+            )
+            .into()
         };
         write_xml!(w,
             <a href={search_params.clone().with_station_id(self.stop.station_id())}>

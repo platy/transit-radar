@@ -14,14 +14,13 @@ name = "transit_radar"
 [dependencies]
 radar-search = { path = "./radar-search" }
 csv = "1.1"
+serde = { version = "1", features = ["derive"] }
+serde_test = "1.0.106"
 geo = "0.19"
 chrono = "0.4"
 chrono-tz = "0.6"
 regex = "1.5"
 
-serde = { version = "1", features = ["derive"] }
-serde_test = "1.0.106"
-warp = "0.2"
 urlencoding = "1.0.0"
 tst = "0.10.*"
 lazysort = "0.2.1"

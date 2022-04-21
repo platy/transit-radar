@@ -186,9 +186,20 @@ pub enum StopStereoType {
     // BoardingArea { stopOrPlatform: StopId },
 }
 
+impl StopStereoType {
+    pub fn name(&self) -> &'static str {
+        match self {
+            StopStereoType::StopOrPlatform { .. } => "stop",
+            StopStereoType::Station { .. } => "station",
+            StopStereoType::EntranceExit { .. } => "entrance",
+        }
+    }
+}
+
 pub struct Stop {
     pub stop_id: StopId,
-    pub stop_name: String,
+    pub full_stop_name: String,
+    pub short_stop_name: String,
     pub location: geo::Point<f64>,
     /// Type of the location
     pub stereotype: StopStereoType,
@@ -200,7 +211,7 @@ impl fmt::Debug for Stop {
         write!(
             f,
             "{} [{:?}{}]",
-            self.stop_name,
+            self.full_stop_name,
             self.stop_id,
             if self.is_station() { "*" } else { "" }
         )
@@ -411,12 +422,19 @@ pub struct Builder {
 }
 
 impl Builder {
-    pub fn add_station(&mut self, stop_id: StopId, stop_name: String, location: geo::Point<f64>) {
+    pub fn add_station(
+        &mut self,
+        stop_id: StopId,
+        full_stop_name: String,
+        short_stop_name: String,
+        location: geo::Point<f64>,
+    ) {
         self.data.stops.insert(
             stop_id,
             Stop {
                 stop_id,
-                stop_name,
+                full_stop_name,
+                short_stop_name,
                 location,
                 stereotype: StopStereoType::Station {
                     stops_or_platforms: Vec::<StopId>::default(),
@@ -429,7 +447,8 @@ impl Builder {
     pub fn add_stop_or_platform(
         &mut self,
         stop_id: StopId,
-        stop_name: String,
+        full_stop_name: String,
+        short_stop_name: String,
         location: geo::Point<f64>,
         station: Option<StopId>,
     ) {
@@ -437,7 +456,8 @@ impl Builder {
             stop_id,
             Stop {
                 stop_id,
-                stop_name,
+                full_stop_name,
+                short_stop_name,
                 location,
                 stereotype: StopStereoType::StopOrPlatform {
                     station,
@@ -454,7 +474,8 @@ impl Builder {
     pub fn add_entrance_or_exit(
         &mut self,
         stop_id: StopId,
-        stop_name: String,
+        full_stop_name: String,
+        short_stop_name: String,
         location: geo::Point<f64>,
         station: StopId,
     ) {
@@ -462,7 +483,8 @@ impl Builder {
             stop_id,
             Stop {
                 stop_id,
-                stop_name,
+                full_stop_name,
+                short_stop_name,
                 location,
                 stereotype: StopStereoType::EntranceExit { station },
                 transfers: std::vec::Vec::<Transfer>::default(),

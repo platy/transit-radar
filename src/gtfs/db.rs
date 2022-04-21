@@ -95,16 +95,24 @@ pub fn load_data<S: std::hash::BuildHasher>(
                 location_type,
                 parent_station,
             }) => {
-                let stop_name = strip_stop_name(&stop_name);
+                let short_stop_name = strip_stop_name(&stop_name);
                 let location = geo::Point::new(stop_lat, stop_lon);
                 match (location_type, parent_station) {
-                    (1, None) => builder.add_station(stop_id, stop_name, location),
-                    (0, parent_station) => {
-                        builder.add_stop_or_platform(stop_id, stop_name, location, parent_station)
-                    }
-                    (2, Some(parent_station)) => {
-                        builder.add_entrance_or_exit(stop_id, stop_name, location, parent_station)
-                    }
+                    (1, None) => builder.add_station(stop_id, stop_name, short_stop_name, location),
+                    (0, parent_station) => builder.add_stop_or_platform(
+                        stop_id,
+                        stop_name,
+                        short_stop_name,
+                        location,
+                        parent_station,
+                    ),
+                    (2, Some(parent_station)) => builder.add_entrance_or_exit(
+                        stop_id,
+                        stop_name,
+                        short_stop_name,
+                        location,
+                        parent_station,
+                    ),
                     (1, Some(parent_station)) => {
                         panic!("station {:?} has parent {:?}", stop_id, parent_station)
                     }
@@ -267,7 +275,7 @@ pub fn get_station_by_name<'r>(
 ) -> Result<&'r Stop, SearchError> {
     let mut candidates = vec![];
     for stop in data.stops() {
-        if stop.is_station() && stop.stop_name == exact_name {
+        if stop.is_station() && stop.full_stop_name == exact_name {
             candidates.push(stop);
         }
     }
@@ -287,7 +295,7 @@ pub fn build_station_word_index(data: &GTFSData) -> Suggester<(StopId, usize)> {
 
     for stop in data.stops() {
         if stop.is_station() {
-            suggester.insert(&stop.stop_name, (stop.stop_id, stop.importance(data)));
+            suggester.insert(&stop.full_stop_name, (stop.stop_id, stop.importance(data)));
         }
     }
 
@@ -304,8 +312,6 @@ pub enum SearchError {
     Ambiguous(Vec<Stop>),
 }
 
-impl warp::reject::Reject for SearchError {}
-
 impl Error for SearchError {}
 
 impl fmt::Display for SearchError {
@@ -319,7 +325,7 @@ impl fmt::Display for SearchError {
                 "Found several stations or search term ({})",
                 stops
                     .iter()
-                    .map(|stop| stop.stop_name.clone())
+                    .map(|stop| stop.full_stop_name.clone())
                     .collect::<Vec<_>>()
                     .deref()
                     .join(", ")

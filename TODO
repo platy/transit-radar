@@ -268,7 +268,7 @@ SVG will allow:
  - [x] no gaps in routes
  - [x] transfer on later trip join doesn't connect properly
  - [x] Reduce prominence of sibling stations (ie. so that Alexanderplatz isn't a total mess) perhaps just show a small dot and no name, or perhaps no dot
- - [ ] Replace station suggestion somehow, maybe html page which embeds the svg
+ - [ ] Replace station suggestion somehow
  - [x] Parsing errors
  - [x] Add automatic reload to achieve animation
  - [x] Bus error from Wannsee
@@ -278,6 +278,7 @@ SVG will allow:
  - [ ] Memory and time performance benchmark
  - [ ] Try removing whole trip enqueuing and filtering
  - [ ] Make ready to deploy
+ - [ ] Default colour for trams
 2. Enhance
  - [x] Style the image for dark mode
  - [x] Click on other stations to change origin
