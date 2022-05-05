@@ -108,7 +108,7 @@ fn index(
         modes: Cow::Borrowed(&mode.0),
     };
     let radar = search(data, search_params);
-    let refresh = refresh.unwrap_or(true) && matches!(time, TimeFilter::Now);
+    let refresh = refresh.unwrap_or(false) && matches!(time, TimeFilter::Now);
     let mut svg = Vec::new();
     radar
         .write_svg_to(&mut io::Cursor::new(&mut svg), url_search_params, refresh)
@@ -161,7 +161,7 @@ fn station_search_xml(
             )
         }
     } else {
-        (Status::Ok, "<main />".into())
+        (Status::Ok, "<main></main>".into())
     }
 }
 
