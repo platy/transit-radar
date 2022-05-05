@@ -38,6 +38,9 @@ spec:
             cpu: "10m"
         ports:
         - containerPort: 80
+        env:
+        - name: ROCKET_LOG_LEVEL
+          value: normal
         volumeMounts:
           - mountPath: "/volume"
             name: persistent-volume
