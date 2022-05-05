@@ -27,7 +27,7 @@ args = [
 workspace = false
 description = "Build and tag the docker image"
 dependencies = ["build-docker-binary"]
-command = "podman"
+command = "docker"
 args = [
   "build",
   "-t",
@@ -38,7 +38,7 @@ args = [
 [tasks.push-docker]
 workspace = false
 description = "Push the docker image"
-command = "podman"
+command = "docker"
 args = [
   "push",
   "${DOCKER_TAG}",
@@ -47,7 +47,7 @@ args = [
 [tasks.build-init-docker]
 workspace = false
 description = "Build and tag the init-gtfs docker image"
-command = "podman"
+command = "docker"
 args = [
   "build",
   "-t",
@@ -60,7 +60,7 @@ args = [
 [tasks.push-init-docker]
 workspace = false
 description = "Push the docker image"
-command = "podman"
+command = "docker"
 args = [
   "push",
   "${INIT_DOCKER_TAG}",
