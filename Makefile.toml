@@ -1,6 +1,6 @@
 [env]
 DOCKER_TAG = "rg.nl-ams.scw.cloud/njkonl/${CARGO_MAKE_CRATE_NAME}:${CARGO_MAKE_CRATE_VERSION}"
-INIT_DOCKER_TAG = "rg.nl-ams.scw.cloud/njkonl/init-gtfs:0.5"
+INIT_DOCKER_TAG = "rg.nl-ams.scw.cloud/njkonl/init-gtfs:0.6"
 
 [tasks.pre-commit]
 workspace = false

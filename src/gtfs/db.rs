@@ -83,6 +83,8 @@ pub fn load_data<S: std::hash::BuildHasher>(
 
     let mut builder = GTFSData::builder(services_by_day.clone(), timetable_start_date);
 
+    let mut interner = lasso::Rodeo::default();
+
     let mut count_stop_id_invalid_digit = 0;
     let mut rdr = source.open_csv("stops.txt")?;
     for result in rdr.deserialize() {
@@ -95,6 +97,9 @@ pub fn load_data<S: std::hash::BuildHasher>(
                 location_type,
                 parent_station,
             }) => {
+                let stop_id = interner.get_or_intern(stop_id).into_inner();
+                let parent_station =
+                    parent_station.map(|stop_id| interner.get_or_intern(stop_id).into_inner());
                 let short_stop_name = strip_stop_name(&stop_name);
                 let location = geo::Point::new(stop_lat, stop_lon);
                 match (location_type, parent_station) {
@@ -149,8 +154,8 @@ pub fn load_data<S: std::hash::BuildHasher>(
     {
         match result {
             Ok(transfer) => builder.add_transfer(
-                transfer.from_stop_id,
-                transfer.to_stop_id,
+                interner.get_or_intern(transfer.from_stop_id).into_inner(),
+                interner.get_or_intern(transfer.to_stop_id).into_inner(),
                 transfer.min_transfer_time,
             ),
             Err(err) => {
@@ -210,7 +215,7 @@ pub fn load_data<S: std::hash::BuildHasher>(
                         stop_time.trip_id,
                         stop_time.arrival_time,
                         stop_time.departure_time,
-                        stop_time.stop_id,
+                        interner.get_or_intern(stop_time.stop_id).into_inner(),
                     );
                 } else {
                     eprintln!("Stop time parsed for ignored trip {}", stop_time.trip_id)

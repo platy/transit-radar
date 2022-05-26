@@ -2,14 +2,14 @@ use chrono::Duration;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;
 use std::fmt;
-use std::num::{NonZeroU32, NonZeroU64};
+use std::num::NonZeroU32;
 
 use crate::time::{Period, Time};
 
 pub type AgencyId = u16;
 pub type RouteId = u32;
 pub type TripId = NonZeroU32; // 27bits
-pub type StopId = NonZeroU64;
+pub type StopId = NonZeroU32; // intern key
 pub type ShapeId = u16;
 // type BlockId = String;
 pub type ServiceId = u16;
@@ -499,15 +499,17 @@ impl Builder {
         to_stop_id: StopId,
         min_transfer_time: Option<Duration>,
     ) {
-        let stop = self
-            .data
-            .stops
-            .get_mut(&from_stop_id)
-            .expect("from_stop for transfer to be loaded");
-        stop.transfers.push(Transfer {
-            to_stop_id,
-            min_transfer_time,
-        });
+        if let Some(stop) = self.data.stops.get_mut(&from_stop_id) {
+            stop.transfers.push(Transfer {
+                to_stop_id,
+                min_transfer_time,
+            });
+        } else {
+            panic!(
+                "Expected from_stop {:?} for transfer to be loaded",
+                from_stop_id
+            );
+        }
     }
 
     pub fn add_route(

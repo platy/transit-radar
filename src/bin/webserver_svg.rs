@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashSet, fmt, io, num::NonZeroU64, path::Path, sync::Arc};
+use std::{borrow::Cow, collections::HashSet, fmt, io, num::NonZeroU32, path::Path, sync::Arc};
 
 use chrono::{Duration, NaiveDateTime, TimeZone};
 use radar_search::search_data::{Stop, StopId};
@@ -10,7 +10,7 @@ use rocket::{
     State,
 };
 use transit_radar::{
-    draw::radar::{search, SearchParams, TransitMode, UrlSearchParams, STATION_ID_MIN},
+    draw::radar::{search, SearchParams, TransitMode, UrlSearchParams},
     gtfs::db,
     write_xml, GTFSData, Suggester,
 };
@@ -73,21 +73,15 @@ impl<'v> FromFormField<'v> for TransitModes {
     }
 }
 
-#[get("/depart-from/<id>/<time>?<minutes>&<refresh>&<mode>")]
+#[get("/depart-from/<station_id>/<time>?<minutes>&<refresh>&<mode>")]
 fn index(
-    id: u64,
+    station_id: NonZeroU32,
     time: TimeFilter,
     minutes: Option<i64>,
     refresh: Option<bool>,
     mode: TransitModes,
     data: &State<Arc<GTFSData>>,
 ) -> (ContentType, String) {
-    let station_id = NonZeroU64::new(if id < STATION_ID_MIN {
-        id + STATION_ID_MIN
-    } else {
-        id
-    })
-    .unwrap();
     let origin = data.get_stop(station_id).unwrap();
     assert!(origin.is_station(), "Origin must be a station");
     let departure_time = match time {

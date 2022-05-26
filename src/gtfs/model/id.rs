@@ -1,14 +1,11 @@
 use serde::{self, Deserialize, Deserializer};
-use std::{
-    convert::TryInto,
-    num::{NonZeroU32, NonZeroU64},
-};
+use std::{convert::TryInto, num::NonZeroU32};
 
 pub type AgencyId = u16;
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Copy)]
 pub struct RouteId(u32);
 pub type TripId = NonZeroU32;
-pub type StopId = NonZeroU64;
+pub type StopId = String;
 pub type ShapeId = u16;
 // type BlockId = String;
 pub type ServiceId = u16;

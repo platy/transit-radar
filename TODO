@@ -275,8 +275,11 @@ SVG will allow:
  - [x] Ferries
  - [x] Issue with successive bus stops arriving in the same minute : http://127.0.0.1:8000/depart-from/900000110004/2022-03-28T10:45:15?minutes=4&mode=bus
  - [x] line not curving when it's only one segment : http://127.0.0.1:8000/depart-from/7157/2022-04-01T17:54:54.876?minutes=20&mode=sbahn,boat,regional,bus,tram,ubahn
- - [ ] Make ready to deploy
+ - [x] Explanation on landing page (Marcos)
+ - [x] Don't reload by default until I can kill the flicker
  - [x] Default colour for trams
+ - [ ] Add examples on index page when no search entered, so non-berliners can find something not empty quickly
+ - [ ] Workaround for new stop id's was to intern the id's , now the ids in the url are temporary
 2. Enhance
  - [x] Style the image for dark mode
  - [x] Click on other stations to change origin
@@ -284,7 +287,7 @@ SVG will allow:
  - [x] Choose duration
  - [x] Header
  - [x] Clickable filters
- - [ ] Colors for lines with other agencies
+ - [ ] Colors for lines with other agencies https://www.vbb.de/vbb-services/api-open-data/datensaetze/
  - [ ] Choose size or scale
  - [ ] On hover:
   - [ ] Make it bigger and bring to the front
@@ -299,6 +302,13 @@ SVG will allow:
  - [ ] Scoring for how easy the connection to an added trip or station was, this can be used to decide whether to make a new connection to a trip at a later point. Later this can be used for prefereneces about less transfers / less walking / les waiting / speed
  - [ ] Memory and time performance benchmark
  - [ ] Try removing whole trip enqueuing and filtering
+ - [ ] Arrow keys to select station on search (Marcos)
+ - [ ] Search on map view (Marcos)
+ - [ ] Avoid flickering on reload (Marcos) - Maybe replacing within the page instead of reload will flicker less, and maybe can use CSS animations then
+ - [ ] Make the filters more obvious they can be clicked on
+ - [ ] Key for the different types of lines (Marcos)
+ - [ ] Maybe make different line types more distinctive (SBahn / UBahn / etc.) (Marcos)
+ - [ ] Fast walker setting, reduce tranfer times by some factor (Hans) https://www.linkedin.com/feed/update/urn:li:activity:6928045485555347456/?commentUrn=urn%3Ali%3Acomment%3A%28activity%3A6928045485555347456%2C6928060783733960704%29
 3. Expand
  - [ ] Use calendar and calendar dates
  - [ ] Coordinate start points

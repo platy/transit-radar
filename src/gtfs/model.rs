@@ -175,8 +175,8 @@ impl Stop {
     }
 
     /// Id of the parent station or own ID if this is a station
-    pub fn station_id(&self) -> StopId {
-        self.parent_station.unwrap_or(self.stop_id)
+    pub fn station_id(&self) -> &StopId {
+        self.parent_station.as_ref().unwrap_or(&self.stop_id)
     }
 }
 

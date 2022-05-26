@@ -328,21 +328,12 @@ impl<'s> UrlSearchParams<'s> {
     }
 }
 
-pub const STATION_ID_MIN: u64 = 900_000_000_000;
 pub const DEFAULT_MAX_DURATION_MINS: i64 = 30;
 
 impl<'s> Display for UrlSearchParams<'s> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let station_id = self.station_id.get();
-        write!(
-            f,
-            "/depart-from/{}/",
-            if station_id > STATION_ID_MIN {
-                station_id - STATION_ID_MIN
-            } else {
-                station_id
-            }
-        )?;
+        write!(f, "/depart-from/{}/", station_id)?;
         if let Some(time) = self.departure_time {
             write!(f, "{:?}", time.naive_local())?;
         } else {
