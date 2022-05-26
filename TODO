@@ -279,6 +279,8 @@ SVG will allow:
  - [x] Don't reload by default until I can kill the flicker
  - [x] Default colour for trams
  - [ ] Add examples on index page when no search entered, so non-berliners can find something not empty quickly
+ - [x] Fix new stop ids DHID
+ - [ ] New stop ids require a new form of stop deduplication, probably based on being DHID-aware
  - [ ] Workaround for new stop id's was to intern the id's , now the ids in the url are temporary
 2. Enhance
  - [x] Style the image for dark mode
@@ -310,6 +312,7 @@ SVG will allow:
  - [ ] Maybe make different line types more distinctive (SBahn / UBahn / etc.) (Marcos)
  - [ ] Fast walker setting, reduce tranfer times by some factor (Hans) https://www.linkedin.com/feed/update/urn:li:activity:6928045485555347456/?commentUrn=urn%3Ali%3Acomment%3A%28activity%3A6928045485555347456%2C6928060783733960704%29
 3. Expand
+ - [ ] there is a GTFS for the whole of Germany! https://gtfs.de/en/main/
  - [ ] Use calendar and calendar dates
  - [ ] Coordinate start points
  - [ ] Station Arrival graph (Cause & effect)

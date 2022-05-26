@@ -97,6 +97,10 @@ pub fn load_data<S: std::hash::BuildHasher>(
                 location_type,
                 parent_station,
             }) => {
+                if location_type == 3 {
+                    // generic node, for pathways, not used yet in transit radar
+                    continue;
+                }
                 let stop_id = interner.get_or_intern(stop_id).into_inner();
                 let parent_station =
                     parent_station.map(|stop_id| interner.get_or_intern(stop_id).into_inner());
