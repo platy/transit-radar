@@ -130,6 +130,7 @@ fn station_search(
         include_str!("station_search.html"),
         style = include_str!("style.css"),
         script = include_str!("script.js"),
+        date = data.timetable_start_date(),
         main = main,
         input_args = input_args
     );
