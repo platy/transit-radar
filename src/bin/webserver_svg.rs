@@ -144,8 +144,7 @@ fn station_search_xml(
     suggester: &State<Suggester<(StopId, usize)>>,
 ) -> (Status, String) {
     if let Some(q) = q {
-        if let Ok(top_matches) = station_name_search::station_search_handler(q, data, suggester)
-        {
+        if let Ok(top_matches) = station_name_search::station_search_handler(q, data, suggester) {
             let mut string = String::new();
             write_results(&mut string, top_matches).unwrap();
             (Status::Ok, string)

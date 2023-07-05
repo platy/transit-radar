@@ -34,7 +34,7 @@ impl<T: std::hash::Hash + Eq + Copy> Suggester<T> {
     }
 
     pub fn insert(&mut self, key: &str, value: T) {
-        let v = self.exact.entry(key).or_insert(HashSet::new());
+        let v = self.exact.entry(key).or_insert_with(|| HashSet::new());
         v.insert(value);
 
         for word in key.split_whitespace() {
@@ -42,7 +42,7 @@ impl<T: std::hash::Hash + Eq + Copy> Suggester<T> {
                 let v = self
                     .lowercase_words
                     .entry(&word.to_lowercase())
-                    .or_insert(HashSet::new());
+                    .or_insert_with(|| HashSet::new());
                 v.insert(value);
             }
         }

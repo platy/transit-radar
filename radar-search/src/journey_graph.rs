@@ -119,7 +119,7 @@ impl<'r> Plotter<'r> {
                                     item.to_stop
                                         .short_stop_name
                                         .starts_with(&from_stop.short_stop_name)
-                                        .then(|| from_stop.short_stop_name.len())
+                                        .then_some(from_stop.short_stop_name.len())
                                 })
                                 .unwrap_or_default()
                         } else {

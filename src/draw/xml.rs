@@ -19,7 +19,7 @@ macro_rules! xml_format_args {
 
     // an expression, evaluating to an iterable as a comma-separated attribute value
     (@attr(=[$avalue:expr,] $($attrs:tt)*) -> ($($pattern:expr),*), ($($args:expr),*)) => {
-        $crate::xml_format_args!(@inner($($attrs)*) -> ($($pattern),*, "=\"{}\""), ($($args,)* crate::draw::xml::JoinList { list: $avalue, join: "," }))
+        $crate::xml_format_args!(@inner($($attrs)*) -> ($($pattern),*, "=\"{}\""), ($($args,)* $crate::draw::xml::JoinList { list: $avalue, join: "," }))
     };
     // an expression as an attribute value
     (@attr(={$avalue:expr} $($attrs:tt)*) -> ($($pattern:expr),*), ($($args:expr),*)) => {

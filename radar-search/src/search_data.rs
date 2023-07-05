@@ -78,7 +78,7 @@ pub struct GTFSData {
     pub(crate) timetable_start_date: String,
 }
 
-impl<'r> GTFSData {
+impl GTFSData {
     pub fn builder(
         services_by_day: HashMap<Day, HashSet<ServiceId>>,
         timetable_start_date: String,
@@ -398,7 +398,7 @@ pub struct RequiredDataBuilder {
     new_data: RequiredData,
 }
 
-impl<'r> RequiredDataBuilder {
+impl RequiredDataBuilder {
     pub fn keep_stop(&mut self, stop_id: StopId) {
         self.new_data.stops.insert(stop_id);
     }

@@ -190,9 +190,10 @@ fn initial_control_point(
 
 #[test]
 fn sane_initial_control_point() {
-    let origin = FixedOffset::east(3600)
-        .ymd(2020, 1, 1)
-        .and_hms(0, 0, 0)
+    let origin = FixedOffset::east_opt(3600)
+        .unwrap()
+        .with_ymd_and_hms(2020, 1, 1, 0, 0, 0)
+        .unwrap()
         .with_timezone(&chrono_tz::Europe::Berlin);
     for &((start_bearing, start_seconds), (end_bearing, end_seconds)) in &[
         ((None, 0), (Bearing::degrees(90.), 300)),
@@ -209,8 +210,8 @@ fn sane_initial_control_point() {
             ),
             (end_bearing, Time::from_seconds_since_midnight(end_seconds)),
         );
-        let start_time = NaiveTime::from_num_seconds_from_midnight(start_seconds, 0);
-        let end_time = NaiveTime::from_num_seconds_from_midnight(end_seconds, 0);
+        let start_time = NaiveTime::from_num_seconds_from_midnight_opt(start_seconds, 0).unwrap();
+        let end_time = NaiveTime::from_num_seconds_from_midnight_opt(end_seconds, 0).unwrap();
         let actual_time = mag.time();
         assert!(
             start_time <= actual_time && actual_time < end_time,
@@ -437,7 +438,7 @@ pub fn search<'s>(
                             .chars()
                             .enumerate()
                             .filter_map(|(i, c)| {
-                                (c.is_whitespace() && i < name_trunk_length).then(|| i + 1)
+                                (c.is_whitespace() && i < name_trunk_length).then_some(i + 1)
                             })
                             .last()
                             .unwrap_or_default();
