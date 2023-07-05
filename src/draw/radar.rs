@@ -61,10 +61,12 @@ impl Geo {
         if point == self.geographic_origin {
             None
         } else {
-            Some(Bearing::degrees(geo::algorithm::bearing::Bearing::bearing(
-                &self.geographic_origin,
-                point,
-            )))
+            Some(Bearing::degrees(
+                geo::algorithm::bearing::HaversineBearing::haversine_bearing(
+                    &self.geographic_origin,
+                    point,
+                ),
+            ))
         }
     }
 

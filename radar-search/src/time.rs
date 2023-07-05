@@ -101,7 +101,7 @@ impl Sub<Time> for Time {
 
 impl From<Time> for NaiveTime {
     fn from(time: Time) -> Self {
-        Self::from_num_seconds_from_midnight(time.seconds_since_midnight, 0)
+        Self::from_num_seconds_from_midnight_opt(time.seconds_since_midnight, 0).unwrap()
     }
 }
 

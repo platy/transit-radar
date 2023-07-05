@@ -15,19 +15,19 @@ radar-search = { path = "./radar-search" }
 csv = "1.1"
 serde = { version = "1", features = ["derive"] }
 serde_test = "1.0.106"
-geo = "0.19"
+geo = "0.25.1"
 chrono = "0.4"
-chrono-tz = "0.6"
+chrono-tz = "0.8.3"
 regex = "1.5"
 
-urlencoding = "1.0.0"
+urlencoding = "2.1.2"
 tst = "0.10.*"
 lazysort = "0.2.1"
 
-rocket = "0.5.0-rc.1"
+rocket = "0.5.0-rc.3"
 
 dhat = { version = "0.3", optional = true }
-lasso = "0.6.0"
+lasso = "0.7.2"
 
 [features]
 dhat-heap = ["dhat"]

@@ -115,7 +115,7 @@ fn station_search(
     q: Option<&str>,
     data: &State<Arc<GTFSData>>,
     suggester: &State<Suggester<(StopId, usize)>>,
-) -> (Status, content::Html<String>) {
+) -> (Status, content::RawHtml<String>) {
     let (status, main) = station_search_xml(q, data, suggester);
     let input_args: Cow<_> = if let Some(q) = q {
         if !q.is_empty() {
@@ -134,7 +134,7 @@ fn station_search(
         main = main,
         input_args = input_args
     );
-    (status, content::Html(page))
+    (status, content::RawHtml(page))
 }
 
 #[get("/auto?<q>")]
@@ -144,7 +144,7 @@ fn station_search_xml(
     suggester: &State<Suggester<(StopId, usize)>>,
 ) -> (Status, String) {
     if let Some(q) = q {
-        if let Ok(top_matches) = station_name_search::station_search_handler(q, &*data, &*suggester)
+        if let Ok(top_matches) = station_name_search::station_search_handler(q, data, suggester)
         {
             let mut string = String::new();
             write_results(&mut string, top_matches).unwrap();
