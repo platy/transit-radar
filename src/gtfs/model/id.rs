@@ -9,7 +9,7 @@ pub type StopId = String;
 pub type ShapeId = u16;
 // type BlockId = String;
 pub type ServiceId = u16;
-// type ZoneId = String;
+pub type ZoneId = String;
 
 impl From<u32> for RouteId {
     fn from(num: u32) -> RouteId {

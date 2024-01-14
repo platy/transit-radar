@@ -20,12 +20,13 @@ pub struct Radar<'s> {
     geometry: Geo,
     trips: HashMap<TripId, RadarTrip<'s>>,
     stations: HashMap<StopId, Station<'s, FlattenedTimeCone>>,
-    origin: &'s Stop,
+    origin: Zone<'s>,
 }
 
 struct Station<'s, G: Geometry> {
     coords: G::Coords,
     stop: &'s Stop,
+    zone: Zone<'s>,
     name_trunk_length: usize,
 }
 
@@ -275,7 +276,7 @@ pub fn day_time<Tz: TimeZone>(date_time: DateTime<Tz>) -> (Day, Time) {
     (day, now)
 }
 pub struct SearchParams<'s> {
-    pub origin: &'s Stop,
+    pub origin: Zone<'s>,
     pub departure_time: Option<DateTime<Tz>>,
     pub max_duration: Duration,
     pub modes: Cow<'s, HashSet<TransitMode>>,
@@ -283,16 +284,16 @@ pub struct SearchParams<'s> {
 
 #[derive(Debug, Clone)]
 pub struct UrlSearchParams<'s> {
-    pub station_id: StopId,
+    pub zone: Zone<'s>,
     pub departure_time: Option<DateTime<Tz>>,
     pub max_duration: Duration,
     pub modes: Cow<'s, HashSet<TransitMode>>,
 }
 
 impl<'s> UrlSearchParams<'s> {
-    fn with_station_id(self, station_id: StopId) -> Self {
+    fn with_zone(self, zone: Zone<'s>) -> Self {
         Self {
-            station_id,
+            zone,
             departure_time: self.departure_time,
             max_duration: self.max_duration,
             modes: self.modes,
@@ -301,7 +302,7 @@ impl<'s> UrlSearchParams<'s> {
 
     fn with_departure_time(self, departure_time: DateTime<Tz>) -> Self {
         Self {
-            station_id: self.station_id,
+            zone: self.zone,
             departure_time: Some(departure_time),
             max_duration: self.max_duration,
             modes: self.modes,
@@ -312,7 +313,7 @@ impl<'s> UrlSearchParams<'s> {
         let mut modes = self.modes.into_owned();
         modes.insert(mode);
         Self {
-            station_id: self.station_id,
+            zone: self.zone,
             departure_time: self.departure_time,
             max_duration: self.max_duration,
             modes: Cow::Owned(modes),
@@ -323,7 +324,7 @@ impl<'s> UrlSearchParams<'s> {
         let mut modes = self.modes.into_owned();
         modes.remove(&mode);
         Self {
-            station_id: self.station_id,
+            zone: self.zone,
             departure_time: self.departure_time,
             max_duration: self.max_duration,
             modes: Cow::Owned(modes),
@@ -335,8 +336,8 @@ pub const DEFAULT_MAX_DURATION_MINS: i64 = 30;
 
 impl<'s> Display for UrlSearchParams<'s> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let station_id = self.station_id.get();
-        write!(f, "/depart-from/{}/", station_id)?;
+        let zone_id = self.zone.id;
+        write!(f, "/depart-from/{}/", zone_id)?;
         if let Some(time) = self.departure_time {
             write!(f, "{:?}", time.naive_local())?;
         } else {
@@ -386,7 +387,7 @@ pub fn search<'s>(
         Period::between(start_time, end_time + max_extra_search),
         data,
     );
-    plotter.add_origin_station(origin);
+    plotter.add_origin_zone(origin);
     if modes.contains(&TransitMode::SBahn) {
         plotter.add_route_type(RouteType::SuburbanRailway);
     }
@@ -411,9 +412,10 @@ pub fn search<'s>(
     let mut trips: HashMap<TripId, RadarTrip> = HashMap::new();
 
     let mut stations: HashMap<StopId, Station<FlattenedTimeCone>> = HashMap::new();
+    let (sox, soy) = origin.members.iter().map(|&stop| data.get_stop(stop).unwrap().location.x_y()).fold((0.,0.), |(ax, ay), (vx, vy)| (ax + vx, ay + vy));
     let geometry = Geo {
         time_cone_geometry: FlattenedTimeCone::new(departure_time, max_duration, Pixels::new(500.)),
-        geographic_origin: origin.location,
+        geographic_origin: geo::Point::new(sox / origin.members.len() as f64, soy / origin.members.len() as f64),
     };
 
     for item in plotter {
@@ -429,6 +431,7 @@ pub fn search<'s>(
                 let station = Station {
                     coords: (stop.location, earliest_arrival),
                     stop,
+                    zone: data.get_zone_by_key(stop.zone_key.unwrap()),
                     name_trunk_length: if name_trunk_length == stop.short_stop_name.len() {
                         continue;
                     } else if name_trunk_length > 10 {
@@ -766,14 +769,14 @@ impl<'s> Radar<'s> {
     <title>{} departures: Transit Radar</title>
     <desc>Departure tree.</desc>
          "#,
-            origin.short_stop_name
+            origin
         )?;
 
         write_xml!(w, <style>{include_str!("Radar.css")}</style>)?;
 
         write_xml!(w,
             <g id="header" transform="translate(-506, -506)">
-                <text y="20" style="font-size: 20pt;">{origin.short_stop_name}{" departures"}</text>
+                <text y="20" style="font-size: 20pt;">{origin}{" departures"}</text>
                 <a href={search_params.clone().with_departure_time(geometry.time_cone_geometry.origin())} rel="self"><text y="50" style="font-size: 10pt; font-style: oblique;">
                     "All trips starting "{geometry.time_cone_geometry.origin().format("at %k:%M on %e %b %Y")}
                     <tspan x="0" dy="1.4em">{"and lasting less than "}{geometry.time_cone_geometry.max_duration().num_minutes()}{" minutes"}</tspan>
@@ -847,6 +850,7 @@ impl<'s> Station<'s, Geo> {
                     .unwrap(),
             ),
             stop: self.stop,
+            zone: self.zone,
             name_trunk_length: self.name_trunk_length,
         }
     }
@@ -875,7 +879,7 @@ impl<'s> Station<'s, FlattenedTimeCone> {
             .into()
         };
         write_xml!(w,
-            <a href={search_params.clone().with_station_id(self.stop.station_id())}>
+            <a href={search_params.clone().with_zone(self.zone)}>
             <circle cx={*cx} cy={*cy} r={STOP_RADIUS} />
                 <text x={*cx + STOP_RADIUS + 6.} y={*cy + 4.}>{name}</text>
             </a>

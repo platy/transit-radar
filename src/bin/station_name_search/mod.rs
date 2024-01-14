@@ -1,16 +1,9 @@
 use lazysort::SortedBy;
-use serde::Serialize;
 use std::cmp::Ordering;
 use urlencoding::decode;
 
 use radar_search::search_data::*;
 use transit_radar::Suggester;
-
-#[derive(Serialize)]
-struct FEStationLookup<'s> {
-    stop_id: StopId,
-    name: &'s str,
-}
 
 fn most_important((id1, imp1): &(StopId, usize), (id2, imp2): &(StopId, usize)) -> Ordering {
     imp1.cmp(imp2).reverse().then(id1.cmp(id2))
@@ -19,8 +12,8 @@ fn most_important((id1, imp1): &(StopId, usize), (id2, imp2): &(StopId, usize)) 
 pub fn station_search_handler<'d>(
     query: &str,
     data: &'d GTFSData,
-    station_search: &Suggester<(StopId, usize)>,
-) -> Result<impl IntoIterator<Item = &'d Stop>, ()> {
+    station_search: &Suggester<(ZoneInternKey, usize)>,
+) -> Result<impl IntoIterator<Item = Zone<'d>>, ()> {
     const RESULT_LIMIT: usize = 20;
     match decode(query) {
         Ok(query) => {
@@ -29,9 +22,8 @@ pub fn station_search_handler<'d>(
                 .into_iter()
                 .sorted_by(most_important)
                 .take(RESULT_LIMIT)
-                .map(move |(stop_id, _importance)| {
-                    data.get_stop(stop_id)
-                        .expect("to find stop referenced by search")
+                .map(move |(zone_key, _importance)| {
+                    data.get_zone_by_key(zone_key)
                 });
             Ok(top_matches)
         }

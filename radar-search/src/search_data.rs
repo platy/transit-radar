@@ -1,7 +1,9 @@
 use chrono::Duration;
+use lasso::{Spur};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;
-use std::fmt;
+use std::fmt::{self, Display};
+use std::hash::Hash;
 use std::num::NonZeroU32;
 
 use crate::time::{Period, Time};
@@ -9,11 +11,11 @@ use crate::time::{Period, Time};
 pub type AgencyId = u16;
 pub type RouteId = u32;
 pub type TripId = NonZeroU32; // 27bits
-pub type StopId = NonZeroU32; // intern key
+pub type StopId = Spur; // intern key
 pub type ShapeId = u16;
 // type BlockId = String;
 pub type ServiceId = u16;
-// type ZoneId = String;
+pub type ZoneInternKey = Spur; // intern key
 
 /// Refers to a specific stop of a specific trip (an arrival / departure)
 pub type TripStopRef = (TripId, u8); // usize refers to the index of the stop in the trip, should probably instead use stop sequence
@@ -55,6 +57,25 @@ pub enum RouteType {
     WaterTransportService, // 1000
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Zone<'a> {
+    pub key: ZoneInternKey,
+    pub id: &'a str,
+    pub members: &'a [StopId],
+}
+
+impl<'a> Display for Zone<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.id)
+    }
+}
+
+impl<'a> Zone<'a> {
+    pub fn importance(&self, data: &GTFSData) -> usize {
+        self.members.iter().flat_map(|&stop_id| data.get_stop(stop_id)).map(|stop| stop.importance(data)).sum()
+    }
+}
+
 /// Parsed and indexed GTFS data
 /// * efficient lookups for searching
 /// * can be used on server and client
@@ -72,6 +93,8 @@ pub struct GTFSData {
     // sync whole trip as unit
     pub(crate) trips: HashMap<TripId, Trip>,
     pub(crate) stops: HashMap<StopId, Stop>,
+    zones: HashMap<ZoneInternKey, Vec<StopId>>,
+    zone_id_strings: lasso::RodeoReader,
 
     // all synced initially
     pub(crate) services_by_day: HashMap<Day, HashSet<ServiceId>>,
@@ -89,11 +112,14 @@ impl GTFSData {
                 timetable_start_date,
                 stops: HashMap::new(),
                 trips: HashMap::new(),
+                zones: HashMap::new(),
+                zone_id_strings: lasso::Rodeo::new().into_reader(),
             },
             stop_children: HashMap::new(),
             routes: HashMap::new(),
             departure_count: 0,
             assert_last_trip: None,
+            zone_id_interner: lasso::Rodeo::new(),
         }
     }
 
@@ -152,6 +178,16 @@ impl GTFSData {
         self.stops.get(&id)
     }
 
+    pub fn get_zone_by_id<'a, 'b: 'a, 's: 'a>(&'s self, id: &'b str) -> Option<Zone<'a>> {
+        let key = self.zone_id_strings.get(id)?;
+        Some(Zone::<'a> { key, id, members: self.zones.get(&key)? })
+    }
+
+    pub fn get_zone_by_key<'a, 'b: 'a, 's: 'a>(&'s self, key: ZoneInternKey) -> Zone<'a> {
+        let id = self.zone_id_strings.resolve(&key);
+        Zone::<'a> { key, id, members: self.zones.get(&key).unwrap() }
+    }
+
     /// Get all stops of the trip folling the departure referenced
     fn stop_times(&self, &(trip_id, idx): &TripStopRef) -> impl Iterator<Item = &StopTime> {
         self.trips
@@ -167,6 +203,10 @@ impl GTFSData {
 
     pub fn trips(&self) -> impl Iterator<Item = &Trip> {
         self.trips.values()
+    }
+
+    pub fn zones(&self) -> impl Iterator<Item = Zone<'_>> {
+        self.zones.iter().map(move |(&key, members)| Zone { key, id: self.zone_id_strings.resolve(&key), members })
     }
 }
 
@@ -204,6 +244,7 @@ pub struct Stop {
     /// Type of the location
     pub stereotype: StopStereoType,
     pub transfers: Vec<Transfer>,
+    pub zone_key: Option<ZoneInternKey>,
 }
 
 impl fmt::Debug for Stop {
@@ -419,6 +460,7 @@ pub struct Builder {
     routes: HashMap<RouteId, Route>,
     departure_count: u64,
     assert_last_trip: Option<TripId>, // for asserting that stoptimes are parsed in the expected order
+    zone_id_interner: lasso::Rodeo,
 }
 
 impl Builder {
@@ -428,7 +470,12 @@ impl Builder {
         full_stop_name: String,
         short_stop_name: String,
         location: geo::Point<f64>,
+        zone_id: &Option<String>,
     ) {
+        let zone_key = zone_id.as_deref().map(|zone_id| self.zone_id_interner.get_or_intern(zone_id));
+        if let Some(zone_key) = zone_key {
+            self.data.zones.entry(zone_key).or_default().push(stop_id);
+        }
         self.data.stops.insert(
             stop_id,
             Stop {
@@ -440,6 +487,7 @@ impl Builder {
                     stops_or_platforms: Vec::<StopId>::default(),
                 },
                 transfers: Vec::<Transfer>::default(),
+                zone_key,
             },
         );
     }
@@ -451,7 +499,12 @@ impl Builder {
         short_stop_name: String,
         location: geo::Point<f64>,
         station: Option<StopId>,
+        zone_id: &Option<String>,
     ) {
+        let zone_key = zone_id.as_deref().map(|zone_id| self.zone_id_interner.get_or_intern(zone_id));
+        if let Some(zone_key) = zone_key {
+            self.data.zones.entry(zone_key).or_default().push(stop_id);
+        }
         self.data.stops.insert(
             stop_id,
             Stop {
@@ -464,6 +517,7 @@ impl Builder {
                     departures: BTreeMap::<Time, Vec<TripStopRef>>::default(),
                 },
                 transfers: Vec::<Transfer>::default(),
+                zone_key,
             },
         );
         if let Some(station) = station {
@@ -478,7 +532,12 @@ impl Builder {
         short_stop_name: String,
         location: geo::Point<f64>,
         station: StopId,
+        zone_id: &Option<String>,
     ) {
+        let zone_key = zone_id.as_deref().map(|zone_id| self.zone_id_interner.get_or_intern(zone_id));
+        if let Some(zone_key) = zone_key {
+            self.data.zones.entry(zone_key).or_default().push(stop_id);
+        }
         self.data.stops.insert(
             stop_id,
             Stop {
@@ -488,6 +547,7 @@ impl Builder {
                 location,
                 stereotype: StopStereoType::EntranceExit { station },
                 transfers: std::vec::Vec::<Transfer>::default(),
+                zone_key,
             },
         );
         self.stop_children.entry(station).or_default().push(stop_id);
@@ -627,6 +687,8 @@ impl Builder {
                 }
             }
         }
+
+        self.data.zone_id_strings = self.zone_id_interner.into_reader();
 
         self.data
     }

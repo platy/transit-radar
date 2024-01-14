@@ -140,7 +140,7 @@ pub struct Stop {
     pub parent_station: Option<StopId>,
     // wheelchair_boarding: Option<u8>,
     // platform_code: Option<String>,
-    // zone_id: Option<ZoneId>,
+    pub zone_id: Option<ZoneId>,
 }
 
 /// GTFS Record

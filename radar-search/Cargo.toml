@@ -8,3 +8,4 @@ edition = "2018"
 geo = { version = "0.19", features = ["use-serde"] }
 serde = { version = "1", features = ["derive"] }
 chrono = "0.4"
+lasso = "0.7.2"

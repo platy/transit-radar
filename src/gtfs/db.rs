@@ -11,6 +11,8 @@ use csv::DeserializeErrorKind;
 use radar_search::search_data::*;
 use regex::Regex;
 
+use super::ZoneId;
+
 /// Refers to a specific stop of a specific trip (an arrival / departure)
 pub type TripStopRef = (TripId, usize); // usize refers to the index of the stop in the trip, should probably instead use stop sequence
 
@@ -84,6 +86,7 @@ pub fn load_data<S: std::hash::BuildHasher>(
     let mut builder = GTFSData::builder(services_by_day.clone(), timetable_start_date);
 
     let mut interner = lasso::Rodeo::default();
+    let mut zone_interner = lasso::Rodeo::default();
 
     let mut count_stop_id_invalid_digit = 0;
     let mut rdr = source.open_csv("stops.txt")?;
@@ -96,24 +99,26 @@ pub fn load_data<S: std::hash::BuildHasher>(
                 stop_lon,
                 location_type,
                 parent_station,
+                zone_id,
             }) => {
                 if location_type == 3 {
                     // generic node, for pathways, not used yet in transit radar
                     continue;
                 }
-                let stop_id = interner.get_or_intern(stop_id).into_inner();
+                let stop_id = interner.get_or_intern(stop_id);;
                 let parent_station =
-                    parent_station.map(|stop_id| interner.get_or_intern(stop_id).into_inner());
+                    parent_station.map(|stop_id| interner.get_or_intern(stop_id));
                 let short_stop_name = strip_stop_name(&stop_name);
                 let location = geo::Point::new(stop_lat, stop_lon);
                 match (location_type, parent_station) {
-                    (1, None) => builder.add_station(stop_id, stop_name, short_stop_name, location),
+                    (1, None) => builder.add_station(stop_id, stop_name, short_stop_name, location, &zone_id),
                     (0, parent_station) => builder.add_stop_or_platform(
                         stop_id,
                         stop_name,
                         short_stop_name,
                         location,
                         parent_station,
+                        &zone_id
                     ),
                     (2, Some(parent_station)) => builder.add_entrance_or_exit(
                         stop_id,
@@ -121,6 +126,7 @@ pub fn load_data<S: std::hash::BuildHasher>(
                         short_stop_name,
                         location,
                         parent_station,
+                        &zone_id,
                     ),
                     (1, Some(parent_station)) => {
                         panic!("station {:?} has parent {:?}", stop_id, parent_station)
@@ -155,8 +161,8 @@ pub fn load_data<S: std::hash::BuildHasher>(
     {
         match result {
             Ok(transfer) => builder.add_transfer(
-                interner.get_or_intern(transfer.from_stop_id).into_inner(),
-                interner.get_or_intern(transfer.to_stop_id).into_inner(),
+                interner.get_or_intern(transfer.from_stop_id),
+                interner.get_or_intern(transfer.to_stop_id),
                 transfer.min_transfer_time,
             ),
             Err(err) => {
@@ -213,7 +219,7 @@ pub fn load_data<S: std::hash::BuildHasher>(
                         stop_time.trip_id,
                         stop_time.arrival_time,
                         stop_time.departure_time,
-                        interner.get_or_intern(stop_time.stop_id).into_inner(),
+                        interner.get_or_intern(stop_time.stop_id),
                     );
                 } else {
                     eprintln!("Stop time parsed for ignored trip {}", stop_time.trip_id)
@@ -289,14 +295,11 @@ pub fn get_station_by_name<'r>(
     }
 }
 
-/// Build a word search suggester over station names
-pub fn build_station_word_index(data: &GTFSData) -> Suggester<(StopId, usize)> {
+/// Build a word search suggester over zones
+pub fn build_station_word_index<'d, 's>(data: &'d GTFSData) -> Suggester<(ZoneInternKey, usize)> {    
     let mut suggester = Suggester::new();
-
-    for stop in data.stops() {
-        if stop.is_station() {
-            suggester.insert(&stop.full_stop_name, (stop.stop_id, stop.importance(data)));
-        }
+    for zone in data.zones() {
+        suggester.insert(&zone.id, (zone.key, zone.importance(data)));
     }
 
     eprintln!(

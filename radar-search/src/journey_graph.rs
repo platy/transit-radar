@@ -1,10 +1,10 @@
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque, hash_map};
 use std::fmt;
 use std::iter::FromIterator;
 
 use crate::search_data::{
-    Day, GTFSData, RequiredData, Route, RouteType, ServiceId, Stop, StopId, TripId,
+    Day, GTFSData, RequiredData, Route, RouteType, ServiceId, Stop, StopId, TripId, ZoneInternKey, Zone,
 };
 use crate::time::{Period, Time};
 
@@ -21,9 +21,10 @@ pub struct Plotter<'r> {
     enqueued_trips: HashSet<TripId>,
     /// trips which so far have only gotten us late to stops, but they may end up leading to useful stops - will need to clean this up when the last stop in a trip is reached as it will probably grow badly
     slow_trips: HashMap<TripId, Vec<QueueItem<'r>>>,
-    // stops that have been arrived at and the earliest time they are arrived at
-    stops: HashMap<StopId, Time>,
-    emitted_stations: HashSet<StopId>,
+    stops: HashSet<StopId>,
+    // zones that have been arrived at, the stops they include and the earliest time they are arrived at
+    zones: HashMap<ZoneInternKey, (Time, Vec<StopId>)>,
+    emitted_zones: HashSet<ZoneInternKey>,
 }
 
 /// Output of the algorithm, Items are produced in order of arrival time
@@ -53,8 +54,9 @@ impl<'r> Plotter<'r> {
             catch_up: VecDeque::new(),
             enqueued_trips: HashSet::new(),
             slow_trips: HashMap::new(),
-            stops: HashMap::new(),
-            emitted_stations: HashSet::new(),
+            zones: HashMap::new(),
+            stops: HashSet::new(),
+            emitted_zones: HashSet::new(),
             data,
             route_types: HashSet::new(),
         }
@@ -67,6 +69,13 @@ impl<'r> Plotter<'r> {
             to_stop: origin,
             variant: QueueItemVariant::OriginStation,
         });
+    }
+
+    pub fn add_origin_zone(&mut self, zone: Zone) {
+        self.enqueue_members_of_zone_as_origin(
+            zone,
+            self.period.start(),
+        );
     }
 
     /// Add a route type to be searched
@@ -108,7 +117,7 @@ impl<'r> Plotter<'r> {
             .flat_map(|item| {
                 let mut to_emit = vec![];
                 // if this arrives at a new station, emit that first
-                if self.emitted_stations.insert(item.to_stop.station_id()) {
+                if self.emitted_zones.insert(item.to_stop.zone_key.unwrap()) {
                     to_emit.push(Item::Station {
                         stop: item.to_stop,
                         earliest_arrival: item.arrival_time,
@@ -196,10 +205,10 @@ impl<'r> Plotter<'r> {
                 // we don't show the stop time at each station along the trip, so we use one time
                 // at each stop. If the stop is the earliest arrival at the station, we use the
                 // arrival time, if not we use the departure time
-                if Some(previous_arrival_time) == self.earliest_arrival_at(from_stop.stop_id) {
+                if Some(previous_arrival_time) == self.earliest_arrival_at_zone(from_stop.zone_key.unwrap()) {
                     departure_time = previous_arrival_time;
                 }
-                if Some(arrival_time) > self.earliest_arrival_at(to_stop.stop_id) {
+                if Some(arrival_time) > self.earliest_arrival_at_zone(to_stop.zone_key.unwrap()) {
                     arrival_time = next_departure_time;
                 }
                 Some(Item::SegmentOfTrip {
@@ -219,7 +228,7 @@ impl<'r> Plotter<'r> {
     fn enqueue_transfers_from_stop(&mut self, stop: &'r Stop, departure_time: Time) {
         let mut to_add = vec![];
         for transfer in &stop.transfers {
-            if !self.stops.contains_key(&transfer.to_stop_id) {
+            if !self.stops.contains(&transfer.to_stop_id) {
                 if let Some(to_stop) = self.data.get_stop(transfer.to_stop_id) {
                     to_add.push(QueueItem {
                         to_stop,
@@ -241,7 +250,7 @@ impl<'r> Plotter<'r> {
     fn enqueue_transfers_from_station(&mut self, station: &'r Stop, departure_time: Time) {
         let mut to_add = vec![];
         for transfer in &station.transfers {
-            if !self.stops.contains_key(&transfer.to_stop_id) {
+            if !self.stops.contains(&transfer.to_stop_id) {
                 // parent stations transfer to parents, so transfer to the children as well (but aybe they hav entries in transfer to use without this implicit transfer?)
                 // we ignore any missing stops in case this is a partial data set
                 let to_stop = self.data.get_stop(transfer.to_stop_id);
@@ -269,24 +278,18 @@ impl<'r> Plotter<'r> {
         self.queue.extend(to_add);
     }
 
-    fn enqueue_immediate_transfers_to_children_of(&mut self, stop: &'r Stop, arrival_time: Time) {
-        let to_stop = self
-            .data
-            .get_stop(stop.stop_id)
-            .expect("Origin stop to exist");
-        let origin_stops = Some(&to_stop.stop_id).into_iter().chain(to_stop.children());
-        let to_add: Vec<QueueItem> = origin_stops
+    fn enqueue_members_of_zone_as_origin(&mut self, zone: Zone, arrival_time: Time) {
+        let to_add: Vec<QueueItem> = zone.members.iter()
             .filter_map(|&stop_id| {
-                self.data.get_stop(stop_id).map(|child_stop|
-                    // immediately transfer to all the stops of this origin station
+                self.data.get_stop(stop_id).map(|child_stop| {
+                    // mark all members as origin
+                    println!("Originating at {:?}", child_stop);
                     QueueItem {
                         to_stop: child_stop,
                         arrival_time,
-                        variant: QueueItemVariant::Transfer {
-                            from_stop: stop,
-                            departure_time: arrival_time,
-                        },
-                    })
+                        variant: QueueItemVariant::OriginStation,
+                    }
+                })
             })
             .collect();
         self.queue.extend(to_add);
@@ -361,8 +364,8 @@ impl<'r> Plotter<'r> {
         extended
     }
 
-    fn earliest_arrival_at(&self, stop_id: StopId) -> Option<Time> {
-        self.stops.get(&stop_id).cloned()
+    fn earliest_arrival_at_zone(&self, zone_key: ZoneInternKey) -> Option<Time> {
+        self.zones.get(&zone_key).map(|&(time, _)| time)
     }
 
     fn filter_slow_trip(&mut self, slow_trip: Vec<QueueItem<'r>>) -> Vec<QueueItem<'r>> {
@@ -372,7 +375,7 @@ impl<'r> Plotter<'r> {
             let from_stop = item.variant.get_from_stop().expect(
                 "A slow trip must only contain connections and stops, no transfers or origins",
             );
-            self.earliest_arrival_at(from_stop.stop_id)
+            self.earliest_arrival_at_zone(from_stop.zone_key.unwrap())
                 .map(|time| (i, time, item))
         });
         // index of the stop on this trip that we arrive at first
@@ -416,17 +419,23 @@ impl<'r> Plotter<'r> {
     }
 
     fn set_arrival_time(&mut self, stop_id: StopId, new_arrival_time: Time) -> bool {
-        let new_arrival_is_earlier = self
-            .stops
-            .get(&stop_id)
-            .map_or(true, |&previous_earliest_arrival| {
-                new_arrival_time < previous_earliest_arrival
-            });
-        if new_arrival_is_earlier {
-            self.stops.insert(stop_id, new_arrival_time);
-            true
-        } else {
-            false
+        self.stops.insert(stop_id);
+        let stop = self.data.stops.get(&stop_id).expect("Stop should exist");
+        match self.zones.entry(stop.zone_key.unwrap()) {
+            hash_map::Entry::Occupied(mut entry) => {
+                let (arrival_time, members) = entry.get_mut();
+                members.push(stop_id);
+                if new_arrival_time < *arrival_time {
+                    *arrival_time = new_arrival_time;
+                    true
+                } else {
+                    false
+                }
+            }
+            hash_map::Entry::Vacant(entry) => {
+                entry.insert((|| (new_arrival_time, vec![stop_id]))());
+                true
+            }
         }
     }
 
@@ -450,7 +459,7 @@ impl<'r> Plotter<'r> {
                         self.enqueue_transfers_from_station(to_station, item.arrival_time);
                     }
                     // only emit if we got to a new station
-                    if self.emitted_stations.contains(&item.to_stop.station_id()) {
+                    if self.stops.contains(&item.to_stop.station_id()) {
                         let slow_trip = self.slow_trips.entry(trip_id).or_default();
                         slow_trip.push(item);
                         vec![]
@@ -488,11 +497,8 @@ impl<'r> Plotter<'r> {
                     }
                 }
                 QueueItemVariant::OriginStation => {
-                    self.enqueue_immediate_transfers_to_children_of(
-                        item.to_stop,
-                        item.arrival_time,
-                    );
                     self.enqueue_transfers_from_station(item.to_stop, item.arrival_time);
+                    self.enqueue_connections_and_trips(&item, item.to_stop, item.arrival_time);
                     vec![item]
                 }
             }
@@ -649,6 +655,7 @@ enum QueueItemVariant<'r> {
         departure_time: Time,
         from_stop: &'r Stop,
     },
+    /// Treated as origin, multiple stops could be at the origin, for example all stops in a zone
     OriginStation,
 }
 

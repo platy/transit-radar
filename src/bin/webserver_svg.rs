@@ -1,7 +1,7 @@
-use std::{borrow::Cow, collections::HashSet, fmt, io, num::NonZeroU32, path::Path, sync::Arc};
+use std::{borrow::Cow, collections::HashSet, fmt, io, path::Path, sync::Arc};
 
 use chrono::{Duration, NaiveDateTime, TimeZone};
-use radar_search::search_data::{Stop, StopId};
+use radar_search::search_data::{ZoneInternKey, Zone};
 use rocket::{
     form::FromFormField,
     http::{ContentType, Status},
@@ -73,30 +73,29 @@ impl<'v> FromFormField<'v> for TransitModes {
     }
 }
 
-#[get("/depart-from/<station_id>/<time>?<minutes>&<refresh>&<mode>")]
+#[get("/depart-from/<zone_id>/<time>?<minutes>&<refresh>&<mode>")]
 fn index(
-    station_id: NonZeroU32,
+    zone_id: String,
     time: TimeFilter,
     minutes: Option<i64>,
     refresh: Option<bool>,
     mode: TransitModes,
     data: &State<Arc<GTFSData>>,
 ) -> (ContentType, String) {
-    let origin = data.get_stop(station_id).unwrap();
-    assert!(origin.is_station(), "Origin must be a station");
+    let zone = data.get_zone_by_id(&zone_id).unwrap();
     let departure_time = match time {
         TimeFilter::Now => None,
         TimeFilter::Local(dt) => Some(chrono_tz::Europe::Berlin.from_local_datetime(&dt).unwrap()),
     };
     let max_duration = Duration::minutes(minutes.unwrap_or(30));
     let search_params = SearchParams {
-        origin,
+        origin: zone,
         departure_time,
         max_duration,
         modes: Cow::Borrowed(&mode.0),
     };
     let url_search_params = UrlSearchParams {
-        station_id,
+        zone,
         departure_time,
         max_duration,
         modes: Cow::Borrowed(&mode.0),
@@ -114,7 +113,7 @@ fn index(
 fn station_search(
     q: Option<&str>,
     data: &State<Arc<GTFSData>>,
-    suggester: &State<Suggester<(StopId, usize)>>,
+    suggester: &State<Suggester<(ZoneInternKey, usize)>>,
 ) -> (Status, content::RawHtml<String>) {
     let (status, main) = station_search_xml(q, data, suggester);
     let input_args: Cow<_> = if let Some(q) = q {
@@ -141,7 +140,7 @@ fn station_search(
 fn station_search_xml(
     q: Option<&str>,
     data: &State<Arc<GTFSData>>,
-    suggester: &State<Suggester<(StopId, usize)>>,
+    suggester: &State<Suggester<(ZoneInternKey, usize)>>,
 ) -> (Status, String) {
     if let Some(q) = q {
         if let Ok(top_matches) = station_name_search::station_search_handler(q, data, suggester) {
@@ -161,13 +160,13 @@ fn station_search_xml(
 
 fn write_results<'s>(
     w: &mut dyn fmt::Write,
-    matches: impl IntoIterator<Item = &'s Stop>,
+    matches: impl IntoIterator<Item = Zone<'s>>,
 ) -> fmt::Result {
     write_xml!(w, <main>)?;
-    for stop in matches {
+    for zone in matches {
         write_xml!(w,
-            <a href={&format!("/depart-from/{id}/now", id = stop.stop_id)}>
-                {stop.full_stop_name}
+            <a href={&format!("/depart-from/{id}/now", id = zone.id)}>
+                {zone.id}
             </a>
         )?;
     }
