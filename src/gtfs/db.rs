@@ -146,10 +146,7 @@ pub fn load_data<S: std::hash::BuildHasher>(
             }
         }
     }
-    eprintln!(
-        "{} stops failed to parse due to an invalid digit in the stop id, this happens",
-        count_stop_id_invalid_digit
-    );
+    log_invalid_digit_count_failures("stops", count_stop_id_invalid_digit);
 
     let mut count_stop_id_invalid_digit = 0;
     for result in source
@@ -177,10 +174,7 @@ pub fn load_data<S: std::hash::BuildHasher>(
             }
         }
     }
-    eprintln!(
-        "{} transfers failed to parse due to an invalid digit in the stop id, this happens",
-        count_stop_id_invalid_digit
-    );
+    log_invalid_digit_count_failures("stops", count_stop_id_invalid_digit);
 
     use std::borrow::Cow;
     let mut rdr = source.open_csv("routes.txt")?;
@@ -240,16 +234,13 @@ pub fn load_data<S: std::hash::BuildHasher>(
             }
         }
     }
-    eprintln!(
-        "{} stop times failed to parse due to an invalid digit in the stop id, this happens",
-        count_stop_id_invalid_digit
-    );
+    log_invalid_digit_count_failures("stop times", count_stop_id_invalid_digit);
 
     Ok(builder.build())
 }
 
 fn strip_stop_name(stop_name: &str) -> String {
-    let pattern = Regex::new(r"Berlin, |S |S\+U |U | Bhf| \(Berlin\)| \[.*\]").unwrap();
+    let pattern = Regex::new(r"Berlin, |S |S\+U |U | Bhf| \(Berlin\)| \[.*]").unwrap();
     pattern.replace_all(stop_name, "").into_owned()
 }
 
@@ -437,5 +428,13 @@ impl std::fmt::Display for DayFilter {
             DayFilter::All => f.write_str("all"),
             DayFilter::Single(day) => day.fmt(f),
         }
+    }
+}
+
+fn log_invalid_digit_count_failures(entity: &str, failure_count: u32) {
+    if failure_count != 0 {
+        eprintln!(
+            "{failure_count} {entity} failed to parse due to an invalid digit in the stop id, this happens",
+        );
     }
 }
