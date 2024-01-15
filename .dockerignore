@@ -1,6 +1,0 @@
-target
-!target/x86_64-unknown-linux-musl/release/webserver_svg
-gtfs
-.git
-Dockerfile
-.dockerignore
