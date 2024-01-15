@@ -522,7 +522,6 @@ impl Builder {
         self.routes.insert(
             route_id,
             Route {
-                /// Identifies a route.
                 route_id,
                 route_short_name,
                 route_type,

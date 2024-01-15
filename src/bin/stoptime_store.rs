@@ -3,7 +3,7 @@ use std::path::Path;
 use transit_radar::gtfs::{self, db::GTFSSource, StopId, Time, TripId};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let stop_times = read_stop_times("./gtfs")?;
+    let _stop_times = read_stop_times("./gtfs")?;
     Ok(())
 }
 

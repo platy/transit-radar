@@ -93,8 +93,8 @@ impl Sub<Time> for Time {
     /// Subtract two `Time`s, returning the `Duration` between. This assumes
     /// both `Time`s are in the same calendar day.
     fn sub(self, rhs: Self) -> Self::Output {
-        let lhs: i64 = self.seconds_since_midnight.try_into().unwrap();
-        let rhs: i64 = rhs.seconds_since_midnight.try_into().unwrap();
+        let lhs: i64 = self.seconds_since_midnight.into();
+        let rhs: i64 = rhs.seconds_since_midnight.into();
         Duration::seconds(lhs - rhs)
     }
 }
